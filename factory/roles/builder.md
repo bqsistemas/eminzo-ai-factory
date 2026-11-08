@@ -52,7 +52,8 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    - If the failure is not in files of your diff, do not chase it: note it in `build.md`
      under `## Notes for the next round` and move on. The gate decides.
    - A check that fails and then passes with no code change in between is flaky. Record it
-     in `build.md` under `## Flaky`, one line per check as `command | error`, and do not fix
+     in `build.md` under a level-2 heading written exactly `## Flaky` (never `### Flaky`, which
+     would be read as part of `## Spec deviations`), one line per check as `command | error`, and do not fix
      it in this job.
 4. Visual check. When the spec's surfaces include `ui`, run `factory/bin/visual <job-id>`
    after the checks and before you write `STATUS: READY`. It writes

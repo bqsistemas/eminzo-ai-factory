@@ -42,6 +42,7 @@ function setup({ max, round = 1, checks = '#!/bin/sh\necho run >> "$CHECKS_COUNT
   writeFileSync(transcript, `${JSON.stringify({ type: 'user', message: { content: `Job folder: factory/jobs/${ID}/` } })}\n`);
   return {
     jobDir,
+    env,
     setRound,
     runs: () => readFileSync(count, 'utf8').split('\n').filter(Boolean).length,
     nudge: () => spawnSync('sh', [join(repo, 'factory/bin/nudge'), ID], { encoding: 'utf8', input: '', env }),
@@ -67,13 +68,49 @@ test('AC-1: the default cap is 6', () => {
   assert.match(t.nudge().stderr, CAP_MSG);
 });
 
-test('AC-1: in hook mode the cap logs and lets the builder stop (exit 0), without running the checks', () => {
+test('AC-1: in hook mode the first cap hit exits 2 (the builder sees it), later ones exit 0, and no checks run', () => {
   const t = setup({ max: 2 });
   assert.equal(t.hook().status, 2, 'a failing run keeps the builder working');
   assert.equal(t.hook().status, 2);
-  const res = t.hook();
-  assert.equal(res.status, 0, res.stderr);
-  assert.match(res.stderr, CAP_MSG);
+  const first = t.hook();
+  assert.equal(first.status, 2, first.stderr);
+  assert.match(first.stderr, CAP_MSG);
+  assert.match(readFileSync(join(t.jobDir, 'nudge.log'), 'utf8'), CAP_MSG);
+  assert.equal(JSON.parse(readFileSync(join(t.jobDir, 'nudge.json'), 'utf8')).runs.notified, true);
+  const later = t.hook();
+  assert.equal(later.status, 0, later.stderr);
+  assert.match(later.stderr, CAP_MSG);
+  assert.equal(t.hook().status, 0);
+  assert.equal(t.runs(), 2);
+});
+
+test('a corrupt nudge.json resets the count instead of crashing', () => {
+  for (const junk of ['null', '"text"', '[1,2]', '{not json']) {
+    const t = setup({ max: 1 });
+    writeFileSync(join(t.jobDir, 'nudge.json'), junk);
+    const res = t.nudge();
+    assert.doesNotMatch(res.stderr, /cap reached|TypeError/);
+    assert.equal(t.runs(), 1, junk);
+  }
+});
+
+test('a pass, then the cap, then the same tree: the reuse still exits 0', () => {
+  const t = setup({ max: 1, checks: '#!/bin/sh\necho run >> "$CHECKS_COUNT"\nexit 0\n' });
+  assert.equal(t.nudge().status, 0);
+  assert.equal(t.nudge().status, 0, 'reused, not capped');
+  assert.equal(t.hook().status, 0);
+  assert.equal(t.runs(), 1);
+  t.touch();
+  assert.equal(t.nudge().status, 2, 'a new tree needs a run and the cap is reached');
+});
+
+test('focused and full runs both count', () => {
+  const t = setup({ max: 2 });
+  const full = spawnSync('sh', [join(repo, 'factory/bin/nudge'), ID, '--full'], { encoding: 'utf8', input: '', env: t.env });
+  assert.equal(full.status, 2);
+  assert.equal(t.nudge().status, 2);
+  assert.equal(t.runs(), 2);
+  assert.match(t.nudge().stderr, CAP_MSG);
   assert.equal(t.runs(), 2);
 });
 
@@ -128,6 +165,9 @@ test('AC-3: build.md with an empty or filled ## Flaky section is parsed like any
   }
   const text = `STATUS: READY\n\n## Spec deviations\nAC-2 | Design: a -> b (code round 1)\n\n${flaky}`;
   assert.deepEqual(deviatedACs(text), ['AC-2'], 'flaky lines are not read as deviations');
+  // A level-3 heading stays inside the deviations section and is read as an invalid entry: why the role demands `## Flaky`.
+  assert.equal(parseDeviations('## Spec deviations\nNone\n\n### Flaky\nnode b.js | EADDRINUSE\n').length, 2);
+  assert.match(role('builder'), /exactly `## Flaky`/);
   assert.equal(parseDeviations(text).length, 1);
 });
 
@@ -144,6 +184,15 @@ test('AC-4: the builder, approver and code-review roles carry the rule', () => {
   assert.doesNotMatch(builder.match(/## Flaky[\s\S]{0,400}/)[0], /smoke/i);
   assert.match(role('approver'), /For the human[\s\S]*## Flaky/);
   assert.match(role('review-code'), /## Flaky[\s\S]*\[blocker\][\s\S]*diff touched/);
+});
+
+test('the added rule text avoids provider- and repo-specific words in all three roles', () => {
+  for (const name of ['builder', 'approver', 'review-code']) {
+    const text = role(name);
+    const section = (text.match(/[^\n]*Flaky[\s\S]{0,300}/g) ?? []).join('\n');
+    assert.ok(section.length > 0, name);
+    assert.doesNotMatch(section, /smoke/i);
+  }
 });
 
 test('config: the template and the repo config declare checks.max_runs_per_round = 6', () => {

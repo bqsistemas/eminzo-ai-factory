@@ -21,9 +21,11 @@
 // Cap per round: nudge.json also counts the real runs of checks.sh in the job's current round
 // (`runs: { round, count }`, reset when the round changes). Past `checks.max_runs_per_round`
 // (default 6) a nudge does not run the checks. By hand it exits 2 with `cap reached: write
-// build.md with what is still failing`. As the Stop hook, exit 2 would keep the builder from ever
-// stopping, so there it logs the same message and exits 0: the builder may finish and the gate
-// still runs the full checks, so nothing is weakened. A reused pass and a nudge refused by the
+// build.md with what is still failing`. As the Stop hook the first cap hit of a round also exits 2
+// (the builder sees the message, and it is appended to nudge.log) and is recorded as
+// `runs.notified`; every later hook call of that round logs the message and exits 0, so the builder
+// can stop and is never trapped. The gate still runs the full checks, so nothing is weakened.
+// A corrupt nudge.json resets the count (accepted: the builder cannot write the job folder). A reused pass and a nudge refused by the
 // lock are not runs and do not count.
 //
 // One nudge per job at a time: while the checks run, nudge.lock in the job folder records the
@@ -32,7 +34,7 @@
 // as the Stop hook (so the builder keeps waiting). A lock is stale, and taken over, when neither
 // process is alive or it is older than MAX_LOCK_AGE (a recycled PID never blocks forever). The
 // builder runs the nudge in the foreground and waits for it, so there is never a reason to start another.
-import { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -47,6 +49,7 @@ const EXIT_FAIL = 2;
 const EXIT_USAGE = 64;
 const LOCK = 'nudge.lock';
 export const DEFAULT_MAX_RUNS = 6;
+const CAP_MSG = 'cap reached: write build.md with what is still failing';
 const MAX_LOCK_AGE = 3 * 60 * 60 * 1000;
 const JOB_PATH = /factory\/jobs\/(\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*)\//;
 
@@ -133,8 +136,9 @@ function main(args = []) {
   try {
     const runs = countRun(stampFile, job.round, maxRuns(root));
     if (runs.capped) {
-      process.stderr.write('factory nudge: cap reached: write build.md with what is still failing\n');
-      return manual ? EXIT_FAIL : 0;
+      process.stderr.write(`factory nudge: ${CAP_MSG}\n`);
+      if (runs.first) bestEffort(() => appendFileSync(logFile, `cap reached: ${CAP_MSG.slice('cap reached: '.length)}\n`));
+      return manual || runs.first ? EXIT_FAIL : 0;
     }
     return runAndReport({ root, job, runs: runs.value, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
@@ -308,13 +312,23 @@ function maxRuns(root) {
 
 /**
  * Counts one real run of the checks in this round and saves it before they start (a killed nudge
- * still counts). Returns { capped: true } when the round already used its runs, else { value }.
+ * still counts). Returns { capped: true, first } when the round already used its runs (`first`: the
+ * hook has not been told yet, which is recorded as runs.notified), else { value }.
+ * A corrupt nudge.json (not a JSON object) resets the count: accepted, since the builder cannot write
+ * the job folder from its worktree. In the `lock.unlocked` fallback two nudges may overlap, so the
+ * count is approximate there.
  */
 function countRun(stampFile, round, max) {
   let raw = {};
-  try { raw = JSON.parse(readText(stampFile) ?? '{}') ?? {}; } catch { /* unreadable: start over */ }
-  const used = raw.runs && raw.runs.round === round && Number.isInteger(raw.runs.count) ? raw.runs.count : 0;
-  if (used >= max) return { capped: true };
+  try { raw = JSON.parse(readText(stampFile) ?? '{}'); } catch { /* unreadable: start over */ }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) raw = {};
+  const runs = raw.runs && typeof raw.runs === 'object' && raw.runs.round === round ? raw.runs : null;
+  const used = Number.isInteger(runs?.count) ? runs.count : 0;
+  if (used >= max) {
+    const first = runs?.notified !== true;
+    if (first) bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ ...raw, runs: { ...runs, notified: true } })}\n`));
+    return { capped: true, first };
+  }
   const value = { round, count: used + 1 };
   bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ ...raw, runs: value })}\n`));
   return { value };
