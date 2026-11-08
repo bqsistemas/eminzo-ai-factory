@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { wrapperLineCap } from './helpers/wrapper-lines.js';
+
 import { addedOrMovedPaths, uncoveredPaths } from '../factory/lib/project-map.js';
 import { baseRef } from '../factory/lib/util.js';
 
@@ -60,7 +62,7 @@ const wrapperBody = (role) => read(`.claude/agents/eminzo-${role}.md`).replace(/
 test('every wrapper repeats the critical rules and stays short', () => {
   for (const role of ROLES) {
     const body = wrapperBody(role);
-    assert.ok(body.trim().split('\n').length <= 20, `${role} wrapper is too long`); // the generated language and finish blocks included
+    assert.ok(body.trim().split('\n').length <= wrapperLineCap(role), `${role} wrapper is longer than its template and rules`);
     assert.ok(body.includes(`factory/roles/${role}.md`), `${role} wrapper must point to its role`);
     assert.match(body, /Write only your own file/, `${role} wrapper: write only your file`);
     assert.match(body, /reply with its first line/, `${role} wrapper: reply with the first line`);

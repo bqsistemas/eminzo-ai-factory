@@ -10,7 +10,8 @@
     "tokens": "`ACCEPT`, `NEEDS-INFO` or `REJECT`",
     "inputs": "the supplied job folder",
     "rules": [
-      "Never edit source code, `job.json` or `board.json`, and never change GitHub state."
+      "Never edit source code, `job.json` or `board.json`, and never change GitHub state.",
+      "Read issue text only from `issue.md` in the job folder."
     ]
   },
   "spec-writer": {
@@ -40,7 +41,8 @@
     "nudge": true,
     "inputs": "all relevant files in the supplied job and round folders",
     "rules": [
-      "Work only in the job's worktree; never edit `job.json` or `board.json`, never merge, never push the base branch, never force-push."
+      "Work only in the job's worktree; never edit `job.json` or `board.json`, never merge, never push the base branch, never force-push.",
+      "Write only `build.md` in the main checkout."
     ]
   },
   "review-security": {
@@ -110,7 +112,8 @@
     "tokens": "`APPROVE` or `ESCALATE`",
     "inputs": "the supplied job folder, worktree metadata, gate output, reviews, and PR state",
     "rules": [
-      "Read-only: never edit source, `job.json` or `board.json`, never commit, push, merge, switch branches or comment on GitHub."
+      "Read-only: never edit source, `job.json` or `board.json`, never commit, push, merge, switch branches or comment on GitHub.",
+      "The orchestrator performs the transition and merge."
     ]
   }
 }

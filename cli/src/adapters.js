@@ -136,9 +136,13 @@ function fill(template, vars, where) {
 /** `## name` blocks of factory/templates/agent-shared.md -> { name: text }. The first (comment) block is dropped. */
 export function sharedFragments(text) {
   const out = {};
-  for (const block of text.split(/^## /m).slice(1)) {
+  for (const block of text.replace(/\r\n/g, '\n').split(/^## /m).slice(1)) {
     const nl = block.indexOf('\n');
-    out[block.slice(0, nl).trim()] = block.slice(nl + 1).trim();
+    const name = (nl < 0 ? block : block.slice(0, nl)).trim();
+    const body = nl < 0 ? '' : block.slice(nl + 1).trim();
+    if (!['data-rule', 'language', 'finish'].includes(name)) throw new Error(`agent-shared.md: unexpected "## ${name}" (a fragment cannot contain a "## " line)`);
+    if (name in out) throw new Error(`agent-shared.md: "## ${name}" appears twice`);
+    out[name] = body;
   }
   for (const name of ['data-rule', 'language', 'finish']) if (!out[name]) throw new Error(`agent-shared.md has no "## ${name}" block`);
   return out;
@@ -149,6 +153,8 @@ const FIELDS = ['description', 'codexDescription', 'tools', 'model', 'scope', 'f
 function check(role, meta) {
   for (const f of FIELDS) if (meta[f] === undefined) throw new Error(`agents.json: ${role} has no "${f}"`);
   if (!['job', 'round'].includes(meta.scope)) throw new Error(`agents.json: ${role} scope must be "job" or "round"`);
+  if (/\n|: | #|^[\s'"|>&*!%@`#-]|\s$/.test(meta.description)) throw new Error(`agents.json: ${role} description cannot contain a newline, ": " or " #", or start or end with a YAML indicator or space (it is written as a plain YAML scalar)`);
+  if (/\n|["\\]/.test(meta.codexDescription)) throw new Error(`agents.json: ${role} codexDescription cannot contain a newline, a double quote or a backslash (it is written unescaped into a TOML string)`);
   if (/['"\\]/.test(meta.regex)) throw new Error(`agents.json: ${role} regex cannot contain quotes or backslashes (it sits in a YAML hook command)`);
 }
 
@@ -192,7 +198,9 @@ export function repoCodexAgent(role, meta, { codex, shared }) {
  * All repository adapters as { 'relative/path': text }.
  * @param {{ meta: object, claude: string, codex: string, shared: string }} source  parsed agents.json and the three template texts
  */
-export function repoAgents({ meta, claude, codex, shared }) {
+export function repoAgents({ meta, claude: claudeRaw, codex: codexRaw, shared }) {
+  const claude = claudeRaw.replace(/\r\n/g, '\n');
+  const codex = codexRaw.replace(/\r\n/g, '\n');
   const fragments = sharedFragments(shared);
   const out = {};
   for (const role of Object.keys(meta).sort()) {

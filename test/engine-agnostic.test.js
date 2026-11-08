@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { wrapperLineCap } from './helpers/wrapper-lines.js';
+
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const read = (path) => readFileSync(join(repo, path), 'utf8');
 const list = (dir, ext) => readdirSync(join(repo, dir)).filter((f) => f.endsWith(ext)).sort();
@@ -37,7 +39,7 @@ test('every Claude wrapper keeps the frontmatter and only points to the neutral 
     }
     assert.match(front, new RegExp(`^name: eminzo-${role}$`, 'm'));
     assert.ok(body(text).includes(`factory/roles/${role}.md`), `${role} wrapper must point to its role body`);
-    assert.ok(body(text).trim().split('\n').length <= 20, `${role} wrapper must stay thin`); // role pointer, rules and the generated language and finish blocks
+    assert.ok(body(text).trim().split('\n').length <= wrapperLineCap(role), `${role} wrapper must stay thin: template plus its rules`);
   }
 });
 
