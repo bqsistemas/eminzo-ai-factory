@@ -4,8 +4,6 @@ description: {{description}}
 tools: {{tools}}
 model: {{model}}
 hooks:
-  Stop:
-    - hooks:
 {{hooks}}
 ---
 Read `factory/roles/{{role}}.md` and follow it exactly: it is your full role. The hooks above are the only Claude-specific part.

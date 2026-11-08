@@ -43,7 +43,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    `FACTORY_CHECK_MODE` and `FACTORY_CHANGED_FILES` may run only what your change touches.
    The factory runs the full checks before the gate (and again in the gate), so a focused
    pass is not the final word; `--full` forces everything.
-   Write `STATUS: READY` only when the checks exit 0; on a failure fix it and run the nudge
+   Write `STATUS: READY` only when the checks exit 0 and `selfcheck` (step 6) exits 0; on a failure fix it and run the nudge
    again, within these limits:
    - Run the same failing check command at most 2 times per round. The nudge also stops
      running the checks after `checks.max_runs_per_round` runs in a round (default 6) and
@@ -68,7 +68,14 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    `factory/project.md` in this branch too. If it adds or moves modules or top-level
    files, update the `Module map` section of `factory/project.md` in the same branch;
    the gate flags a map that does not mention them.
-6. Push and open the PR.
+6. Self-check. With everything committed, run `factory/bin/selfcheck <job-id>`. It exits 0 and
+   prints `selfcheck: ok` when every `AC-n` is named in a test that your diff adds or changes, no
+   protected test changed, the `Module map` mentions your new modules and nothing is uncommitted.
+   Otherwise it exits 1 and names each problem: fix them, commit and run it again. Write
+   `STATUS: READY` only when it exits 0. It is a quick check of your own work; the gate stays the
+   judge. (Claude also denies an edit of a protected test while you work; Codex has no such hook,
+   so keep away from them yourself.)
+7. Push and open the PR.
    - Round 1: `git push -u origin factory/<job-id>`, then
      `gh pr create --draft --base <base-branch> --head factory/<job-id> --title "<title>" --body "Closes #<issue>"`,
      where `<title>` is the `title` field of `<job folder>/job.json` (the factory
@@ -79,7 +86,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    - Later rounds: `git push origin factory/<job-id>`.
    - Push only `factory/<job-id>`. Never push `<base-branch>`, never force-push, never merge,
      never mark the PR ready; the factory scripts do that.
-7. On a later round, fix every blocker. If you disagree with a finding, say why in
+8. On a later round, fix every blocker. If you disagree with a finding, say why in
    build.md instead of ignoring it. If a note asks you to sync with the base, run
    `git fetch origin && git merge <base>` in the worktree, resolve the
    conflicts there, commit and push.

@@ -39,6 +39,7 @@
     "regex": "^STATUS: (READY|BLOCKED)( |$)",
     "tokens": "`STATUS: READY` or `STATUS: BLOCKED`",
     "nudge": true,
+    "protect": true,
     "inputs": "all relevant files in the supplied job and round folders",
     "rules": [
       "Work only in the job's worktree; never edit `job.json` or `board.json`, never merge, never push the base branch, never force-push.",
