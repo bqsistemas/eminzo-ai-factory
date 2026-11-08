@@ -19,9 +19,11 @@ const at = (min) => new Date(T0 + min * 60000).toISOString();
 /** A builder transcript: the first prompt names the job folder, then Bash calls and their results. */
 function transcript(calls, { id = ID, role = 'eminzo-builder' } = {}) {
   const lines = [{ type: 'user', timestamp: at(0), message: { content: `Job folder: factory/jobs/${id}/` } }];
-  calls.forEach(([command, start, end], i) => {
-    lines.push({ type: 'assistant', timestamp: at(start), message: { content: [{ type: 'tool_use', name: 'Bash', id: `t${i}`, input: { command } }] } });
-    if (end !== null) lines.push({ type: 'user', timestamp: at(end), message: { content: [{ type: 'tool_result', tool_use_id: `t${i}` }] } });
+  calls.forEach(([command, start, end, opts = {}], i) => {
+    const id = opts.id ?? `t${i}`;
+    const input = { command, ...(opts.background ? { run_in_background: true } : {}) };
+    lines.push({ type: 'assistant', timestamp: at(start), message: { content: [{ type: 'tool_use', name: opts.name ?? 'Bash', id, input }] } });
+    if (end !== null) lines.push({ type: 'user', timestamp: opts.untimed ? undefined : at(end), message: { content: [{ type: 'tool_result', tool_use_id: id }] } });
   });
   return { text: lines.map((l) => JSON.stringify(l)).join('\n'), agentType: role };
 }
@@ -34,15 +36,58 @@ test('classify: waits first, then checks, git, and everything else', () => {
   assert.equal(classify('go test ./...', c), 'check');
   assert.equal(classify('sleep 60; pgrep -f bin/nudge', c), 'wait', 'a wait that names a check is a wait');
   assert.equal(classify('while pgrep -f x; do sleep 5; done', c), 'wait');
+  assert.equal(classify('until [ -s out.txt ]; do sleep 3; done; cat out.txt', c), 'wait', 'a loop split on ; is still a wait');
   assert.equal(classify('git commit -m x', c), 'git');
   assert.equal(classify('gh pr create', c), 'git');
+  assert.equal(classify('cd /w/.worktrees/042-x && git commit -m x', c), 'git', 'git chained after cd');
+  assert.equal(classify('git status; gh pr view 7', c), 'git');
+  assert.equal(classify('echo digit', c), 'other', 'a word that contains git is not git');
   assert.equal(classify('ls src', c), 'other');
+});
+
+test('quoted text never decides the kind, and only the start of a long command is read', () => {
+  const c = compilePatterns();
+  assert.equal(classify('git commit -m "fix: npm test was flaky"', c), 'git', 'a commit message that names a check');
+  assert.equal(classify("echo 'sleep 5'", c), 'other');
+  assert.equal(classify(`cat <<EOF\n${'x'.repeat(5000)}\nEOF\nnpm test`, c), 'other', 'past the first 2000 characters');
+  assert.equal(classify('GIT_TRACE=1 git push', c), 'git', 'an env assignment before git');
 });
 
 test('a repository adds its own patterns; an invalid one is skipped', () => {
   const c = compilePatterns({ check: ['run e2e', '[invalid'] });
   assert.equal(classify('npm --prefix app run e2e', c), 'check');
   assert.equal(classify('npm run build', c), 'other');
+  const unsafe = compilePatterns({ check: ['(a+)+$', '(x*)*', 'run e2e'] });
+  assert.equal(unsafe.check.length, compilePatterns().check.length + 1, 'a nested quantifier is skipped');
+});
+
+test('parallel commands of a kind share wall time; a background command is counted and its output read is a wait', () => {
+  const profile = jobProfile([transcript([
+    ['npm test', 1, 4],
+    ['npm test -- --grep x', 2, 5],
+    ['npm run e2e', 6, 6.1, { background: true }],
+    ['', 7, 10, { name: 'BashOutput' }],
+  ])], ID);
+  assert.equal(profile.time_by_kind.check, 4, '[1,4] and [2,5] overlap: 4 minutes, not 6');
+  assert.equal(profile.commands_by_kind.check, 2);
+  assert.equal(profile.time_by_kind.wait, 3);
+  assert.equal(profile.background_commands, 1);
+});
+
+test('a result without a time is counted as untimed; a resumed transcript is counted once', () => {
+  const one = transcript([['npm test', 1, 3], ['git push', 4, 5, { untimed: true }]]);
+  const profile = jobProfile([one, one], ID);
+  assert.equal(profile.untimed_commands, 1);
+  assert.equal(profile.commands_by_kind.check, 1, 'the same tool call in two transcripts counts once');
+  assert.equal(profile.time_by_kind.check, 2);
+});
+
+test('idle time between rounds is not builder time; a long foreground check is', () => {
+  const idle = jobProfile([transcript([['npm test', 1, 2], ['git push', 120, 121]])], ID);
+  assert.equal(idle.builder_minutes, 3, '0..1, 1..2, 120..121: the 118-minute gap is idle');
+  const long = jobProfile([transcript([['factory/bin/nudge 042-profile', 1, 41]])], ID);
+  assert.equal(long.builder_minutes, 41, 'a 40-minute nudge is busy');
+  assert.ok(long.time_by_kind.check <= long.builder_minutes);
 });
 
 test('AC-1: minutes and commands per kind match the transcript', () => {
@@ -99,6 +144,11 @@ test('AC-3: job <id> profile stores time_by_kind in job.json without touching ot
   assert.deepEqual(job.commands_by_kind, { wait: 0, check: 1, git: 1, other: 0 });
   assert.equal(job.cost_usd, 1.5);
   assert.equal(job.stage, 'build');
+  assert.equal(job.profiled_round, 1);
+  assert.ok(Date.parse(job.profiled_at));
+  const again = t.run('job', [ID, 'profile']);
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(t.job().updated, job.updated, 'an unchanged profile does not touch the job');
 });
 
 test('factory/bin/profile <id> is the same command', () => {
@@ -127,10 +177,11 @@ import { builderTime, stageDetails } from '../factory/pipeline-canvas.js';
 
 test('AC-4: the dashboard shows the builder time on the build stage, localized', () => {
   const job = { id: ID, stage: 'build', time_by_kind: { wait: 2, check: 3, git: 0.5, other: 0.2 } };
-  assert.equal(builderTime(job), 'checks 3.0 min · waits 2.0 · git 0.5 · other 0.2');
-  assert.equal(builderTime(job, { timeCheck: 'checks', timeWait: 'esperas', timeGit: 'git', timeOther: 'otros' }), 'checks 3.0 min · esperas 2.0 · git 0.5 · otros 0.2');
+  assert.equal(builderTime(job), 'checks 3.0 · waits 2.0 · git 0.5 · other 0.2 min');
+  assert.equal(builderTime(job, { timeCheck: 'checks', timeWait: 'esperas', timeGit: 'git', timeOther: 'otros' }), 'checks 3.0 · esperas 2.0 · git 0.5 · otros 0.2 min');
+  assert.equal(builderTime({ id: ID, time_by_kind: { wait: 2, check: 0, git: 0, other: 0 } }), 'waits 2.0 min', 'the unit follows the last part, whichever parts there are');
   assert.equal(builderTime({ id: ID }), null, 'no profile yet');
-  assert.equal(stageDetails(job, 'build').builderTime, 'checks 3.0 min · waits 2.0 · git 0.5 · other 0.2');
+  assert.equal(stageDetails(job, 'build').builderTime, 'checks 3.0 · waits 2.0 · git 0.5 · other 0.2 min');
   assert.equal(stageDetails(job, 'gate').builderTime, null, 'only on the build stage');
   const html = readFileSync(join(repo, 'factory/dashboard.html'), 'utf8');
   assert.equal(html.match(/"pipelineBuilderTime":/g).length, 3, 'en, es and pt');

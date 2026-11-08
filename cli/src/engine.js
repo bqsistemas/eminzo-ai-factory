@@ -56,8 +56,14 @@ export async function runEngine(command, args, { dist, version, env = process.en
   const configFile = join(root, 'factory', 'config.json');
   if (!existsSync(configFile)) throw new CliError('no factory in this repo; run /eminzo-factory enable (Codex: $eminzo-factory enable)');
 
+  if (Object.hasOwn(JOB_ALIASES, command) && (!args[0] || args[0].startsWith('-'))) throw new CliError(`usage: eminzo ${command} <job-id>`, 2);
   if (hasCommittedEngine(root)) {
-    const own = join(root, 'factory', 'bin', command);
+    let own = join(root, 'factory', 'bin', command);
+    // An older committed engine has no wrapper for an alias: its job script still runs the subcommand (or says it does not know it).
+    if (!existsSync(own) && Object.hasOwn(JOB_ALIASES, command)) {
+      own = join(root, 'factory', 'bin', 'job');
+      args = JOB_ALIASES[command](args);
+    }
     if (!existsSync(own)) throw new CliError(`this repository commits its own engine, which has no factory/bin/${command}`);
     const childEnv = { ...env };
     delete childEnv.EMINZO_ENGINE;

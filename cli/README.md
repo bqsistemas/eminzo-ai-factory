@@ -259,6 +259,7 @@ reach the builder.
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
 | `eminzo job config [<key>]` | the effective configuration, and whether each key comes from `config.json` or `config.local.json` |
+| `eminzo profile <job-id>` | where the builder's time went in a job (checks, waits, git, other) from its Claude transcripts; stored in `job.json` and shown on the dashboard's build stage. A repository adds its own check commands in `config.json` `profile.patterns` (`{ "check": ["run e2e"] }`) |
 | `eminzo show roles/<role>.md` | prints a role the agents follow (`intake`, `spec-writer`, `builder`, `review-code`, `review-ui`, `review-ux`, `review-security`, `approver`) |
 | `eminzo --version`, `eminzo help` | the version, and every command |
 

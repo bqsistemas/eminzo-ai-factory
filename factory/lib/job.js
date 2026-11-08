@@ -1573,9 +1573,28 @@ function sync(c, id) {
     job.cost_by_agent = byAgent;
     job.cost_status = 'available';
     job.cost_reason = null;
+    // The builder's time is refreshed with the cost, so the dashboard never shows an older round's profile.
+    const profile = jobProfile(readAgentTranscripts(transcriptsDir(c.root)), job.id, c.config.profile?.patterns);
+    if (profile.transcripts) {
+      for (const k of PROFILE_FIELDS) job[k] = profile[k];
+      job.profiled_round = job.round;
+      job.profiled_at = now();
+    }
   }
   saveJob(c, job);
   return `${job.id} ${job.stage} ${costLabel(job)}`;
+}
+
+const PROFILE_FIELDS = ['time_by_kind', 'commands_by_kind', 'builder_minutes', 'background_commands', 'untimed_commands'];
+
+/** Stores a profile in job.json with the round it covers; an unchanged profile does not touch the job. */
+function storeProfile(c, job, result) {
+  const same = PROFILE_FIELDS.every((k) => JSON.stringify(job[k]) === JSON.stringify(result[k])) && job.profiled_round === job.round;
+  if (same) return;
+  for (const k of PROFILE_FIELDS) job[k] = result[k];
+  job.profiled_round = job.round;
+  job.profiled_at = now();
+  saveJob(c, job);
 }
 
 /** `job <id> profile`: measures the builder's time and stores it in job.json; prints one line per kind. */
@@ -1584,13 +1603,10 @@ function profileJob(c, id) {
   if (job.provider === 'codex') return `${job.id} profile: codex not supported (the profile reads Claude transcripts)`;
   const result = jobProfile(readAgentTranscripts(transcriptsDir(c.root)), job.id, c.config.profile?.patterns);
   if (!result.transcripts) return `${job.id} profile: no builder transcript found`;
-  job.time_by_kind = result.time_by_kind;
-  job.commands_by_kind = result.commands_by_kind;
-  job.builder_minutes = result.builder_minutes;
-  saveJob(c, job);
+  storeProfile(c, job, result);
   const width = Math.max(...KINDS.map((k) => k.length));
   return [
-    `${job.id} profile: builder ${result.builder_minutes} min in ${result.transcripts} transcript${result.transcripts === 1 ? '' : 's'}`,
+    `${job.id} profile: builder ${result.builder_minutes} active min in ${result.transcripts} transcript${result.transcripts === 1 ? '' : 's'} (round ${job.round}; ${result.background_commands} sent to the background, ${result.untimed_commands} untimed)`,
     ...KINDS.map((k) => `  ${k.padEnd(width)}  ${result.time_by_kind[k].toFixed(1)} min  (${result.commands_by_kind[k]} command${result.commands_by_kind[k] === 1 ? '' : 's'})`),
   ].join('\n');
 }

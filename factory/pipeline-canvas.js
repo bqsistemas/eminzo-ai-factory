@@ -87,14 +87,14 @@ function agentCost(job, stageKey) {
   return parts.length ? parts.join(', ') : null;
 }
 
-/** "checks 3.0 min · waits 2.0 · git 0.5 · other 0.2" from job.time_by_kind (job <id> profile), or null. */
+/** "checks 3.0 · waits 2.0 · git 0.5 · other 0.2 min" from job.time_by_kind (job <id> profile), or null. */
 export function builderTime(job, text) {
   const t = isObject(job) && isObject(job.time_by_kind) ? job.time_by_kind : null;
   if (!t) return null;
   const parts = [['check', text?.timeCheck || 'checks'], ['wait', text?.timeWait || 'waits'], ['git', text?.timeGit || 'git'], ['other', text?.timeOther || 'other']]
-    .filter(([k]) => Number.isFinite(t[k]) && t[k] >= 0)
-    .map(([k, label], i) => `${label} ${t[k].toFixed(1)}${i === 0 ? ' min' : ''}`);
-  return parts.length ? parts.join(' · ') : null;
+    .filter(([k]) => Number.isFinite(t[k]) && t[k] > 0) // a kind with no time is left out
+    .map(([k, label]) => `${label} ${t[k].toFixed(1)}`);
+  return parts.length ? `${parts.join(' · ')} min` : null;
 }
 
 export function stageDetails(job, stageKey, now = Date.now(), text) {
