@@ -20,7 +20,7 @@ export const KIT_EXCLUDE = ['factory/bin/dashboard', 'factory/lib/dashboard.js']
  * Shipped in the installer bundle (so run.js can read it from kit.dir) but never copied into the target repo:
  * the installer turns it into the target's factory/config.json, and nothing in the target reads the template.
  */
-export const KIT_INSTALLER_ONLY = ['factory/templates/config.json'];
+export const KIT_INSTALLER_ONLY = ['factory/templates/config.json', 'factory/templates/agents.json', 'factory/templates/agent-claude.md', 'factory/templates/agent-codex.toml', 'factory/templates/agent-shared.md'];
 /** Lines the installer adds to the target's .gitignore. */
 export const KIT_RUNTIME_STATE = ['factory/board.json', 'factory/jobs/', '.worktrees/'];
 /** Per-developer files, also gitignored by the installer and by an update: the engine ignores a tracked config.local.json. */

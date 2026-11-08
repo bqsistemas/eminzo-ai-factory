@@ -60,7 +60,7 @@ const wrapperBody = (role) => read(`.claude/agents/eminzo-${role}.md`).replace(/
 test('every wrapper repeats the critical rules and stays short', () => {
   for (const role of ROLES) {
     const body = wrapperBody(role);
-    assert.ok(body.trim().split('\n').length <= 8, `${role} wrapper is too long`);
+    assert.ok(body.trim().split('\n').length <= 20, `${role} wrapper is too long`); // the generated language and finish blocks included
     assert.ok(body.includes(`factory/roles/${role}.md`), `${role} wrapper must point to its role`);
     assert.match(body, /Write only your own file/, `${role} wrapper: write only your file`);
     assert.match(body, /reply with its first line/, `${role} wrapper: reply with the first line`);
@@ -78,7 +78,8 @@ test('every role body carries its critical rules', () => {
     for (const token of FIRST_LINE[role] ?? ['VERDICT: PASS', 'VERDICT: CHANGES']) {
       assert.ok(text.includes(token), `${role} must name the first-line token ${token}`);
     }
-    assert.match(text, /\*\*Before you finish\*\*/);
+    assert.doesNotMatch(text, /\*\*Before you finish\*\*/, `${role}: the finish block comes from the template`);
+    assert.doesNotMatch(text, /\*\*Language\.\*\*/, `${role}: the language paragraph comes from the template`);
   }
   assert.match(read('factory/roles/builder.md'), /Never edit\s+or delete a test listed in `factory\/config\.json` `protected_tests`/);
   assert.match(read('factory/roles/builder.md'), /never merge/i);

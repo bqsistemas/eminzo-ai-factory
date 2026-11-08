@@ -98,8 +98,9 @@ describe('roles and skills', () => {
     assert.match(ux, /\[ux\]/);
   });
 
-  test('the Codex review-ui wrapper says the UX checklist survives a no-visual N/A', () => {
-    assert.match(read('.codex/agents/eminzo-review-ui.toml'), /N\/A only for the visual part/);
+  test('the role the Codex review-ui profile reads says the UX checklist survives a no-visual N/A', () => {
+    assert.match(read('factory/roles/review-ui.md'), /N\/A only for the visual part/);
+    assert.match(read('.codex/agents/eminzo-review-ui.toml'), /factory\/roles\/review-ui\.md/);
   });
 
   test('docs: factory-explicado lists the interaction surface', () => {

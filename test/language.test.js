@@ -322,11 +322,11 @@ describe('job 020: language', { concurrency: true }, () => {
 
   test('AC-7: every agent file states the language rule and SKILL.md documents it', () => {
     const sentence = 'Write prose in the configured language; keep technical terms and protocol tokens in English.';
-    const dir = join(repo, 'factory/roles');
-    const files = readdirSync(dir).filter((f) => f.endsWith('.md'));
-    assert.equal(files.length, 8);
+    // The language paragraph is generated into every agent (factory/templates/agent-shared.md), not written in the roles.
+    const files = readdirSync(join(repo, 'factory/roles')).filter((f) => f.endsWith('.md')).flatMap((f) => [`.claude/agents/eminzo-${f}`, `.codex/agents/eminzo-${f.replace(/\.md$/, '.toml')}`]);
+    assert.equal(files.length, 16);
     for (const f of files) {
-      const text = readFileSync(join(dir, f), 'utf8');
+      const text = readFileSync(join(repo, f), 'utf8');
       assert.ok(text.includes(sentence), `${f} sentence`);
       assert.ok(text.includes('`Language:` line of your prompt'), `${f} reads the prompt Language: line`);
     }
