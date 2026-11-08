@@ -14,7 +14,9 @@ import { parseRange, satisfies } from './semver.js';
 const NODE_COMMANDS = ['job', 'gate', 'approve', 'route', 'visual', 'nudge', 'ensure-output', 'dashboard', 'init'];
 /** Engine commands that are shell scripts in bin/. */
 const SHELL_COMMANDS = ['setup', 'setup-spec-review'];
-export const ENGINE_COMMANDS = [...NODE_COMMANDS, ...SHELL_COMMANDS];
+/** Engine commands that are a `job` subcommand under their own name: `eminzo profile <id>` = `eminzo job <id> profile`. */
+const JOB_ALIASES = { profile: (args) => [args[0] ?? '', 'profile', ...args.slice(1)] };
+export const ENGINE_COMMANDS = [...NODE_COMMANDS, ...SHELL_COMMANDS, ...Object.keys(JOB_ALIASES)];
 
 /** Signals passed on to the engine, so a hook timeout or kill that reaches eminzo also stops the engine. */
 const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'];
@@ -82,7 +84,7 @@ export async function runEngine(command, args, { dist, version, env = process.en
 
   const engine = engineFolder(dist);
   const childEnv = { ...env, EMINZO_ENGINE: engine, EMINZO_VERSION: version };
-  return SHELL_COMMANDS.includes(command)
-    ? runChild('sh', [join(engine, 'bin', command), ...args], { cwd, env: childEnv })
-    : runChild(process.execPath, [join(engine, 'lib', `${command}.js`), ...args], { cwd, env: childEnv });
+  if (SHELL_COMMANDS.includes(command)) return runChild('sh', [join(engine, 'bin', command), ...args], { cwd, env: childEnv });
+  if (Object.hasOwn(JOB_ALIASES, command)) return runChild(process.execPath, [join(engine, 'lib', 'job.js'), ...JOB_ALIASES[command](args)], { cwd, env: childEnv });
+  return runChild(process.execPath, [join(engine, 'lib', `${command}.js`), ...args], { cwd, env: childEnv });
 }

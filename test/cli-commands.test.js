@@ -271,3 +271,11 @@ test('doctor --json gives each check an id and the state of the repository', () 
   assert.equal(notEnabled.repository.enabled, false);
   assert.equal(notEnabled.checks.find((c) => c.id === 'repository').level, 'warn');
 });
+
+test('eminzo profile <id> runs the engine\'s job <id> profile', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  const res = t.run(['profile', '042-none'], { cwd: root });
+  assert.equal(res.status, 1, 'the job does not exist: the engine refuses it, so the alias reached job.js');
+  assert.match(res.stderr, /042-none/);
+});

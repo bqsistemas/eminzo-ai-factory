@@ -87,6 +87,16 @@ function agentCost(job, stageKey) {
   return parts.length ? parts.join(', ') : null;
 }
 
+/** "checks 3.0 min · waits 2.0 · git 0.5 · other 0.2" from job.time_by_kind (job <id> profile), or null. */
+export function builderTime(job, text) {
+  const t = isObject(job) && isObject(job.time_by_kind) ? job.time_by_kind : null;
+  if (!t) return null;
+  const parts = [['check', text?.timeCheck || 'checks'], ['wait', text?.timeWait || 'waits'], ['git', text?.timeGit || 'git'], ['other', text?.timeOther || 'other']]
+    .filter(([k]) => Number.isFinite(t[k]) && t[k] >= 0)
+    .map(([k, label], i) => `${label} ${t[k].toFixed(1)}${i === 0 ? ' min' : ''}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 export function stageDetails(job, stageKey, now = Date.now(), text) {
   const source = isObject(job) ? job : {};
   const selected = CANVAS_STAGES.find((item) => item.key === stageKey) || CANVAS_STAGES[0];
@@ -112,7 +122,7 @@ export function stageDetails(job, stageKey, now = Date.now(), text) {
   return {
     key: selected.key, label: selected.label, status: current.state[0].toUpperCase() + current.state.slice(1),
     issue, title: display(source.title), provider: display(source.provider), stage: display(source.stage), progress: `${completed}/${CANVAS_STAGES.length} stages`,
-    duration: elapsed, cost, agentCost: agentCost(source, selected.key), agent, round: number(source.round) && source.round > 0 ? String(source.round) : DASH,
+    duration: elapsed, cost, agentCost: agentCost(source, selected.key), builderTime: selected.key === 'build' ? builderTime(source, text) : null, agent, round: number(source.round) && source.round > 0 ? String(source.round) : DASH,
     reviewers, branch: display(source.branch), pr, note: display(source.note),
   };
 }

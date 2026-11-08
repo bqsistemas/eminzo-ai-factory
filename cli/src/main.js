@@ -18,7 +18,7 @@ Day to day, in Claude Code: /eminzo-factory setup | run | issue <n> | rework <n>
   | approve-spec <n> | revise-spec <n> <notes>   (Codex: $eminzo-factory ...)
 
 Engine commands (the skill and agents call these; they run on the repository of the current directory):
-  eminzo job | gate | approve | route | visual | nudge | ensure-output | dashboard | init | setup | setup-spec-review
+  eminzo job | gate | approve | route | visual | nudge | ensure-output | dashboard | init | setup | setup-spec-review | profile
 
 Other:
   eminzo show roles/<role>.md | templates/<file>   print a role or template that ships with the engine

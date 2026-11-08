@@ -11,6 +11,8 @@
 //                                      sorted (config.json plus factory/config.local.json; a read, nothing is written)
 //   job <id> to <stage> [--note <t>]   one transition; prints "<id> <stage>"
 //   job <id> sync                      refresh gate/reviews from round files, cost from transcripts
+//   job <id> profile                   the builder's time by kind of command (wait, check, git, other) from its
+//                                      Claude transcripts, stored in job.json as time_by_kind (Codex: not supported)
 //   job <id> prompt                    the worker prompt contract, with Base, Base branch and Language
 //   job <id> lane                      "xs" or "normal: <reason>", from intake.md (a read, nothing is written)
 //   job <id> provider <name>           rebind to another provider (not while merging or finished); re-routes agents/models
@@ -34,6 +36,7 @@ import { join } from 'node:path';
 
 import { STAGE_COLUMNS, formatDuration, costAvailable, costLabel } from '../activity.js';
 import { codexJobCost, jobCostBreakdown, orchestratorCost, readAgentTranscripts, readCodexRollouts } from './cost.js';
+import { KINDS, jobProfile } from './profile.js';
 import { checksInputs, testedBy } from './check-stamp.js';
 import { gate as runGate } from './gate.js';
 import { diffEntries, globRegex, isTestFile, scopeTokens, xsLimitProblems } from './diff.js';
@@ -1575,6 +1578,23 @@ function sync(c, id) {
   return `${job.id} ${job.stage} ${costLabel(job)}`;
 }
 
+/** `job <id> profile`: measures the builder's time and stores it in job.json; prints one line per kind. */
+function profileJob(c, id) {
+  const { job } = loadJob(c, id);
+  if (job.provider === 'codex') return `${job.id} profile: codex not supported (the profile reads Claude transcripts)`;
+  const result = jobProfile(readAgentTranscripts(transcriptsDir(c.root)), job.id, c.config.profile?.patterns);
+  if (!result.transcripts) return `${job.id} profile: no builder transcript found`;
+  job.time_by_kind = result.time_by_kind;
+  job.commands_by_kind = result.commands_by_kind;
+  job.builder_minutes = result.builder_minutes;
+  saveJob(c, job);
+  const width = Math.max(...KINDS.map((k) => k.length));
+  return [
+    `${job.id} profile: builder ${result.builder_minutes} min in ${result.transcripts} transcript${result.transcripts === 1 ? '' : 's'}`,
+    ...KINDS.map((k) => `  ${k.padEnd(width)}  ${result.time_by_kind[k].toFixed(1)} min  (${result.commands_by_kind[k]} command${result.commands_by_kind[k] === 1 ? '' : 's'})`),
+  ].join('\n');
+}
+
 function summary(c, withOrchestrator = false) {
   const jobs = allJobs(c.root);
   const money = (n) => `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
@@ -1642,7 +1662,7 @@ function configLines(c, key) {
   return line(key);
 }
 
-const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator]';
+const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> profile | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator]';
 
 function main(args) {
   const [first, second, third, ...rest] = args;
@@ -1661,6 +1681,8 @@ function main(args) {
     out = summary(context(), args.length === 2);
   } else if (JOB_ID.test(first ?? '') && second === 'sync' && args.length === 2) {
     out = sync(context(), first);
+  } else if (JOB_ID.test(first ?? '') && second === 'profile' && args.length === 2) {
+    out = profileJob(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'prompt' && args.length === 2) {
     out = workerPrompt(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'lane' && args.length === 2) {

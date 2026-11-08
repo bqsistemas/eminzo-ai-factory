@@ -179,7 +179,7 @@ function renderPipeline() {
   const stageValue = T[stageValueKey] || details.stage;
   taskHeader.innerHTML = taskHeaderHtml(selectedJob, { repo: board.repo, text: T });
   const fields = [[T.pipelineIssue, details.issue], [T.pipelineStage, stageValue], [T.pipelineStatus, localizedStatus], [T.pipelineProgress, localizedProgress],
-    [T.pipelineTitle, details.title], [T.pipelineProvider, details.provider], [T.pipelineDuration, taskDuration(selectedJob)], [T.pipelineCost, details.cost], ...(details.agentCost ? [[T.pipelineAgentCost, details.agentCost]] : []), [T.pipelineAgent, details.agent], [T.pipelineRound, details.round],
+    [T.pipelineTitle, details.title], [T.pipelineProvider, details.provider], [T.pipelineDuration, taskDuration(selectedJob)], [T.pipelineCost, details.cost], ...(details.agentCost ? [[T.pipelineAgentCost, details.agentCost]] : []), ...(details.builderTime ? [[T.pipelineBuilderTime, details.builderTime]] : []), [T.pipelineAgent, details.agent], [T.pipelineRound, details.round],
     [T.pipelineReviewers, details.reviewers], [T.pipelineBranch, details.branch], [T.pipelinePr, details.pr], [T.pipelineNote, details.note]]
     .map(([label, value]) => [label, value === 'Not available' ? T.pipelineUnavailable : value]);
   const links = githubLinks(selectedJob, board.repo);
