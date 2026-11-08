@@ -297,6 +297,44 @@ eminzo dashboard [port]                          the dashboard for the current r
 eminzo --version | help
 ```
 
+`eminzo doctor` and `eminzo enable` also take `--json` (see below).
+
+## Machine-readable output
+
+`eminzo doctor --json` and `eminzo enable --json` print one JSON object on stdout (nothing else),
+for tools such as the Eminzo desktop app. The exit status is the same as without `--json`.
+
+`eminzo doctor --json`:
+
+```json
+{
+  "version": "0.1.0",
+  "ok": true,
+  "checks": [{ "id": "node", "level": "ok", "name": "node", "detail": "23.9.0" }],
+  "repository": { "root": "/path/to/repo", "enabled": true, "committedEngine": false, "engine": "0.1.x", "engineOk": true, "setup": false }
+}
+```
+
+- `checks[].id` is stable: `node`, `git`, `gh`, `path`, `adapters`, `repository` (only when the
+  repository is not enabled), `engine`, `setup`. `level` is `ok`, `warn` or `fail`; `ok` is false when
+  any check fails.
+- `repository` is `null` outside a git repository; `engine` is the range in `factory/config.json`.
+
+`eminzo enable --json`:
+
+```json
+{ "ok": true, "url": "https://github.com/acme/shop/pull/7", "repo": "acme/shop", "base": "main",
+  "branch": "chore/enable-factory", "engine": "0.1.x", "stack": "node",
+  "files": ["factory/config.json", "factory/checks.sh", "factory/project.md", ".gitignore", ".claude/settings.json"],
+  "kept": [] }
+```
+
+- With `--dry-run`: the same fields, `"dryRun": true` and no `url`; nothing is written.
+- A failed check: `{ "ok": false, "problems": [{ "code": "dirty", "message": "..." }] }` (codes: `not-git`,
+  `install-in-progress`, `bad-branch`, `dirty`, `not-default-branch`, `ignored-paths`, `no-remote`,
+  `not-github`, `gh-auth`, `node-version`, `no-default-branch`).
+- Any other refusal or failure: `{ "ok": false, "error": "..." }`.
+
 ## Building the package (this repository)
 
 ```sh

@@ -187,3 +187,48 @@ test('enable names the pushed branch and the command to open the pull request wh
   assert.match(res.stderr, /gh pr create failed: HTTP 502\. The branch chore\/enable-factory is pushed: open the pull request with: gh pr create --repo acme\/shop --base main --head chore\/enable-factory/);
   assert.equal(t.git(t.root, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
 });
+
+test('enable --json prints one JSON object: the pull request on success', () => {
+  const t = setup();
+  const res = t.run(['--json']);
+  assert.equal(res.status, 0, res.stderr + res.stdout);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.ok, true);
+  assert.equal(out.url, `${URL_}/pull/7`);
+  assert.equal(out.repo, 'acme/shop');
+  assert.equal(out.base, 'main');
+  assert.equal(out.branch, 'chore/enable-factory');
+  assert.equal(out.engine, minor);
+  assert.equal(out.stack, 'node');
+  assert.deepEqual(out.files, ['factory/config.json', 'factory/checks.sh', 'factory/project.md', '.gitignore', '.claude/settings.json']);
+  assert.deepEqual(out.kept, []);
+});
+
+test('enable --json reports failed checks with their codes, and refusals as an error', () => {
+  const dirty = setup();
+  writeFileSync(join(dirty.root, 'README.md'), '# changed\n');
+  const failed = dirty.run(['--json']);
+  assert.equal(failed.status, 1);
+  const out = JSON.parse(failed.stdout);
+  assert.equal(out.ok, false);
+  assert.deepEqual(out.problems.map((p) => p.code), ['dirty']);
+  assert.match(out.problems[0].message, /uncommitted changes/);
+
+  const enabled = setup({ files: { 'factory/config.json': '{}\n' } });
+  const refused = enabled.run(['--json']);
+  assert.equal(refused.status, 1);
+  assert.equal(refused.stderr, '');
+  const err = JSON.parse(refused.stdout);
+  assert.equal(err.ok, false);
+  assert.match(err.error, /already enabled here/);
+});
+
+test('enable --dry-run --json lists the plan and writes nothing', () => {
+  const t = setup();
+  const res = t.run(['--dry-run', '--json']);
+  assert.equal(res.status, 0, res.stderr);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.dryRun, true);
+  assert.ok(out.files.includes('factory/config.json'));
+  assert.equal(existsSync(join(t.root, 'factory')), false);
+});

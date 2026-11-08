@@ -71,8 +71,17 @@ function prBody({ version, stack, files, kept }) {
 }
 
 /** @returns {Promise<number>} exit status */
-export async function enable({ dist, version, env = process.env, cwd = process.cwd(), dryRun = false, out = process.stdout }) {
+export async function enable({ dist, version, env = process.env, cwd = process.cwd(), dryRun = false, json = false, out = process.stdout }) {
   const gh = env.FACTORY_GH || 'gh';
+  // One JSON object for tools (eminzo enable --json), or lines for a person.
+  const report = (result, lines) => {
+    if (json) out.write(`${JSON.stringify(result)}\n`);
+    else for (const line of lines) out.write(`${line}\n`);
+  };
+  const failChecks = (problems) => {
+    report({ ok: false, problems }, problems.map((p) => `FAIL ${p.message}`));
+    return 1;
+  };
   let root = null;
   const run = (cmd, args, opts = {}) => {
     const res = spawnSync(cmd, args, { cwd: root ?? cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...opts });
@@ -86,10 +95,7 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
 
   // Preflight: the same facts and messages as the desktop installer.
   const top = run('git', ['rev-parse', '--show-toplevel'], { cwd });
-  if (top.code !== 0) {
-    for (const p of preflight({ isGitRepo: false })) out.write(`FAIL ${p.message}\n`);
-    return 1;
-  }
+  if (top.code !== 0) return failChecks(preflight({ isGitRepo: false }));
   root = top.stdout.trim();
   const gitDir = firstLine(git('rev-parse', '--absolute-git-dir').stdout);
   const commonDir = firstLine(git('rev-parse', '--path-format=absolute', '--git-common-dir').stdout);
@@ -126,10 +132,7 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
   if (!defaultBranch && facts.remoteUrl) {
     problems.push({ code: 'no-default-branch', message: 'The default branch of origin is unknown (no origin/HEAD and gh could not tell). Run "git remote set-head origin --auto" and try again.' });
   }
-  if (problems.length) {
-    for (const p of problems) out.write(`FAIL ${p.message}\n`);
-    return 1;
-  }
+  if (problems.length) return failChecks(problems);
   const repoUrl = normalizeGithubRemote(facts.remoteUrl);
   const slug = repoUrl.replace('https://github.com/', '');
 
@@ -163,10 +166,13 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     .filter((f) => !kept.includes(f))
     .concat(gitignoreAdd ? ['.gitignore'] : [], settings ? ['.claude/settings.json'] : []);
 
+  const plan = { repo: slug, base: defaultBranch, branch: ENABLE_BRANCH, engine: minorRange(version), stack: checks.stack, files, kept };
   if (dryRun) {
-    for (const f of files) out.write(`write ${f}\n`);
-    for (const f of kept) out.write(`keep ${f} (already on ${base})\n`);
-    out.write(`dry run: would open a pull request from ${ENABLE_BRANCH} into ${defaultBranch} on ${slug}; nothing was written\n`);
+    report({ ok: true, dryRun: true, ...plan }, [
+      ...files.map((f) => `write ${f}`),
+      ...kept.map((f) => `keep ${f} (already on ${base})`),
+      `dry run: would open a pull request from ${ENABLE_BRANCH} into ${defaultBranch} on ${slug}; nothing was written`,
+    ]);
     return 0;
   }
 
@@ -227,9 +233,11 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
       throw new CliError(`gh pr create failed: ${firstLine(pr.stderr) || `exit ${pr.code}`}. The branch ${ENABLE_BRANCH} is pushed: `
         + `open the pull request with: gh pr create --repo ${slug} --base ${defaultBranch} --head ${ENABLE_BRANCH} --fill`);
     }
-    const url = pr.stdout.split('\n').map((l) => l.trim()).filter((l) => /^https:\/\/\S+$/.test(l)).at(-1);
-    out.write(`${url ?? firstLine(pr.stdout)}\n`);
-    out.write(`Merge it, pull ${defaultBranch}, then run /eminzo-factory setup (Codex: $eminzo-factory setup).\n`);
+    const url = pr.stdout.split('\n').map((l) => l.trim()).filter((l) => /^https:\/\/\S+$/.test(l)).at(-1) ?? null;
+    report({ ok: true, url, ...plan }, [
+      url ?? firstLine(pr.stdout),
+      `Merge it, pull ${defaultBranch}, then run /eminzo-factory setup (Codex: $eminzo-factory setup).`,
+    ]);
     return 0;
   } finally {
     if (committed) git('checkout', '-q', branch);

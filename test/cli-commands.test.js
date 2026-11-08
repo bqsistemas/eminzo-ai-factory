@@ -5,7 +5,7 @@
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -239,4 +239,35 @@ test('a SIGTERM to eminzo reaches the engine it started', async () => {
     try { process.kill(pid, 0); await wait(50); } catch { alive = false; }
   }
   assert.equal(alive, false, 'the engine process stopped too');
+});
+
+test('doctor --json gives each check an id and the state of the repository', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  const tools = join(t.dir, 'tools');
+  mkdirSync(tools);
+  writeFileSync(join(tools, 'gh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  symlinkSync(bin, join(tools, 'eminzo'));
+  const extra = { FACTORY_GH: join(tools, 'gh'), PATH: `${tools}:${process.env.PATH}` };
+  t.run(['install']);
+  const res = t.run(['doctor', '--json'], { cwd: root, extra });
+  assert.equal(res.status, 0, res.stdout);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.version, version);
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.checks.map((c) => c.id), ['node', 'git', 'gh', 'path', 'adapters', 'engine', 'setup']);
+  assert.ok(out.checks.every((c) => ['ok', 'warn', 'fail'].includes(c.level) && c.name && c.detail));
+  assert.equal(out.repository.root, realpathSync(root));
+  assert.equal(out.repository.enabled, true);
+  assert.equal(out.repository.committedEngine, false);
+  assert.equal(out.repository.engine, `${version.split('.').slice(0, 2).join('.')}.x`);
+  assert.equal(out.repository.engineOk, true);
+  assert.equal(out.repository.setup, false);
+
+  const outside = JSON.parse(t.run(['doctor', '--json'], { cwd: t.dir, extra }).stdout);
+  assert.equal(outside.repository, null);
+  const bare = repoWith(join(t.dir, 'bare'), { config: false });
+  const notEnabled = JSON.parse(t.run(['doctor', '--json'], { cwd: bare, extra }).stdout);
+  assert.equal(notEnabled.repository.enabled, false);
+  assert.equal(notEnabled.checks.find((c) => c.id === 'repository').level, 'warn');
 });
