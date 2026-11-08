@@ -1,0 +1,194 @@
+/* Game theme for the AI software factory landing page.
+   Contrast ratios below are measured against --color-bg (#0b0d17);
+   all text colors stay above 6:1 on --color-panel too. */
+:root {
+  --color-bg: #0b0d17;
+  --color-panel: #151a2e;
+  --color-text: #e6edff;        /* 16.5:1 */
+  --color-muted: #a9b4d0;       /* 9.3:1 */
+  --color-cyan: #00e5ff;        /* 12.6:1 */
+  --color-magenta: #ff5ad9;     /* 7.1:1 */
+  --color-green: #39ff88;       /* 14.6:1 */
+  --color-track: #2a3150;
+  --font-game: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius: 4px;
+  --space: 1rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-game);
+  font-size: 100%;
+  line-height: 1.6;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(0, 229, 255, 0.04) 1px, transparent 1px) 0 0 / 100% 4px,
+    var(--color-bg);
+}
+
+/* Player HUD */
+.hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space);
+  padding: 0.75rem var(--space);
+  background: var(--color-panel);
+  border-bottom: 2px solid var(--color-cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+  text-transform: uppercase;
+}
+
+.hud__player {
+  padding: 0 0.5rem;
+  border: 2px solid var(--color-magenta);
+  border-radius: var(--radius);
+  color: var(--color-magenta);
+  font-weight: 700;
+}
+
+.hud__level {
+  color: var(--color-green);
+  font-weight: 700;
+}
+
+.hud__xp {
+  display: flex;
+  flex: 1 1 12rem;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 24rem;
+  color: var(--color-cyan);
+}
+
+/* XP bar */
+#xp {
+  flex: 1;
+  height: 1rem;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid var(--color-cyan);
+  border-radius: var(--radius);
+  background: var(--color-track);
+  overflow: hidden;
+}
+
+#xp::-webkit-progress-bar {
+  background: var(--color-track);
+}
+
+#xp::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--color-green), var(--color-cyan));
+}
+
+#xp::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--color-green), var(--color-cyan));
+}
+
+/* Main stage */
+main {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: calc(var(--space) * 3) var(--space);
+}
+
+#welcome {
+  margin: 0 0 0.5rem;
+  color: var(--color-cyan);
+  font-size: clamp(1.75rem, 6vw, 3rem);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+  animation: glow 2.4s ease-in-out infinite alternate;
+}
+
+.subtitle {
+  margin: 0 0 calc(var(--space) * 2);
+  color: var(--color-muted);
+}
+
+/* Quest log */
+#quest-log {
+  padding: var(--space);
+  background: var(--color-panel);
+  border: 2px solid var(--color-magenta);
+  border-radius: var(--radius);
+}
+
+#quest-log-title {
+  margin: 0 0 0.75rem;
+  color: var(--color-magenta);
+  font-size: 1.25rem;
+  text-transform: uppercase;
+}
+
+#quest-log ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quest {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px dashed var(--color-track);
+}
+
+.quest:first-child {
+  border-top: 0;
+}
+
+.quest::before {
+  content: "[ ]";
+  color: var(--color-muted);
+}
+
+.quest--done {
+  color: var(--color-green);
+}
+
+.quest--done::before {
+  content: "[\2713]";
+  color: var(--color-green);
+}
+
+.quest a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+}
+
+.quest a:hover,
+.quest a:focus-visible {
+  color: var(--color-cyan);
+}
+
+
+@keyframes glow {
+  from {
+    text-shadow: 0 0 4px rgba(0, 229, 255, 0.5);
+  }
+  to {
+    text-shadow: 0 0 10px rgba(0, 229, 255, 0.9), 0 0 20px rgba(255, 90, 217, 0.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

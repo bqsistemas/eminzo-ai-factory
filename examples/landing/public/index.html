@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player One | AI Software Factory</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hud">
+    <span class="hud__player">P1</span>
+    <span id="level" class="hud__level">Level 1</span>
+    <div class="hud__xp">
+      <span class="hud__xp-label" aria-hidden="true">XP</span>
+      <progress id="xp" max="100" value="10" aria-label="Experience points">10 / 100</progress>
+    </div>
+  </header>
+
+  <main>
+    <h1 id="welcome">Welcome, Player One!</h1>
+    <p class="subtitle">Every feature the factory ships levels this page up. Watch the quest log grow.</p>
+
+    <section id="quest-log" aria-labelledby="quest-log-title">
+      <h2 id="quest-log-title">Quest log</h2>
+      <ul>
+        <li class="quest quest--done">Build the landing page</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

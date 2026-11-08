@@ -1,0 +1,13 @@
+{
+  "name": "eminzo-landing-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example app built by the Eminzo factory: a gamified landing page that grows as features ship.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  }
+}

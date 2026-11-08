@@ -74,8 +74,11 @@ Repository:
 
 - `package.json`, `package-lock.json`: test command and dev tool pins.
 - `test/`: engine, dashboard, CLI and installer-module tests and fixture helpers (`test/helpers/`).
-- `README.md`, `docs/`: usage, CLI requirement and packaging decisions, costs and efficiency notes;
-  source/tests take precedence over stale descriptions.
+- `README.md`, `docs/`, `research/`: usage, CLI requirement and packaging decisions, costs and
+  efficiency notes, design history (`docs/history/build_prompt*.md`) and research; source/tests take
+  precedence over stale descriptions.
+- `examples/landing/`: a small example app (gamified landing page) the factory built in its first
+  home; a target for trying the factory, not part of the engine. Test: `test/example-landing.test.js`.
 
 Portable factory engine:
 
