@@ -278,6 +278,11 @@
   "protected_tests": [
     "test/route.test.js",
     "test/job.test.js",
+    "test/job-approve-sync.test.js",
+    "test/job-lens-rounds.test.js",
+    "test/job-amend.test.js",
+    "test/job-prompt-context.test.js",
+    "test/helpers/job-harness.js",
     "test/gate.test.js",
     "test/cost.test.js",
     "test/codex-cost.test.js"

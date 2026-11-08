@@ -43,7 +43,7 @@ test('AC-8: config.json runs 3 jobs at a time and protects the spine tests; pric
   assert.equal(config.max_rounds, 3);
   assert.equal(config.base, 'origin/main');
   assert.match(config.repo, /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/);
-  for (const file of ['test/route.test.js', 'test/job.test.js', 'test/gate.test.js', 'test/cost.test.js']) {
+  for (const file of ['test/route.test.js', 'test/job.test.js', 'test/job-approve-sync.test.js', 'test/job-lens-rounds.test.js', 'test/job-amend.test.js', 'test/job-prompt-context.test.js', 'test/helpers/job-harness.js', 'test/gate.test.js', 'test/cost.test.js']) {
     assert.ok(config.protected_tests.includes(file), `${file} is protected`);
     assert.ok(existsSync(join(repo, file)), `${file} exists`);
   }

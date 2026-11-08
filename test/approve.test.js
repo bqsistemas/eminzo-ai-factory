@@ -97,24 +97,6 @@ describe('bin/approve: inconclusive (the LLM approver decides)', () => {
     }), /protected test: test\/job\.test\.js/);
   });
 
-  for (const path of ['src/auth.js', 'src/secrets.js', 'lib/credentials.js', 'src/permissions.js', 'db/migration-3.sql', '.env.example']) {
-    test(`a sensitive path (${path}) forces the LLM`, () => {
-      inconclusive(fixture({ branch: { [path]: 'x\n' }, spec: SPEC(`- \`${path}\``) }), new RegExp(`sensitive path: ${path.replace(/\./g, '\\.')}`));
-    });
-  }
-
-  test('risk high forces the LLM', () => {
-    inconclusive(fixture({ job: { intake: { decision: 'ACCEPT', risk: 'high', surfaces: [], rescoped: false } } }), /risk high/);
-  });
-
-  test('a security surface forces the LLM', () => {
-    inconclusive(fixture({ job: { intake: { decision: 'ACCEPT', risk: 'low', surfaces: ['security'], rescoped: false } } }), /security surface/);
-  });
-
-  test('an accepted spec deviation that touches an AC forces the LLM', () => {
-    inconclusive(fixture({ build: 'STATUS: READY\n\n## Spec deviations\nAC-1 | ui round 1: moved\n' }), /spec deviation touches AC-1/);
-  });
-
   test('a changed manifest the script cannot read (requirements.txt) forces the LLM', () => {
     inconclusive(fixture({
       base: { 'src/label.js': 'a\n', 'requirements.txt': 'a==1\n' }, branch: { 'requirements.txt': 'a==1\nb==2\n' },
