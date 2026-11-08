@@ -304,6 +304,16 @@ describe('check reuse', { concurrency: true }, () => {
     assert.doesNotMatch(t.read(id, 'merge-checks.md'), /Reused/);
   });
 
+  test('the merge-checks run full with a polluted environment: checks.sh sees mode full and no list', async () => {
+    const t = setup();
+    const { id } = await approvedWithRealGate(t);
+    const seen = join(t.dir, 'seen');
+    writeFileSync(join(t.root, 'factory/checks.sh'), `#!/bin/sh\necho "$FACTORY_CHECK_MODE|\${FACTORY_CHANGED_FILES:-none}" >> "${seen}"\n`, { mode: 0o755 });
+    Object.assign(t.env, { FACTORY_CHECK_MODE: 'focused', FACTORY_CHANGED_FILES: '/x' });
+    assert.equal(ok(await t.job(id, 'to', 'merging')), `${id} merged`);
+    assert.equal(readFileSync(seen, 'utf8'), 'full|none\n');
+  });
+
   test('the merge runs the gate again when checks.sh changed since the round gate', async () => {
     const t = setup();
     const { id } = await approvedWithRealGate(t);

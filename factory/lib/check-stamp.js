@@ -89,18 +89,27 @@ export function testedBy(text) {
   return { head: SHA.test(head ?? '') ? head : null, inputs: INPUTS.test(inputs ?? '') ? inputs : null };
 }
 
+/** The commit the worktree's branch left `base` at (their merge-base), or null. */
+export function mergeBase(worktree, base) {
+  const mb = run('git', ['merge-base', base, 'HEAD'], { cwd: worktree });
+  const sha = mb.status === 0 ? mb.stdout.trim() : '';
+  return SHA.test(sha) ? sha : null;
+}
+
 /**
- * The paths a worktree changed against `base`, one per line: committed, staged, unstaged and
- * untracked (not ignored), compared with the merge-base of `base` and HEAD. Renames count as the
- * old path and the new one, deletions as the deleted path. Sorted, without duplicates. Null when
- * git cannot tell (no such base, no tree): the caller then runs everything.
+ * The paths a worktree changed against `base`: committed, staged, unstaged and untracked (not
+ * ignored), compared with the merge-base of `base` and HEAD. Renames count as the old path and the
+ * new one, deletions as the deleted path. Sorted, without duplicates.
+ * @returns {{files: string[], base: string}|{reason: string}} `reason` when git cannot tell, or when
+ *   a path holds a newline or carriage return (it cannot be written one per line): run everything then.
  */
 export function changedFiles(worktree, base) {
-  const mb = run('git', ['merge-base', base, 'HEAD'], { cwd: worktree });
-  const from = mb.status === 0 ? mb.stdout.trim() : '';
+  const from = mergeBase(worktree, base);
   const tree = worktreeTree(worktree);
-  if (!SHA.test(from) || !tree) return null;
+  if (!from || !tree) return { reason: `cannot compare with ${base}` };
   const diff = run('git', ['diff', '--name-only', '--no-renames', '-z', from, tree], { cwd: worktree });
-  if (diff.status !== 0) return null;
-  return [...new Set(diff.stdout.split('\0').filter(Boolean))].sort();
+  if (diff.status !== 0) return { reason: 'git diff failed' };
+  const files = [...new Set(diff.stdout.split('\0').filter(Boolean))].sort();
+  if (files.some((f) => /[\n\r]/.test(f))) return { reason: 'a changed path contains a newline' };
+  return { files, base: from };
 }

@@ -24,10 +24,11 @@
 // as the Stop hook (so the builder keeps waiting). A lock is stale, and taken over, when neither
 // process is alive or it is older than MAX_LOCK_AGE (a recycled PID never blocks forever). The
 // builder runs the nudge in the foreground and waits for it, so there is never a reason to start another.
-import { existsSync, linkSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { changedFiles, checksInputs, worktreeTree } from './check-stamp.js';
+import { changedFiles, checksInputs, mergeBase, worktreeTree } from './check-stamp.js';
 import { runChecks } from './gate.js';
 import { JOB_ID, baseRef, factoryRoot, isMain, loadConfig, readText, runCli, tail, writeAtomic } from './util.js';
 
@@ -92,7 +93,15 @@ function main(args = []) {
   const last = readStamp(stampFile);
   // The hook (no job id) and --full need a full pass; only a by-hand nudge may settle for a focused one.
   const wantFull = full || !manual;
-  const passed = !wantFull || last?.mode === undefined || last.mode === 'full';
+  // A focused pass also needs the base it was made against: after the base moves the diff is another one.
+  const focusedOk = () => {
+    try {
+      return typeof last.base === 'string' && last.base === mergeBase(job.worktree, baseRef(loadConfig(root)).base);
+    } catch {
+      return false;
+    }
+  };
+  const passed = last?.mode === 'focused' ? !wantFull && focusedOk() : true;
   if (tree && last?.tree === tree && last.inputs === inputs && passed) {
     process.stderr.write(`factory nudge: the checks already passed for this tree (${tree.slice(0, 12)}); not running them again.\n`);
     return 0;
@@ -111,32 +120,43 @@ function main(args = []) {
     return EXIT_BUSY;
   }
   try {
-    return runAndReport({ root, job, dir, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
+    return runAndReport({ root, job, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
     if (!lock.unlocked) releaseLock(lockFile);
   }
 }
 
-/** The focused run's options: the changed-files file in the job folder, or {} (full) when it cannot be made. */
-function focusedOptions(root, job, dir) {
+/** The focused run's options: the changed-files list in a throwaway folder (`cleanup` removes it), or {} (full) when it cannot be made. */
+function focusedOptions(root, job) {
+  const none = { options: {}, cleanup() {} };
   try {
-    const files = changedFiles(job.worktree, baseRef(loadConfig(root)).base);
-    if (!files) return {};
-    const file = join(dir, 'changed-files.txt');
-    writeAtomic(file, files.map((f) => `${f}\n`).join(''));
-    return { mode: 'focused', changedFiles: file };
+    const found = changedFiles(job.worktree, baseRef(loadConfig(root)).base);
+    if (found.reason) {
+      process.stderr.write(`factory nudge: ${found.reason}; running the full checks.\n`);
+      return none;
+    }
+    const tmp = mkdtempSync(join(tmpdir(), 'factory-changed-'));
+    const file = join(tmp, 'changed-files.txt');
+    writeFileSync(file, found.files.map((f) => `${f}\n`).join(''));
+    return { options: { mode: 'focused', changedFiles: file }, base: found.base, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
   } catch {
-    return {};
+    return none;
   }
 }
 
-function runAndReport({ root, job, dir, wantFull, stampFile, logFile, tree, inputs, childFile }) {
-  const options = { ...(wantFull ? {} : focusedOptions(root, job, dir)), ...(childFile ? { pidFile: childFile } : {}) };
-  const mode = options.mode ?? 'full';
-  const { code, output } = runChecks(root, job.worktree, options);
+function runAndReport({ root, job, wantFull, stampFile, logFile, tree, inputs, childFile }) {
+  const focus = wantFull ? { options: {}, cleanup() {} } : focusedOptions(root, job);
+  const mode = focus.options.mode ?? 'full';
+  let result;
+  try {
+    result = runChecks(root, job.worktree, { ...focus.options, ...(childFile ? { pidFile: childFile } : {}) });
+  } finally {
+    focus.cleanup();
+  }
+  const { code, output } = result;
   if (code === 0) {
     bestEffort(() => (tree
-      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, at: new Date().toISOString() })}\n`)
+      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, ...(mode === 'focused' ? { base: focus.base } : {}), at: new Date().toISOString() })}\n`)
       : rmSync(stampFile, { force: true })));
     return 0;
   }

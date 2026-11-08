@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,7 +84,7 @@ test('AC-2: focused lists exactly the paths changed against the base (committed,
   assert.equal(res.status, 0, res.stderr);
   assert.deepEqual(t.modes(), ['focused']);
   assert.equal(t.changed(), ['committed.txt', 'edit.txt', 'gone.txt', 'new-name.txt', 'old-name.txt', 'sub/new.txt', 'untracked.txt'].join('\n') + '\n');
-  assert.equal(readFileSync(join(t.jobDir, 'changed-files.txt'), 'utf8'), t.changed());
+  assert.equal(existsSync(join(t.jobDir, 'changed-files.txt')), false, 'the list is a throwaway, not left in the job folder');
 });
 
 test('AC-2: a focused nudge with no change lists nothing, and runs focused', () => {
@@ -117,22 +117,61 @@ test('AC-3: --full, the Stop hook, the gate and the merge run full, even if the 
   assert.equal(t.changed(), 'none\n');
 });
 
-test('AC-3: the merge-checks path (gate()) and runChecks default to full, and only the nudge asks for focused', () => {
-  const gate = readFileSync(join(repo, 'factory/lib/gate.js'), 'utf8');
-  assert.match(gate, /const checks = runChecks\(root, job\.worktree\);/);
-  const job = readFileSync(join(repo, 'factory/lib/job.js'), 'utf8');
-  assert.match(job, /runGate\(c\.root, job, file\(c, job, 'merge-checks\.md'\)\)/);
-  for (const f of ['job.js', 'gate.js', 'visual.js', 'approve.js']) {
-    if (existsSync(join(repo, 'factory/lib', f))) assert.doesNotMatch(readFileSync(join(repo, 'factory/lib', f), 'utf8'), /mode: 'focused'/, `${f} must not ask for focused`);
-  }
+test('AC-3: the Stop hook runs full with a polluted environment, and sees no list', () => {
+  const t = setup();
+  writeFileSync(join(t.worktree, 'x.txt'), 'x\n');
+  assert.equal(t.hook({ FACTORY_CHECK_MODE: 'focused', FACTORY_CHANGED_FILES: '/x' }).status, 0);
+  assert.deepEqual(t.modes(), ['full']);
+  assert.equal(t.changed(), 'none\n');
 });
 
-test('AC-3: the Claude Stop hook stays the bare nudge (hook mode is full), and the generated adapter hook too', () => {
-  const builder = readFileSync(join(repo, '.claude/agents/eminzo-builder.md'), 'utf8');
-  assert.match(builder, /command: '"\$CLAUDE_PROJECT_DIR"\/factory\/bin\/nudge'/);
-  assert.doesNotMatch(builder, /bin\/nudge[^\n]*(focused|<id>)/);
-  const nudge = readFileSync(join(repo, 'factory/lib/nudge.js'), 'utf8');
-  assert.match(nudge, /const wantFull = full \|\| !manual;/);
+test('AC-2: paths with spaces stay whole, one per line', () => {
+  const t = setup();
+  writeFileSync(join(t.worktree, 'my file.txt'), 'x\n');
+  mkdirSync(join(t.worktree, 'a dir'));
+  writeFileSync(join(t.worktree, 'a dir/b c.txt'), 'x\n');
+  assert.equal(t.nudge().status, 0);
+  assert.deepEqual(t.modes(), ['focused']);
+  assert.equal(t.changed(), 'a dir/b c.txt\nmy file.txt\n');
+});
+
+test('AC-2: a changed path with a newline falls back to full and says so; nothing is left behind', () => {
+  const t = setup();
+  writeFileSync(join(t.worktree, 'bad\nname.txt'), 'x\n');
+  const res = t.nudge();
+  assert.equal(res.status, 0, res.stderr);
+  assert.deepEqual(t.modes(), ['full']);
+  assert.equal(t.changed(), 'none\n');
+  assert.match(res.stderr, /contains a newline; running the full checks/);
+  assert.equal(JSON.parse(readFileSync(join(t.jobDir, 'nudge.json'), 'utf8')).mode, 'full');
+});
+
+test('the changed-files list is a throwaway: not in the job folder after a run, even when the checks fail', () => {
+  const t = setup({ checks: '#!/bin/sh\necho "$FACTORY_CHANGED_FILES" > "$OUT/path"\nexit 1\n' });
+  assert.equal(t.nudge().status, 2);
+  const listed = readFileSync(join(t.out, 'path'), 'utf8').trim();
+  assert.ok(listed.endsWith('changed-files.txt'));
+  assert.equal(existsSync(listed), false);
+  assert.deepEqual(readdirSync(t.jobDir).filter((f) => /changed|\.tmp$/.test(f)), []);
+});
+
+test('stamp: a focused pass is not reused after the base moves, and records the base it was made against', () => {
+  const t = setup();
+  assert.equal(t.nudge().status, 0);
+  const stamp = JSON.parse(readFileSync(join(t.jobDir, 'nudge.json'), 'utf8'));
+  assert.match(stamp.base, /^[0-9a-f]{40,64}$/);
+  assert.equal(t.nudge().status, 0);
+  assert.deepEqual(t.modes(), ['focused'], 'same base: reused');
+  // main moves on and the branch syncs with it: same files at HEAD level is not enough, the diff changed
+  writeFileSync(join(t.root, 'main-only.txt'), 'm\n');
+  git(t.root, 'add', '.');
+  git(t.root, 'commit', '-q', '-m', 'main moved');
+  git(t.root, 'push', '-q', 'origin', 'main');
+  git(t.root, 'fetch', '-q', 'origin');
+  git(t.worktree, 'merge', '-q', '--no-edit', 'origin/main');
+  const second = t.nudge();
+  assert.equal(second.status, 0, second.stderr);
+  assert.deepEqual(t.modes(), ['focused', 'focused'], 'the base moved: it ran again');
 });
 
 test('AC-1: a checks.sh that ignores the variables gives the same result in nudge, --full, the hook and the gate', () => {
@@ -211,16 +250,32 @@ test('AC-4: the checks.sh template passes sh -n, documents both variables, shows
   assert.equal(detectChecks({ files: [], packageJson: null, read: () => '' }).script, text);
 });
 
-test('AC-4: the template skips the tests for a docs-only focused diff and still runs in full', () => {
+// Runs the template with a fake test command: its "TODO" line is the part a repo replaces, so the
+// run reaches it exactly when the tests would have run.
+function template(mode, listContent, { asDir = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'factory-template-'));
   const list = join(dir, 'files');
-  const run = (mode, files) => {
-    writeFileSync(list, files);
-    return spawnSync('sh', [join(repo, 'factory/templates/checks.sh')], { encoding: 'utf8', env: { ...process.env, FACTORY_CHECK_MODE: mode, FACTORY_CHANGED_FILES: list } });
-  };
-  assert.match(run('focused', 'README.md\ndocs/a.md\n').stdout, /only docs changed/);
-  assert.doesNotMatch(run('focused', 'README.md\nsrc/a.js\n').stdout, /only docs changed/);
-  assert.doesNotMatch(run('full', 'README.md\n').stdout, /only docs changed/);
+  if (asDir) mkdirSync(list);
+  else writeFileSync(list, listContent);
+  const res = spawnSync('sh', [join(repo, 'factory/templates/checks.sh')], { encoding: 'utf8', env: { ...process.env, FACTORY_CHECK_MODE: mode, FACTORY_CHANGED_FILES: list } });
+  const testsRan = /TODO add this repo's test command/.test(res.stderr);
+  const skipped = /only docs changed/.test(res.stdout);
+  return { status: res.status, testsRan, skipped };
+}
+
+test('AC-4: the template skips the tests for a docs-only focused diff (exit 0, tests really skipped)', () => {
+  const r = template('focused', 'README.md\ndocs/a.md\ndocs/sub/b.png\nCHANGELOG.md\n');
+  assert.deepEqual(r, { status: 0, testsRan: false, skipped: true });
+});
+
+test('AC-4: the template runs the tests when anything outside docs/README/CHANGELOG changed, in full mode, or on an empty list', () => {
+  for (const [mode, list] of [['focused', 'README.md\nsrc/a.js\n'], ['focused', 'roles/x.md\n'], ['focused', 'sub/README.md\n'], ['full', 'README.md\n'], ['focused', '']]) {
+    assert.deepEqual(template(mode, list), { status: 0, testsRan: true, skipped: false }, `${mode} ${JSON.stringify(list)}`);
+  }
+});
+
+test('AC-4: the template runs everything when the list cannot be read (grep error), never skips', () => {
+  assert.deepEqual(template('focused', '', { asDir: true }), { status: 0, testsRan: true, skipped: false });
 });
 
 test('AC-3: the generated Claude builder (eminzo install) has a bare `eminzo nudge` Stop hook, which is the full checks', async () => {

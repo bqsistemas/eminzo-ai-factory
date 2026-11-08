@@ -271,3 +271,26 @@ test('doctor --json gives each check an id and the state of the repository', () 
   assert.equal(notEnabled.repository.enabled, false);
   assert.equal(notEnabled.checks.find((c) => c.id === 'repository').level, 'warn');
 });
+
+test('eminzo nudge passes --full through to the engine: focused by hand, full with the flag', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir, { engine: null });
+  const git = (cwd, ...a) => execFileSync('git', a, { cwd, env: { ...process.env, ...GIT_ENV, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' }, encoding: 'utf8' });
+  writeFileSync(join(root, 'factory/checks.sh'), '#!/bin/sh\necho "$FACTORY_CHECK_MODE" >> "$OUT"\n', { mode: 0o755 });
+  writeFileSync(join(root, 'a.txt'), 'a\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'init');
+  git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const worktree = join(t.dir, 'wt');
+  git(root, 'worktree', 'add', '-q', worktree, '-b', 'factory/007-x', 'HEAD');
+  const jobDir = join(root, 'factory/jobs/007-x');
+  mkdirSync(jobDir, { recursive: true });
+  writeFileSync(join(jobDir, 'job.json'), JSON.stringify({ id: '007-x', worktree }));
+  const out = join(t.dir, 'modes');
+  const extra = { OUT: out, FACTORY_CHECK_MODE: 'focused' };
+  assert.equal(t.run(['nudge', '007-x'], { cwd: root, extra }).status, 0);
+  writeFileSync(join(worktree, 'b.txt'), 'b\n'); // a new tree: nothing is reused
+  const full = t.run(['nudge', '007-x', '--full'], { cwd: root, extra });
+  assert.equal(full.status, 0, full.stderr);
+  assert.equal(readFileSync(out, 'utf8'), 'focused\nfull\n');
+});
