@@ -38,8 +38,7 @@
     "prepack": "node build.mjs",
     "prepublishOnly": "npm --prefix .. test"
   },
-  "license": "UNLICENSED",
-  "private": true,
+  "license": "MIT",
   "publishConfig": {
     "access": "public"
   }

@@ -307,3 +307,7 @@ cd cli && npm pack
 `cli/dist/` holds the engine (this repo's `factory/` without its data or config) and the
 generated adapters. The install modules `enable` uses (preflight, stack detection, `.gitignore`
 lines) live in `cli/src/installer/`.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Copyright (c) 2026 Jhon Barrantes.

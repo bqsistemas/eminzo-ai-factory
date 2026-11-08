@@ -581,3 +581,7 @@ guaranteed delivery. No new job/board fields or persistent delivery state are us
 
 Run focused tests without network access:
 `node --test test/notifications.test.js test/discord-notifications.test.js`.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Copyright (c) 2026 Jhon Barrantes.
