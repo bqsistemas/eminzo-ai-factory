@@ -18,6 +18,14 @@
 // satisfies both. A failure forgets it and keeps the full log in nudge.log. The gate
 // never reads nudge.json: it always runs the checks itself.
 //
+// Cap per round: nudge.json also counts the real runs of checks.sh in the job's current round
+// (`runs: { round, count }`, reset when the round changes). Past `checks.max_runs_per_round`
+// (default 6) a nudge does not run the checks. By hand it exits 2 with `cap reached: write
+// build.md with what is still failing`. As the Stop hook, exit 2 would keep the builder from ever
+// stopping, so there it logs the same message and exits 0: the builder may finish and the gate
+// still runs the full checks, so nothing is weakened. A reused pass and a nudge refused by the
+// lock are not runs and do not count.
+//
 // One nudge per job at a time: while the checks run, nudge.lock in the job folder records the
 // nudge (PID and start time) and nudge.lock.child the PID of the checks it started. A second
 // nudge of the same job is refused instead of running the checks twice: exit 1 by hand, exit 2
@@ -38,6 +46,7 @@ const EXIT_BUSY = 1;
 const EXIT_FAIL = 2;
 const EXIT_USAGE = 64;
 const LOCK = 'nudge.lock';
+export const DEFAULT_MAX_RUNS = 6;
 const MAX_LOCK_AGE = 3 * 60 * 60 * 1000;
 const JOB_PATH = /factory\/jobs\/(\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*)\//;
 
@@ -122,7 +131,12 @@ function main(args = []) {
     return EXIT_BUSY;
   }
   try {
-    return runAndReport({ root, job, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
+    const runs = countRun(stampFile, job.round, maxRuns(root));
+    if (runs.capped) {
+      process.stderr.write('factory nudge: cap reached: write build.md with what is still failing\n');
+      return manual ? EXIT_FAIL : 0;
+    }
+    return runAndReport({ root, job, runs: runs.value, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
     if (!lock.unlocked) releaseLock(lockFile);
   }
@@ -169,7 +183,7 @@ function focusedOptions(root, job) {
   }
 }
 
-function runAndReport({ root, job, wantFull, stampFile, logFile, tree, inputs, childFile }) {
+function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inputs, childFile }) {
   const focus = wantFull ? { options: {}, cleanup() {} } : focusedOptions(root, job);
   const mode = focus.options.mode ?? 'full';
   let result;
@@ -181,11 +195,11 @@ function runAndReport({ root, job, wantFull, stampFile, logFile, tree, inputs, c
   const { code, output } = result;
   if (code === 0) {
     bestEffort(() => (tree
-      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, ...(mode === 'focused' ? { base: focus.base } : {}), at: new Date().toISOString() })}\n`)
-      : rmSync(stampFile, { force: true })));
+      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, ...(mode === 'focused' ? { base: focus.base } : {}), at: new Date().toISOString(), runs })}\n`)
+      : writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`)));
     return 0;
   }
-  bestEffort(() => rmSync(stampFile, { force: true }));
+  bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`));
   const logged = bestEffort(() => writeAtomic(logFile, output));
   process.stderr.write(
     `factory nudge: factory/checks.sh failed (exit ${code}) in ${job.worktree}.\n`
@@ -283,6 +297,27 @@ function releaseLock(file) {
   if (readRecord(file)?.pid !== process.pid) return;
   bestEffort(() => rmSync(`${file}.child`, { force: true }));
   bestEffort(() => rmSync(file, { force: true }));
+}
+
+/** `checks.max_runs_per_round`: a positive integer, else the default. */
+function maxRuns(root) {
+  let value;
+  try { value = loadConfig(root)?.checks?.max_runs_per_round; } catch { /* no readable config: the default */ }
+  return Number.isInteger(value) && value >= 1 ? value : DEFAULT_MAX_RUNS;
+}
+
+/**
+ * Counts one real run of the checks in this round and saves it before they start (a killed nudge
+ * still counts). Returns { capped: true } when the round already used its runs, else { value }.
+ */
+function countRun(stampFile, round, max) {
+  let raw = {};
+  try { raw = JSON.parse(readText(stampFile) ?? '{}') ?? {}; } catch { /* unreadable: start over */ }
+  const used = raw.runs && raw.runs.round === round && Number.isInteger(raw.runs.count) ? raw.runs.count : 0;
+  if (used >= max) return { capped: true };
+  const value = { round, count: used + 1 };
+  bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ ...raw, runs: value })}\n`));
+  return { value };
 }
 
 /** The stamp and the log only save time; failing to write them never changes the checks' result. */

@@ -61,7 +61,9 @@ Adds a new runtime dependency (express-rate-limit); a human should accept it.
 Only when approving with deviations: `AC-n | what changed → why`, one per line.
 
 ## For the human
-What to look at, and what you would decide. Only when escalating.
+What to look at, and what you would decide. Only when escalating. Also list here every
+`command | error` line under build.md's `## Flaky`, so the human knows which checks are
+flaky.
 ```
 
 On APPROVE the factory syncs the branch with `<base>`, runs the gate again and

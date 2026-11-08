@@ -3,6 +3,7 @@
   "base": "__BASE__",
   "concurrency": 3,
   "max_rounds": 3,
+  "checks": { "max_runs_per_round": 6 },
   "auto_merge": true,
   "spec_review": false,
   "notifications": { "enabled": false, "events": [] },

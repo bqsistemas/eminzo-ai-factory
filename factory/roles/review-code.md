@@ -42,6 +42,9 @@ in the worktree only when you need to probe something `checks.md` doesn't show.
 - The diff stays inside the spec's scope: no unrelated changes, no dead code.
 - Naming, layout, and style match the conventions in `project.md` and nearby code.
 - The simplest design that works; no premature abstraction.
+- `build.md` `## Flaky` lists checks the builder saw fail and then pass with no code change
+  (`command | error`). Mark as `[blocker]` an entry whose test the diff touched: the change
+  may have introduced the flakiness. Leave the other entries alone.
 - Lane xs only (your prompt says `Lane: xs`): you are the only reviewer, so also run
   this basic UI checklist on the files the diff changes, and report a real problem as
   `[blocker]`:
