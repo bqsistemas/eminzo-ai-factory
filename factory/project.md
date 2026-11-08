@@ -28,7 +28,7 @@ The gate reports uncovered added/moved modules as a non-blocking freshness warni
   worktree → spec → builder commit/push/draft PR → deterministic gate → routed
   reviews → approval → merge or human intervention. Only `job` writes pipeline
   state and performs engine merge side effects. Tests: `test/job*.test.js`,
-  `gate.test.js`, `route.test.js`, `codex-routing.test.js`, `lane-xs.test.js`.
+  `gate.test.js`, `route.test.js`, `codex-routing.test.js`, `lane-xs*.test.js`.
 - **Rules:** code review always runs; `ui` includes everyday UX; `interaction` adds
   UX and UI; `security` adds security review. Wait for all routed lenses after a
   passing gate. XS requires script-validated low-risk trivial scope, skips spec,

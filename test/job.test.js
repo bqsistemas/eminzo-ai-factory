@@ -1,4 +1,4 @@
-// Spine test (protected in factory/config.json): factory/bin/job, the only writer
+// Spine test, one of the five protected job files (factory/config.json): factory/bin/job, the only writer
 // of job.json. Every test builds a throwaway FACTORY_ROOT: a git repo with a bare
 // `origin`, a fixture checks.sh, and a fake `gh` that logs its arguments and keeps
 // issue/PR state in a JSON file.

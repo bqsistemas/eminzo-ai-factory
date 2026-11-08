@@ -1,6 +1,6 @@
 // Plan P0-6: the XS lane. Intake sizes the change, the script decides the lane, an XS job
 // skips the spec, runs one round and is promoted to the normal lane on the first failure.
-// The fake-gh harness is copied from test/job-merge.test.js; setup lives in test/helpers/lane-xs-harness.js.
+// The fake-gh harness is copied from test/job-merge.test.js, now in test/helpers/lane-xs-harness.js.
 // Part of the lane-xs scenarios, split by scenario (D2).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';

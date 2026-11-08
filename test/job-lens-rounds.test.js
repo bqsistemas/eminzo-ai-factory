@@ -5,7 +5,6 @@
 // Part of the job scenarios, split by scenario (D2).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { git, setup, ok, refused, INTAKE } from './helpers/job-harness.js';

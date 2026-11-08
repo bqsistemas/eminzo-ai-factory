@@ -1,6 +1,6 @@
 // Job 125: factory/config.local.json, a per-developer override of a closed set of keys.
 // Unit tests on util.js/check-stamp.js, then the CLI on a temp root with a local bare
-// origin and a fake gh (the harness of test/check-reuse.test.js, copied). No network.
+// origin and a fake gh (setup in test/helpers/config-local-harness.js). No network.
 // Part of the config-local scenarios, split by scenario (D2).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { checksInputs } from '../factory/lib/check-stamp.js';
 import { LOCAL_CONFIG, effectiveConfig } from '../factory/lib/util.js';
-import { repo, git, teamConfig, plainRoot, writeLocal, untracked, quiet, setup, ok, gateFailedJob, approvedWithRealGate } from './helpers/config-local-harness.js';
+import { repo, git, teamConfig, plainRoot, writeLocal, quiet, setup, ok, gateFailedJob, approvedWithRealGate } from './helpers/config-local-harness.js';
 
 describe('config.local.json', { concurrency: true }, () => {
   test('AC-6: job <id> prompt prints Language: right after Base branch:, local first, team otherwise', async () => {

@@ -1,12 +1,12 @@
 // Job 125: factory/config.local.json, a per-developer override of a closed set of keys.
 // Unit tests on util.js/check-stamp.js, then the CLI on a temp root with a local bare
-// origin and a fake gh (the harness of test/check-reuse.test.js, copied). No network.
+// origin and a fake gh (setup in test/helpers/config-local-harness.js). No network.
 // Part of the config-local scenarios, split by scenario (D2).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checksInputs } from '../factory/lib/check-stamp.js';
 import { OVERRIDABLE, Refused, effectiveConfig, loadConfig, validateLocal } from '../factory/lib/util.js';
-import { git, teamConfig, plainRoot, writeLocal, never, untracked, quiet, setup, ok, gateFailedJob, legacyChecksInputs, VALID_ALL } from './helpers/config-local-harness.js';
+import { teamConfig, plainRoot, writeLocal, never, untracked, quiet, setup, ok, gateFailedJob, legacyChecksInputs, VALID_ALL } from './helpers/config-local-harness.js';
 
 describe('config.local.json', { concurrency: true }, () => {
   test('AC-1: without a local file the config is the team one, the checks hash is unchanged and git is never asked', () => {

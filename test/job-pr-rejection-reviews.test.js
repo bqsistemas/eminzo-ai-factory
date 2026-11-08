@@ -1,5 +1,5 @@
 // Job 015: a human rejecting the PR (changes requested, closed). Same fake-gh
-// harness as test/job.test.js (shared setup in the helpers/ file imported below).
+// harness as test/job-merge.test.js (setup in test/helpers/job-pr-rejection-harness.js).
 // Part of the job-pr-rejection scenarios, split by scenario (D2).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';

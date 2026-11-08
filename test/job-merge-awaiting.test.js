@@ -1,5 +1,5 @@
 // Job 014: auto_merge flag, approve>merged and awaiting-merge transitions. Same fake-gh
-// harness as test/job.test.js (shared setup in the helpers/ file imported below).
+// harness as test/job-merge.test.js (setup in test/helpers/job-merge-harness.js).
 // Part of the job-merge scenarios, split by scenario (D2).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';

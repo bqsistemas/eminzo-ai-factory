@@ -7,7 +7,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repo, git, setup, ok, refused, INTAKE, toGate, gateToApprove } from './helpers/job-harness.js';
+import { git, setup, ok, refused, INTAKE, toGate, gateToApprove } from './helpers/job-harness.js';
 
 // Every test builds its own FACTORY_ROOT, so they run concurrently.
 describe('factory/bin/job', { concurrency: true }, () => {

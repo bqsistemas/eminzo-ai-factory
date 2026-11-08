@@ -1,10 +1,10 @@
 // Job 014: auto_merge flag, approve>merged and awaiting-merge transitions. Same fake-gh
-// harness as test/job.test.js (shared setup in the helpers/ file imported below).
+// harness as test/job-merge.test.js (setup in test/helpers/job-merge-harness.js).
 // Part of the job-merge scenarios, split by scenario (D2).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { git, setup, ok, noMerge, approved, awaiting } from './helpers/job-merge-harness.js';
+import { git, setup, ok, noMerge, approved } from './helpers/job-merge-harness.js';
 
 describe('job 014: auto_merge and awaiting-merge', { concurrency: true }, () => {
   for (const value of [false, 'false']) {
