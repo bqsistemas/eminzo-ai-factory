@@ -5,7 +5,7 @@
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -231,4 +231,20 @@ test('enable --dry-run --json lists the plan and writes nothing', () => {
   assert.equal(out.dryRun, true);
   assert.ok(out.files.includes('factory/config.json'));
   assert.equal(existsSync(join(t.root, 'factory')), false);
+});
+
+test('enable --json turns an unexpected failure into a JSON error too, never a stack trace on stdout', () => {
+  const t = setup();
+  const broken = join(mkdtempSync(join(tmpdir(), 'eminzo-broken-dist-')), 'dist');
+  cpSync(dist, broken, { recursive: true });
+  writeFileSync(join(broken, 'factory/templates/config.json'), '{ not json');
+  const res = spawnSync(process.execPath, [bin, 'enable', '--json'], {
+    cwd: t.root, encoding: 'utf8',
+    env: { ...process.env, ...GIT_ENV, HOME: join(t.dir, 'home'), EMINZO_DIST: broken, FACTORY_GH: join(t.dir, 'gh') },
+  });
+  assert.equal(res.status, 1);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.ok, false);
+  assert.match(out.error, /JSON/);
+  assert.equal(existsSync(join(t.root, 'factory')), false, 'nothing was written');
 });

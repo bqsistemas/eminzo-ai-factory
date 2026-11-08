@@ -87,10 +87,13 @@ export async function main(argv, { env = process.env, cwd = process.cwd() } = {}
       }
     }
   } catch (err) {
+    // With --json the caller reads stdout: any failure, expected or not, is one JSON object there too.
+    if ((command === 'enable' || command === 'doctor') && args.includes('--json')) {
+      process.stdout.write(`${JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) })}\n`);
+      return err instanceof CliError ? err.code : 1;
+    }
     if (!(err instanceof CliError)) throw err;
-    // With --json the caller reads stdout: the error is one JSON object there too.
-    if ((command === 'enable' || command === 'doctor') && args.includes('--json')) process.stdout.write(`${JSON.stringify({ ok: false, error: err.message })}\n`);
-    else process.stderr.write(`error: ${err.message}\n`);
+    process.stderr.write(`error: ${err.message}\n`);
     return err.code;
   }
 }
