@@ -20,12 +20,43 @@ export const DEFAULT_PATTERNS = Object.freeze({
     '\\b(npm|pnpm|yarn|bun)( run)? test\\b', '\\bnode --test\\b',
     '\\b(pytest|go test|cargo test|mvn|gradle|gradlew|make test|rspec|phpunit|dotnet test)\\b',
   ],
-  git: ['^\\s*(\\w+=\\S*\\s+)*\\(?\\s*(git|gh)\\b'],
+  git: ['(^|\\$\\(|`|\\b(if|then|do|else|elif|while|until)\\s+|!\\s*)\\s*(\\w+=\\S*\\s+)*\\(?\\s*(git|gh)\\b'],
 });
 /** Only this much of a command is classified, so a long heredoc never makes a pattern slow. */
 const MAX_COMMAND = 2000;
-/** A pattern from a repository with a nested quantifier ((a+)+, (.*)*) can backtrack for a long time: it is skipped. */
-const NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]/;
+/** An unbounded quantifier at `i` (+, *, {n,} or {n,m}), else null; `?` and {n} are bounded. */
+function unboundedAt(p, i) {
+  if (p[i] === '+' || p[i] === '*') return true;
+  return p[i] === '{' && /^\{\d+,\d*\}/.test(p.slice(i)) ? true : null;
+}
+
+/**
+ * True when a repository's pattern can backtrack for a long time: a group repeated without bound that holds
+ * a repeated part or an alternation, at any depth ((a+)+, ((a+))*, (a|aa)+, (\d+,)*). Conservative: a safe
+ * pattern of that shape is skipped too; write it without the nesting.
+ */
+export function unsafePattern(p) {
+  const stack = [];
+  for (let i = 0; i < p.length; i += 1) {
+    const ch = p[i];
+    if (ch === '\\') { i += 1; continue; }
+    if (ch === '[') { // a character class: nothing inside it is a quantifier or a group
+      for (i += 1; i < p.length && p[i] !== ']'; i += 1) if (p[i] === '\\') i += 1;
+      continue;
+    }
+    const top = stack.at(-1);
+    if (ch === '(') stack.push({ risky: false });
+    else if (ch === '|' && top) top.risky = true;
+    else if (unboundedAt(p, i) && top) top.risky = true;
+    else if (ch === ')' && top) {
+      stack.pop();
+      if (unboundedAt(p, i + 1) && top.risky) return true;
+      const parent = stack.at(-1);
+      if (parent && (top.risky || unboundedAt(p, i + 1))) parent.risky = true;
+    }
+  }
+  return false;
+}
 /** A gap longer than this between two entries of a transcript is idle time (the job waited), not builder time. */
 const MAX_GAP_MS = 10 * 60 * 1000;
 
@@ -33,7 +64,7 @@ const MAX_GAP_MS = 10 * 60 * 1000;
 export function compilePatterns(extra = {}) {
   const out = {};
   for (const kind of PRIORITY) {
-    const added = Array.isArray(extra?.[kind]) ? extra[kind].filter((p) => typeof p === 'string' && p && !NESTED_QUANTIFIER.test(p)) : [];
+    const added = Array.isArray(extra?.[kind]) ? extra[kind].filter((p) => typeof p === 'string' && p && !unsafePattern(p)) : [];
     out[kind] = [...DEFAULT_PATTERNS[kind], ...added].flatMap((p) => {
       try { return [new RegExp(p)]; } catch { return []; }
     });
@@ -41,12 +72,23 @@ export function compilePatterns(extra = {}) {
   return out;
 }
 
+/** A heredoc: its first line is kept (it may chain more commands), its body is data. */
+const HEREDOC = /(?<!<)<<(?!<)-?[ \t]*(['"]?)(\w+)\1([^\n]*)(?:\n[ \t]*\2(?=\n|$)|\n[\s\S]*?\n[ \t]*\2(?=\n|$)|\n[\s\S]*$|$)/g;
+/** `bash -c '...'` and the like: the quoted script is the command. */
+const SHELL_C = /\b(?:bash|sh|zsh|dash)\s+-[a-z]*c\s+(?:'([^']*)'|"((?:[^"\\]|\\.)*)")/g;
+
 /**
- * The command as a whole plus each of its parts, with quoted text removed (a commit message never decides
- * the kind). The whole is kept because a loop (`until x; do sleep 5; done`) only reads as a wait unsplit.
+ * The command as a whole plus each of its parts, with heredoc bodies and quoted text removed (a commit
+ * message never decides the kind). The whole is kept because a loop (`until x; do sleep 5; done`) only
+ * reads as a wait unsplit. A quote left open where the command is cut is dropped with what follows it.
  */
 const parts = (command) => {
-  const text = String(command ?? '').slice(0, MAX_COMMAND).replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
+  const text = String(command ?? '')
+    .replace(HEREDOC, (m, q, tag, rest) => `<<${rest}`)
+    .slice(0, MAX_COMMAND)
+    .replace(SHELL_C, (m, single, double) => single ?? double)
+    .replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, '_') // no quote left in the placeholder: the next step drops open quotes
+    .replace(/['"][\s\S]*$/, '');
   return [text, ...text.split(/&&|\|\||;|\||\n/)];
 };
 
@@ -85,9 +127,11 @@ function busySpans(times) {
 /**
  * The builder's time in `jobId`, from the transcripts of the builder whose first prompt names
  * factory/jobs/<id>/: wall minutes per kind of shell command (parallel commands of a kind counted once),
- * commands per kind, commands sent to the background (they return at once; the waiting shows up as
- * `wait`), commands with no usable time, and the builder's active minutes (gaps over MAX_GAP_MS between
- * entries are idle unless a command was running; overlapping transcripts are counted once).
+ * commands per kind, commands sent to the background (they return at once: their run time counts only
+ * where the builder waits for them, in a wait loop or an output read, as `wait`), commands with no usable
+ * time (no result, or no timestamp), and the builder's active minutes (gaps over MAX_GAP_MS between
+ * entries are idle unless a command was running; overlapping transcripts are counted once). A call and its
+ * result may sit in different transcripts of the same builder (a resumed session): they are matched by id.
  */
 export function jobProfile(transcripts, jobId, patterns) {
   const needle = `factory/jobs/${jobId}/`;
@@ -95,6 +139,7 @@ export function jobProfile(transcripts, jobId, patterns) {
   const intervals = Object.fromEntries(KINDS.map((k) => [k, []]));
   const count = Object.fromEntries(KINDS.map((k) => [k, 0]));
   const seen = new Set();
+  const open = new Map();
   let found = 0;
   const busy = [];
   let background = 0;
@@ -108,7 +153,6 @@ export function jobProfile(transcripts, jobId, patterns) {
     if (!isBuilder(transcriptRole(typeof item === 'string' ? undefined : item.agentType, lines))) continue;
     found += 1;
     busy.push(...busySpans(lines.map((e) => Date.parse(e?.timestamp)).filter(Number.isFinite)));
-    const open = new Map();
     for (const e of lines) {
       const at = Date.parse(e?.timestamp);
       const blocks = Array.isArray(e?.message?.content) ? e.message.content : [];
@@ -120,7 +164,7 @@ export function jobProfile(transcripts, jobId, patterns) {
             open.set(b.id, { kind: classify(b.input?.command, compiled), at });
           } else if (b.name === 'BashOutput') {
             seen.add(b.id);
-            open.set(b.id, { kind: 'wait', at }); // reading a background command's output is waiting for it
+            open.set(b.id, { kind: 'wait', at }); // reading a background command's output: a blocking read is a wait
           }
         } else if (e.type === 'user' && b?.type === 'tool_result' && open.has(b.tool_use_id)) {
           const call = open.get(b.tool_use_id);
@@ -132,6 +176,7 @@ export function jobProfile(transcripts, jobId, patterns) {
       }
     }
   }
+  untimed += open.size; // a call that never got a result (the builder stopped, or the result is missing)
   return {
     transcripts: found,
     // Active time: the busy spans plus every timed command (a long foreground check is busy, not idle), counted once.

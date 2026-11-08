@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { classify, compilePatterns, jobProfile } from '../factory/lib/profile.js';
+import { classify, compilePatterns, jobProfile, unsafePattern } from '../factory/lib/profile.js';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const ID = '042-profile';
@@ -49,15 +49,29 @@ test('quoted text never decides the kind, and only the start of a long command i
   const c = compilePatterns();
   assert.equal(classify('git commit -m "fix: npm test was flaky"', c), 'git', 'a commit message that names a check');
   assert.equal(classify("echo 'sleep 5'", c), 'other');
-  assert.equal(classify(`cat <<EOF\n${'x'.repeat(5000)}\nEOF\nnpm test`, c), 'other', 'past the first 2000 characters');
+  assert.equal(classify(`echo ${'x'.repeat(5000)}; npm test`, c), 'other', 'past the first 2000 characters');
+  assert.equal(classify(`cat <<EOF\n${'x'.repeat(5000)}\nEOF\nnpm test`, c), 'check', 'a long heredoc body is dropped before the cut');
   assert.equal(classify('GIT_TRACE=1 git push', c), 'git', 'an env assignment before git');
+  assert.equal(classify("git commit -F - <<'EOF'\nfix: don't run npm test\nsleep 3\nEOF", c), 'git', 'a heredoc body is data');
+  assert.equal(classify('cat <<EOF > a.txt && npm test\nbody\nEOF', c), 'check', 'the heredoc line itself still counts');
+  assert.equal(classify(`git commit -m "x${'y'.repeat(2100)} npm test"`, c), 'git', 'a cut inside a quote drops the open quote');
+  assert.equal(classify('git commit -m "x" && npm test', c), 'check', 'a command after a quote still counts');
+  assert.equal(classify('bash -c "npm test"', c), 'check', 'the script of sh -c is the command');
+  assert.equal(classify("sh -lc 'sleep 30'", c), 'wait');
+  assert.equal(classify('if git diff --quiet; then echo same; fi', c), 'git');
+  assert.equal(classify('echo $(git rev-parse HEAD)', c), 'git');
+});
+
+test('a repository pattern that can backtrack without bound is skipped; a bounded one is kept', () => {
+  for (const p of ['(a+)+', '((a+))+', '((a+)b)*', '(a|aa)+', '(\\d+,)*']) assert.equal(unsafePattern(p), true, p);
+  for (const p of ['([+-])+', '(a+){2}', 'run e2e', '--smoke\\b', '(?:npm|pnpm) test']) assert.equal(unsafePattern(p), false, p);
 });
 
 test('a repository adds its own patterns; an invalid one is skipped', () => {
   const c = compilePatterns({ check: ['run e2e', '[invalid'] });
   assert.equal(classify('npm --prefix app run e2e', c), 'check');
   assert.equal(classify('npm run build', c), 'other');
-  const unsafe = compilePatterns({ check: ['(a+)+$', '(x*)*', 'run e2e'] });
+  const unsafe = compilePatterns({ check: ['(a+)+$', '((x*))*', 'run e2e'] });
   assert.equal(unsafe.check.length, compilePatterns().check.length + 1, 'a nested quantifier is skipped');
 });
 
@@ -80,6 +94,18 @@ test('a result without a time is counted as untimed; a resumed transcript is cou
   assert.equal(profile.untimed_commands, 1);
   assert.equal(profile.commands_by_kind.check, 1, 'the same tool call in two transcripts counts once');
   assert.equal(profile.time_by_kind.check, 2);
+});
+
+test('a call and its result in two transcripts of a resumed builder are matched; a call with no result is untimed', () => {
+  const head = { type: 'user', timestamp: at(0), message: { content: `Job folder: factory/jobs/${ID}/` } };
+  const use = { type: 'assistant', timestamp: at(1), message: { content: [{ type: 'tool_use', name: 'Bash', id: 'r1', input: { command: 'npm test' } }] } };
+  const result = { type: 'user', timestamp: at(4), message: { content: [{ type: 'tool_result', tool_use_id: 'r1' }] } };
+  const lost = { type: 'assistant', timestamp: at(5), message: { content: [{ type: 'tool_use', name: 'Bash', id: 'r2', input: { command: 'git push' } }] } };
+  const file = (lines) => ({ text: lines.map((l) => JSON.stringify(l)).join('\n'), agentType: 'eminzo-builder' });
+  const profile = jobProfile([file([head, use]), file([head, use, result, lost])], ID);
+  assert.equal(profile.time_by_kind.check, 3);
+  assert.equal(profile.commands_by_kind.check, 1);
+  assert.equal(profile.untimed_commands, 1, 'git push never got a result');
 });
 
 test('idle time between rounds is not builder time; a long foreground check is', () => {
@@ -180,9 +206,11 @@ test('AC-4: the dashboard shows the builder time on the build stage, localized',
   assert.equal(builderTime(job), 'checks 3.0 · waits 2.0 · git 0.5 · other 0.2 min');
   assert.equal(builderTime(job, { timeCheck: 'checks', timeWait: 'esperas', timeGit: 'git', timeOther: 'otros' }), 'checks 3.0 · esperas 2.0 · git 0.5 · otros 0.2 min');
   assert.equal(builderTime({ id: ID, time_by_kind: { wait: 2, check: 0, git: 0, other: 0 } }), 'waits 2.0 min', 'the unit follows the last part, whichever parts there are');
+  assert.equal(builderTime(job, { timeUnit: 'mn' }), 'checks 3.0 · waits 2.0 · git 0.5 · other 0.2 mn', 'the unit is localized too');
   assert.equal(builderTime({ id: ID }), null, 'no profile yet');
   assert.equal(stageDetails(job, 'build').builderTime, 'checks 3.0 · waits 2.0 · git 0.5 · other 0.2 min');
   assert.equal(stageDetails(job, 'gate').builderTime, null, 'only on the build stage');
   const html = readFileSync(join(repo, 'factory/dashboard.html'), 'utf8');
   assert.equal(html.match(/"pipelineBuilderTime":/g).length, 3, 'en, es and pt');
+  assert.equal(html.match(/"timeUnit":/g).length, 3);
 });

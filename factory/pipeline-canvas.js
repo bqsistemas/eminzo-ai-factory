@@ -94,7 +94,7 @@ export function builderTime(job, text) {
   const parts = [['check', text?.timeCheck || 'checks'], ['wait', text?.timeWait || 'waits'], ['git', text?.timeGit || 'git'], ['other', text?.timeOther || 'other']]
     .filter(([k]) => Number.isFinite(t[k]) && t[k] > 0) // a kind with no time is left out
     .map(([k, label]) => `${label} ${t[k].toFixed(1)}`);
-  return parts.length ? `${parts.join(' · ')} min` : null;
+  return parts.length ? `${parts.join(' · ')} ${text?.timeUnit || 'min'}` : null;
 }
 
 export function stageDetails(job, stageKey, now = Date.now(), text) {

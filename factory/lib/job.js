@@ -1568,18 +1568,16 @@ function sync(c, id) {
     Object.assign(job, codexJobCost(readCodexRollouts(codexSessionsDir(), c.root), job,
       c.config.providers?.codex?.prices ?? {}, c.root));
   } else {
-    const { cost_usd, ...byAgent } = jobCostBreakdown(readAgentTranscripts(transcriptsDir(c.root)), job.id, c.config.prices ?? {});
+    const transcripts = readAgentTranscripts(transcriptsDir(c.root));
+    const { cost_usd, ...byAgent } = jobCostBreakdown(transcripts, job.id, c.config.prices ?? {});
     job.cost_usd = cost_usd;
     job.cost_by_agent = byAgent;
     job.cost_status = 'available';
     job.cost_reason = null;
-    // The builder's time is refreshed with the cost, so the dashboard never shows an older round's profile.
-    const profile = jobProfile(readAgentTranscripts(transcriptsDir(c.root)), job.id, c.config.profile?.patterns);
-    if (profile.transcripts) {
-      for (const k of PROFILE_FIELDS) job[k] = profile[k];
-      job.profiled_round = job.round;
-      job.profiled_at = now();
-    }
+    // The builder's time is refreshed with the cost. With no transcript left (pruned), the last profile stays,
+    // dated by profiled_at.
+    const profile = jobProfile(transcripts, job.id, c.config.profile?.patterns);
+    if (profile.transcripts) applyProfile(job, profile);
   }
   saveJob(c, job);
   return `${job.id} ${job.stage} ${costLabel(job)}`;
@@ -1587,14 +1585,17 @@ function sync(c, id) {
 
 const PROFILE_FIELDS = ['time_by_kind', 'commands_by_kind', 'builder_minutes', 'background_commands', 'untimed_commands'];
 
-/** Stores a profile in job.json with the round it covers; an unchanged profile does not touch the job. */
-function storeProfile(c, job, result) {
+/**
+ * Puts a profile on the job with the round it was measured in (it covers every round up to then);
+ * returns false, changing nothing, when the job already has exactly this profile.
+ */
+function applyProfile(job, result) {
   const same = PROFILE_FIELDS.every((k) => JSON.stringify(job[k]) === JSON.stringify(result[k])) && job.profiled_round === job.round;
-  if (same) return;
+  if (same) return false;
   for (const k of PROFILE_FIELDS) job[k] = result[k];
   job.profiled_round = job.round;
   job.profiled_at = now();
-  saveJob(c, job);
+  return true;
 }
 
 /** `job <id> profile`: measures the builder's time and stores it in job.json; prints one line per kind. */
@@ -1603,7 +1604,7 @@ function profileJob(c, id) {
   if (job.provider === 'codex') return `${job.id} profile: codex not supported (the profile reads Claude transcripts)`;
   const result = jobProfile(readAgentTranscripts(transcriptsDir(c.root)), job.id, c.config.profile?.patterns);
   if (!result.transcripts) return `${job.id} profile: no builder transcript found`;
-  storeProfile(c, job, result);
+  if (applyProfile(job, result)) saveJob(c, job);
   const width = Math.max(...KINDS.map((k) => k.length));
   return [
     `${job.id} profile: builder ${result.builder_minutes} active min in ${result.transcripts} transcript${result.transcripts === 1 ? '' : 's'} (round ${job.round}; ${result.background_commands} sent to the background, ${result.untimed_commands} untimed)`,
