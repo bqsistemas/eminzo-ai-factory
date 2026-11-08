@@ -3,7 +3,7 @@
 // the same job while the first is alive, takes over a lock whose process is gone, and always releases it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,10 +27,14 @@ function setup({ checks = '#!/bin/sh\nexit 0\n' } = {}) {
   execFileSync('git', ['add', '.'], { cwd: worktree, env: { ...process.env, ...GIT_ENV } });
   execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: worktree, env: { ...process.env, ...GIT_ENV } });
   writeFileSync(join(jobDir, 'job.json'), JSON.stringify({ id: ID, worktree }));
-  const nudge = () => spawnSync('sh', [join(repo, 'factory/bin/nudge'), ID], {
-    encoding: 'utf8', input: '', env: { ...process.env, ...GIT_ENV, FACTORY_ROOT: root },
-  });
-  return { jobDir, lock: join(jobDir, 'nudge.lock'), nudge };
+  const env = { ...process.env, ...GIT_ENV, FACTORY_ROOT: root };
+  const nudge = () => spawnSync('sh', [join(repo, 'factory/bin/nudge'), ID], { encoding: 'utf8', input: '', env });
+  // As the builder's Stop hook: no argument, the hook JSON on stdin names a transcript that names the job folder.
+  const transcript = join(dir, 'transcript.jsonl');
+  writeFileSync(transcript, `${JSON.stringify({ type: 'user', message: { content: `Job folder: factory/jobs/${ID}/` } })}\n`);
+  const hook = () => spawnSync('sh', [join(repo, 'factory/bin/nudge')], { encoding: 'utf8', input: JSON.stringify({ transcript_path: transcript }), env });
+  const start = () => spawn('sh', [join(repo, 'factory/bin/nudge'), ID], { env, stdio: ['ignore', 'ignore', 'pipe'] });
+  return { dir, root, jobDir, lock: join(jobDir, 'nudge.lock'), nudge, hook, start };
 }
 
 /** A PID that belonged to a process that has already exited. */
@@ -85,4 +89,46 @@ test('AC-4: the Codex builder profile says the same', () => {
   const profile = readFileSync(join(repo, '.codex/agents/eminzo-builder.toml'), 'utf8');
   assert.match(profile, /in the foreground/);
   assert.doesNotMatch(profile, NO_BACKGROUND);
+});
+
+const record = (pid, started = new Date()) => `${JSON.stringify({ pid, started: started.toISOString() })}\n`;
+const exited = (child) => new Promise((ok) => { let err = ''; child.stderr.on('data', (d) => { err += d; }); child.on('exit', (code) => ok({ code, err })); });
+
+test('two nudges started at once run the checks once: one runs, the other is refused', async () => {
+  const mark = join(mkdtempSync(join(tmpdir(), 'factory-nudge-mark-')), 'runs.txt');
+  const t = setup({ checks: `#!/bin/sh\necho run >> "${mark}"\nsleep 1\nexit 0\n` });
+  const [a, b] = await Promise.all([exited(t.start()), exited(t.start())]);
+  assert.deepEqual([a.code, b.code].sort(), [0, 1], `${a.err}\n${b.err}`);
+  assert.equal(readFileSync(mark, 'utf8').trim().split('\n').length, 1, 'checks.sh ran once');
+  assert.match([a.err, b.err].join('\n'), /refused: nudge running/);
+});
+
+test('checks still running after their nudge died keep the lock live', () => {
+  const t = setup();
+  writeFileSync(t.lock, record(deadPid()));
+  writeFileSync(`${t.lock}.child`, `${process.pid}\n`); // the orphaned checks process
+  const res = t.nudge();
+  assert.equal(res.status, 1, res.stderr);
+  assert.match(res.stderr, /refused: nudge running/);
+});
+
+test('a lock older than the ceiling is stale even when its PID is alive (a recycled PID never blocks forever)', () => {
+  const t = setup();
+  writeFileSync(t.lock, record(process.pid, new Date(Date.now() - 4 * 60 * 60 * 1000)));
+  assert.equal(t.nudge().status, 0);
+  assert.equal(existsSync(t.lock), false);
+});
+
+test('the refusal names the lock file so a stuck lock can be cleared', () => {
+  const t = setup();
+  writeFileSync(t.lock, record(process.pid));
+  assert.ok(t.nudge().stderr.includes(t.lock));
+});
+
+test('as the Stop hook, a running nudge of the job keeps the builder working (exit 2), it does not let it stop', () => {
+  const t = setup();
+  writeFileSync(t.lock, record(process.pid));
+  const res = t.hook();
+  assert.equal(res.status, 2, res.stderr);
+  assert.match(res.stderr, /still running in another nudge/);
 });

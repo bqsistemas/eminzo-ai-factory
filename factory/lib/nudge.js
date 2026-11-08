@@ -11,11 +11,13 @@
 // the checks again. A failure forgets it and keeps the full log in nudge.log. The gate
 // never reads nudge.json: it always runs the checks itself.
 //
-// One nudge per job at a time: while the checks run, nudge.lock in the job folder holds the
-// PID. A second nudge of the same job is refused (exit 1) instead of running the checks twice;
-// a lock whose process is gone is taken over. The builder runs the nudge in the foreground and
-// waits for it, so there is never a reason to start another.
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// One nudge per job at a time: while the checks run, nudge.lock in the job folder records the
+// nudge (PID and start time) and nudge.lock.child the PID of the checks it started. A second
+// nudge of the same job is refused instead of running the checks twice: exit 1 by hand, exit 2
+// as the Stop hook (so the builder keeps waiting). A lock is stale, and taken over, when neither
+// process is alive or it is older than MAX_LOCK_AGE (a recycled PID never blocks forever). The
+// builder runs the nudge in the foreground and waits for it, so there is never a reason to start another.
+import { existsSync, linkSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { checksInputs, worktreeTree } from './check-stamp.js';
@@ -25,8 +27,10 @@ import { JOB_ID, factoryRoot, isMain, readText, runCli, tail, writeAtomic } from
 // Exit codes: 0 checks pass (or nothing to check), 1 another nudge of the job is running,
 // 2 checks failed, 64 bad usage or unknown job.
 const EXIT_BUSY = 1;
+const EXIT_FAIL = 2;
 const EXIT_USAGE = 64;
 const LOCK = 'nudge.lock';
+const MAX_LOCK_AGE = 3 * 60 * 60 * 1000;
 const JOB_PATH = /factory\/jobs\/(\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*)\//;
 
 function jobIdFromHook() {
@@ -83,20 +87,26 @@ function main(args = []) {
   }
 
   const lockFile = join(dir, LOCK);
-  const holder = takeLock(lockFile);
-  if (holder) {
-    process.stderr.write(`factory nudge: refused: nudge running (pid ${holder}); wait for that one to finish instead of starting another.\n`);
+  const lock = takeLock(lockFile);
+  if (!lock.ok) {
+    const who = lock.holder ? `pid ${lock.holder}` : 'pid unknown';
+    if (!manual) {
+      // As the Stop hook: the checks of this job are still running, so the builder must not stop yet.
+      process.stderr.write(`factory nudge: the checks of this job are still running in another nudge (${who}); wait for them to finish, then stop.\n`);
+      return EXIT_FAIL;
+    }
+    process.stderr.write(`factory nudge: refused: nudge running (${who}). Wait for it to finish; if no nudge of this job is running, delete ${lockFile}.\n`);
     return EXIT_BUSY;
   }
   try {
-    return runAndReport({ root, job, stampFile, logFile, tree, inputs });
+    return runAndReport({ root, job, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
-    releaseLock(lockFile);
+    if (!lock.unlocked) releaseLock(lockFile);
   }
 }
 
-function runAndReport({ root, job, stampFile, logFile, tree, inputs }) {
-  const { code, output } = runChecks(root, job.worktree);
+function runAndReport({ root, job, stampFile, logFile, tree, inputs, childFile }) {
+  const { code, output } = runChecks(root, job.worktree, childFile ? { pidFile: childFile } : {});
   if (code === 0) {
     bestEffort(() => (tree
       ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, at: new Date().toISOString() })}\n`)
@@ -122,30 +132,85 @@ const alive = (pid) => {
     return err.code === 'EPERM'; // exists, owned by someone else
   }
 };
+const pidIn = (text) => {
+  const pid = Number.parseInt(String(text ?? '').trim(), 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+};
 
-/**
- * Takes the job's nudge lock for this process. Returns the PID of the live nudge that holds it, or
- * null when this process may run (it took the lock, or the folder cannot hold one: then it runs as
- * before). A lock with no PID or the PID of a process that is gone is taken over.
- */
-function takeLock(file) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      writeFileSync(file, `${process.pid}\n`, { flag: 'wx' });
-      return null;
-    } catch (err) {
-      if (err.code !== 'EEXIST') return null;
-      const pid = Number.parseInt(readText(file) ?? '', 10);
-      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid && alive(pid)) return pid;
-      bestEffort(() => rmSync(file, { force: true }));
-    }
-  }
-  return null;
+/** A lock's record: { pid, started (ms) }, from its JSON (or a bare PID with the file's time); null when unreadable. */
+function readRecord(file) {
+  const text = readText(file);
+  if (text === null) return null;
+  try {
+    const rec = JSON.parse(text);
+    if (rec && pidIn(rec.pid) && Number.isFinite(Date.parse(rec.started))) return { pid: pidIn(rec.pid), started: Date.parse(rec.started) };
+  } catch { /* a bare PID */ }
+  const pid = pidIn(text);
+  if (!pid) return null;
+  try { return { pid, started: statSync(file).mtimeMs }; } catch { return null; }
 }
 
-/** Removes the lock only when this process holds it. */
+/** Live while its nudge or the checks it started run, and for at most MAX_LOCK_AGE. */
+function isLive(rec, childFile) {
+  if (!rec || rec.pid === process.pid) return false;
+  const age = Date.now() - rec.started;
+  if (!(age >= 0) || age > MAX_LOCK_AGE) return false;
+  const child = pidIn(readText(childFile));
+  return alive(rec.pid) || (child !== null && alive(child));
+}
+
+/** Creates `file` with this nudge's record in one step (a link of a complete temp file): true, or false when it exists. */
+function publish(file) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify({ pid: process.pid, started: new Date().toISOString() })}\n`);
+  try {
+    linkSync(tmp, file);
+    return true;
+  } catch (err) {
+    if (err.code === 'EEXIST') return false;
+    throw err;
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+}
+
+/**
+ * Takes the job's nudge lock: { ok: true } (also { unlocked: true } when the folder cannot hold a lock: the
+ * nudge then runs as before), or { ok: false, holder } when another nudge of the job is running. A stale
+ * lock is moved aside with a rename (atomic), and put back if what was moved turns out to be live.
+ */
+function takeLock(file) {
+  const childFile = `${file}.child`;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      if (publish(file)) return { ok: true };
+    } catch {
+      return { ok: true, unlocked: true };
+    }
+    const rec = readRecord(file);
+    if (isLive(rec, childFile)) return { ok: false, holder: rec.pid };
+    const aside = `${file}.stale.${process.pid}.${attempt}`;
+    try {
+      renameSync(file, aside);
+    } catch {
+      continue; // someone else moved or released it: try again
+    }
+    if (isLive(readRecord(aside), childFile)) {
+      try { linkSync(aside, file); } catch { /* another lock took the place */ }
+      rmSync(aside, { force: true });
+      continue;
+    }
+    rmSync(aside, { force: true });
+    rmSync(childFile, { force: true });
+  }
+  return { ok: false, holder: readRecord(file)?.pid ?? null };
+}
+
+/** Removes the lock (and its checks PID) only when this nudge holds it. */
 function releaseLock(file) {
-  if (Number.parseInt(readText(file) ?? '', 10) === process.pid) bestEffort(() => rmSync(file, { force: true }));
+  if (readRecord(file)?.pid !== process.pid) return;
+  bestEffort(() => rmSync(`${file}.child`, { force: true }));
+  bestEffort(() => rmSync(file, { force: true }));
 }
 
 /** The stamp and the log only save time; failing to write them never changes the checks' result. */
