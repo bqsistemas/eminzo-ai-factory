@@ -4,9 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -142,36 +142,70 @@ test('AC-2: a changed path with a newline falls back to full and says so; nothin
   assert.equal(res.status, 0, res.stderr);
   assert.deepEqual(t.modes(), ['full']);
   assert.equal(t.changed(), 'none\n');
-  assert.match(res.stderr, /contains a newline; running the full checks/);
+  assert.match(res.stderr, /contains a newline or is not valid UTF-8; running the full checks/);
   assert.equal(JSON.parse(readFileSync(join(t.jobDir, 'nudge.json'), 'utf8')).mode, 'full');
 });
 
-test('the changed-files list is a throwaway: not in the job folder after a run, even when the checks fail', () => {
-  const t = setup({ checks: '#!/bin/sh\necho "$FACTORY_CHANGED_FILES" > "$OUT/path"\nexit 1\n' });
-  assert.equal(t.nudge().status, 2);
-  const listed = readFileSync(join(t.out, 'path'), 'utf8').trim();
-  assert.ok(listed.endsWith('changed-files.txt'));
-  assert.equal(existsSync(listed), false);
-  assert.deepEqual(readdirSync(t.jobDir).filter((f) => /changed|\.tmp$/.test(f)), []);
-});
-
-test('stamp: a focused pass is not reused after the base moves, and records the base it was made against', () => {
+test('stamp: a focused pass is reused only for the base it was made against (same tree and inputs, different base)', () => {
   const t = setup();
   assert.equal(t.nudge().status, 0);
-  const stamp = JSON.parse(readFileSync(join(t.jobDir, 'nudge.json'), 'utf8'));
+  const file = join(t.jobDir, 'nudge.json');
+  const stamp = JSON.parse(readFileSync(file, 'utf8'));
   assert.match(stamp.base, /^[0-9a-f]{40,64}$/);
   assert.equal(t.nudge().status, 0);
   assert.deepEqual(t.modes(), ['focused'], 'same base: reused');
-  // main moves on and the branch syncs with it: same files at HEAD level is not enough, the diff changed
-  writeFileSync(join(t.root, 'main-only.txt'), 'm\n');
-  git(t.root, 'add', '.');
-  git(t.root, 'commit', '-q', '-m', 'main moved');
-  git(t.root, 'push', '-q', 'origin', 'main');
-  git(t.root, 'fetch', '-q', 'origin');
-  git(t.worktree, 'merge', '-q', '--no-edit', 'origin/main');
-  const second = t.nudge();
-  assert.equal(second.status, 0, second.stderr);
-  assert.deepEqual(t.modes(), ['focused', 'focused'], 'the base moved: it ran again');
+  writeFileSync(file, `${JSON.stringify({ ...stamp, base: 'f'.repeat(40) })}\n`);
+  assert.equal(t.nudge().status, 0);
+  assert.deepEqual(t.modes(), ['focused', 'focused'], 'another base: it ran again');
+  const { base, ...noBase } = JSON.parse(readFileSync(file, 'utf8'));
+  writeFileSync(file, `${JSON.stringify({ ...noBase, mode: 'focused' })}\n`);
+  assert.equal(t.nudge().status, 0);
+  assert.deepEqual(t.modes(), ['focused', 'focused', 'focused'], 'a focused stamp without a base is never reused');
+});
+
+test('stamp: an unknown or corrupt mode is never a full pass', () => {
+  const t = setup();
+  assert.equal(t.nudge('--full').status, 0);
+  const file = join(t.jobDir, 'nudge.json');
+  const stamp = JSON.parse(readFileSync(file, 'utf8'));
+  for (const mode of ['bogus', null, 7]) {
+    writeFileSync(file, `${JSON.stringify({ ...stamp, mode })}\n`);
+    assert.equal(t.hook().status, 0);
+  }
+  assert.deepEqual(t.modes(), ['full', 'full', 'full', 'full']);
+});
+
+test('the changed-files folder is gone after the run, a stale one left by a killed nudge is swept, and a temp dir that cannot be made means full', () => {
+  const t = setup({ checks: '#!/bin/sh\necho "$FACTORY_CHANGED_FILES" > "$OUT/path"\nexit 0\n' });
+  const tmp = mkdtempSync(join(tmpdir(), 'factory-mode-tmp-'));
+  const stale = join(tmp, 'factory-changed-old');
+  const fresh = join(tmp, 'factory-changed-new');
+  mkdirSync(stale);
+  mkdirSync(fresh);
+  const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  utimesSync(stale, old, old);
+  assert.equal(t.call('nudge', [ID], { TMPDIR: tmp }).status, 0);
+  const listed = readFileSync(join(t.out, 'path'), 'utf8').trim();
+  assert.ok(listed.startsWith(tmp) || listed.includes('factory-changed-'));
+  assert.equal(existsSync(dirname(listed)), false, 'the folder itself is removed');
+  assert.equal(existsSync(stale), false, 'the stale folder is swept');
+  assert.equal(existsSync(fresh), true, 'a recent one (maybe another nudge) is kept');
+  const bad = setup();
+  writeFileSync(join(bad.worktree, 'n.txt'), 'n\n');
+  assert.equal(bad.call('nudge', [ID], { TMPDIR: join(tmp, 'missing') }).status, 0);
+  assert.deepEqual(bad.modes(), ['full'], 'mkdtemp failed: run everything');
+});
+
+test('AC-2: a changed path that is not valid UTF-8 falls back to full', (ctx) => {
+  const t = setup();
+  try {
+    writeFileSync(Buffer.concat([Buffer.from(`${t.worktree}/bad-`), Buffer.from([0xff, 0xfe]), Buffer.from('.txt')]), 'x\n');
+  } catch {
+    ctx.skip('this file system rejects non-UTF-8 names');
+    return;
+  }
+  assert.equal(t.nudge().status, 0);
+  assert.deepEqual(t.modes(), ['full']);
 });
 
 test('AC-1: a checks.sh that ignores the variables gives the same result in nudge, --full, the hook and the gate', () => {

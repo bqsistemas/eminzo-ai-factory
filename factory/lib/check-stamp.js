@@ -110,6 +110,6 @@ export function changedFiles(worktree, base) {
   const diff = run('git', ['diff', '--name-only', '--no-renames', '-z', from, tree], { cwd: worktree });
   if (diff.status !== 0) return { reason: 'git diff failed' };
   const files = [...new Set(diff.stdout.split('\0').filter(Boolean))].sort();
-  if (files.some((f) => /[\n\r]/.test(f))) return { reason: 'a changed path contains a newline' };
+  if (files.some((f) => /[\n\r\uFFFD]/.test(f))) return { reason: 'a changed path contains a newline or is not valid UTF-8' };
   return { files, base: from };
 }

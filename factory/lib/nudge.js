@@ -24,7 +24,7 @@
 // as the Stop hook (so the builder keeps waiting). A lock is stale, and taken over, when neither
 // process is alive or it is older than MAX_LOCK_AGE (a recycled PID never blocks forever). The
 // builder runs the nudge in the foreground and waits for it, so there is never a reason to start another.
-import { existsSync, linkSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -101,7 +101,9 @@ function main(args = []) {
       return false;
     }
   };
-  const passed = last?.mode === 'focused' ? !wantFull && focusedOk() : true;
+  // Full callers accept only a full pass (no mode = recorded before modes existed); anything else re-runs.
+  const fullPass = last?.mode === undefined || last.mode === 'full';
+  const passed = fullPass || (!wantFull && last.mode === 'focused' && focusedOk());
   if (tree && last?.tree === tree && last.inputs === inputs && passed) {
     process.stderr.write(`factory nudge: the checks already passed for this tree (${tree.slice(0, 12)}); not running them again.\n`);
     return 0;
@@ -126,18 +128,41 @@ function main(args = []) {
   }
 }
 
+const CHANGED_PREFIX = 'factory-changed-';
+const STALE_CHANGED = 24 * 60 * 60 * 1000;
+
+/**
+ * Removes the changed-files folders a killed nudge left in the temp dir (SIGTERM and SIGINT skip the
+ * `finally` while the checks run, and a signal handler cannot run while this process waits on them).
+ */
+function sweepStaleChangedFolders() {
+  try {
+    for (const name of readdirSync(tmpdir())) {
+      if (!name.startsWith(CHANGED_PREFIX)) continue;
+      const dir = join(tmpdir(), name);
+      if (Date.now() - statSync(dir).mtimeMs > STALE_CHANGED) rmSync(dir, { recursive: true, force: true });
+    }
+  } catch { /* best effort */ }
+}
+
 /** The focused run's options: the changed-files list in a throwaway folder (`cleanup` removes it), or {} (full) when it cannot be made. */
 function focusedOptions(root, job) {
   const none = { options: {}, cleanup() {} };
+  sweepStaleChangedFolders();
   try {
     const found = changedFiles(job.worktree, baseRef(loadConfig(root)).base);
     if (found.reason) {
       process.stderr.write(`factory nudge: ${found.reason}; running the full checks.\n`);
       return none;
     }
-    const tmp = mkdtempSync(join(tmpdir(), 'factory-changed-'));
+    const tmp = mkdtempSync(join(tmpdir(), CHANGED_PREFIX));
     const file = join(tmp, 'changed-files.txt');
-    writeFileSync(file, found.files.map((f) => `${f}\n`).join(''));
+    try {
+      writeFileSync(file, found.files.map((f) => `${f}\n`).join(''));
+    } catch (err) {
+      rmSync(tmp, { recursive: true, force: true });
+      throw err;
+    }
     return { options: { mode: 'focused', changedFiles: file }, base: found.base, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
   } catch {
     return none;
