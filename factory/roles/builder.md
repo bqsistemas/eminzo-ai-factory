@@ -33,7 +33,10 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    (`AC-1: ...`). Watch the tests fail, then implement until they pass. Never edit
    or delete a test listed in `factory/config.json` `protected_tests`; the gate fails
    the round if you do.
-3. Run the repo's checks with `factory/bin/nudge <job-id>`. It runs the main checkout's
+3. Run the repo's checks with `factory/bin/nudge <job-id>` in the foreground, and wait for
+   it to exit: give the command a long timeout (it can take minutes) and never send it to
+   the background or poll for it. A second nudge of the same job is refused while one runs
+   (`refused: nudge running (pid N)`). It runs the main checkout's
    `factory/checks.sh` inside your worktree; exit 0 is a pass and exit 2 a failure (the
    full log is in `<job folder>/nudge.log`). It remembers a pass for exactly these files,
    so the check when you stop does not run them again. To iterate on one failing test,
