@@ -25,13 +25,22 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
 **Work**
 1. Workspace. The worktree already exists on branch `factory/<job-id>`; never
    create, move or remove it. Make every code change and commit inside it. In the
-   main checkout, write only your `build.md`. Never commit files under
+   main checkout, write only your `build.md` and `plan.md`. Never commit files under
    `factory/jobs/` or `factory/board.json`.
-2. Tests first. Write one test per acceptance criterion and put the AC id in its name
+2. Plan. Before your first code edit, write `<job folder>/plan.md` (in the main checkout, next
+   to `build.md`), at most 30 lines, with exactly these four headings:
+   - `## Files that change`: the files, in the order you will change them.
+   - `## Order of work`: the steps.
+   - `## Risks`: the riskiest step, and what could break outside the diff.
+   - `## Proof`: the test that proves each `AC-n`.
+
+   Update it when the code departs from it. `selfcheck` fails without it, and the code reviewer
+   compares your diff with it.
+3. Tests first. Write one test per acceptance criterion and put the AC id in its name
    (`AC-1: ...`). Watch the tests fail, then implement until they pass. Never edit
    or delete a test listed in `factory/config.json` `protected_tests`; the gate fails
    the round if you do.
-3. Run the repo's checks with `factory/bin/nudge <job-id>` in the foreground, and wait for
+4. Run the repo's checks with `factory/bin/nudge <job-id>` in the foreground, and wait for
    it to exit: give the command a long timeout (it can take minutes) and never send it to
    the background or poll for it. A second nudge of the same job is refused while one runs
    (`refused: nudge running (pid N)`). It runs the main checkout's
@@ -43,7 +52,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    `FACTORY_CHECK_MODE` and `FACTORY_CHANGED_FILES` may run only what your change touches.
    The factory runs the full checks before the gate (and again in the gate), so a focused
    pass is not the final word; `--full` forces everything.
-   Write `STATUS: READY` only when the checks exit 0 and `selfcheck` (step 6) exits 0; on a failure fix it and run the nudge
+   Write `STATUS: READY` only when the checks exit 0 and `selfcheck` (step 7) exits 0; on a failure fix it and run the nudge
    again, within these limits:
    - Run the same failing check command at most 2 times per round. The nudge also stops
      running the checks after `checks.max_runs_per_round` runs in a round (default 6) and
@@ -55,7 +64,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
      in `build.md` under a level-2 heading written exactly `## Flaky` (never `### Flaky`, which
      would be read as part of `## Spec deviations`), one line per check as `command | error`, and do not fix
      it in this job.
-4. Visual check. When the spec's surfaces include `ui`, run `factory/bin/visual <job-id>`
+5. Visual check. When the spec's surfaces include `ui`, run `factory/bin/visual <job-id>`
    after the checks and before you write `STATUS: READY`. It writes
    `<round folder>/visual.md`: the first line is `VISUAL: PASS`, `VISUAL: FAIL`,
    `VISUAL: SKIPPED` or `VISUAL: ERROR`. Fix every finding on `FAIL` (overflow,
@@ -63,22 +72,22 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    `FAIL`: `SKIPPED` (the repo declares no `visual` block, or there is no browser) and
    `ERROR` (the app or the browser could not run; its `Reason:` line says why) need no
    action. The gate runs the same check and fails the round only on `VISUAL: FAIL`.
-5. Commit on `factory/<job-id>` using Conventional Commits, with no AI attribution or
+6. Commit on `factory/<job-id>` using Conventional Commits, with no AI attribution or
    `Co-Authored-By` lines. If the change alters the stack or the test command, update
    `factory/project.md` in this branch too. If it adds or moves modules or top-level
    files, update the `Module map` section of `factory/project.md` in the same branch;
    the gate flags a map that does not mention them.
-6. Self-check. With everything committed, run `factory/bin/selfcheck <job-id>`. It exits 0 and
+7. Self-check. With everything committed, run `factory/bin/selfcheck <job-id>`. It exits 0 and
    prints `selfcheck: ok` when every `AC-n` is named in a test that your diff adds or changes, no
-   protected test changed and nothing is uncommitted. Otherwise it exits 1 and names each problem:
-   fix them, commit and run it again. A `warning:` line (the `Module map` does not mention your
-   new modules, as the gate also reports) does not fail it, but fix it too. Write `STATUS: READY`
-   only when it exits 0. It is a quick check of your own work; the gate stays the judge.
+   protected test changed, `plan.md` has its four headings and nothing is uncommitted. Otherwise
+   it exits 1 and names each problem: fix them, commit and run it again. A `warning:` line (the
+   `Module map` does not mention your new modules, as the gate also reports; `plan.md` over 30
+   lines) does not fail it, but fix it too. Write `STATUS: READY` only when it exits 0. It is a quick check of your own work; the gate stays the judge.
    Claude also denies, while you work, an Edit, Write, MultiEdit or NotebookEdit of a protected
    test and of any file in the main checkout except this job's `build.md` and `plan.md`. A Bash
    command is not covered, so do not write those files that way either; Codex has no such
    hook at all, so keep away from them yourself.
-7. Push and open the PR.
+8. Push and open the PR.
    - Round 1: `git push -u origin factory/<job-id>`, then
      `gh pr create --draft --base <base-branch> --head factory/<job-id> --title "<title>" --body "Closes #<issue>"`,
      where `<title>` is the `title` field of `<job folder>/job.json` (the factory
@@ -89,7 +98,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    - Later rounds: `git push origin factory/<job-id>`.
    - Push only `factory/<job-id>`. Never push `<base-branch>`, never force-push, never merge,
      never mark the PR ready; the factory scripts do that.
-8. On a later round, fix every blocker. If you disagree with a finding, say why in
+9. On a later round, fix every blocker. If you disagree with a finding, say why in
    build.md instead of ignoring it. If a note asks you to sync with the base, run
    `git fetch origin && git merge <base>` in the worktree, resolve the
    conflicts there, commit and push.

@@ -4,7 +4,7 @@ developer_instructions = '''
 Read factory/project.md, factory/roles/{{role}}.md, and {{inputs}}. Follow the role body and first-line protocol.
 {{rules}}
 {{data-rule}}
-Write only `{{path}}` and reply with its first line: {{tokens}}.
+Write only `{{path}}`{{also-codex}} and reply with its first line: {{tokens}}.
 
 {{language}}
 

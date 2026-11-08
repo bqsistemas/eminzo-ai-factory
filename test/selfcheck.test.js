@@ -17,10 +17,11 @@ const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8',
 
 const SPEC = '# Spec: dark mode\n\n## Acceptance criteria\n- AC-1: toggles the theme\n- AC-2: remembers the choice\n';
 const INTAKE = 'ACCEPT\n\n# Intake\n\n## Scope\n- AC-1: toggles the theme\n- AC-2: remembers the choice\n\n## Notes\n- AC-9: not part of the scope\n';
+const PLAN = '# Plan\n\n## Files that change\n- src/theme.js\n\n## Order of work\n1. test\n\n## Risks\nnone\n\n## Proof\n- AC-1: test/theme.test.js\n';
 const MAP = '# Project\n\n## Module map\n- `src/`: the app\n\n## Conventions\nnone\n';
 
 /** A main checkout with a bare origin, protected test, a project.md and a job worktree on its own branch. */
-function setup({ config = {}, lane, spec = SPEC, intake = INTAKE, map = MAP } = {}) {
+function setup({ config = {}, lane, spec = SPEC, intake = INTAKE, map = MAP, plan = PLAN } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'factory-selfcheck-'));
   const origin = join(dir, 'origin.git');
   const root = join(dir, 'root');
@@ -44,6 +45,7 @@ function setup({ config = {}, lane, spec = SPEC, intake = INTAKE, map = MAP } = 
   writeFileSync(join(jobDir, 'job.json'), JSON.stringify({ id: ID, branch: `factory/${ID}`, worktree, stage: 'build', round: 1, ...(lane ? { lane } : {}) }));
   writeFileSync(join(jobDir, 'spec.md'), spec);
   writeFileSync(join(jobDir, 'intake.md'), intake);
+  if (plan !== null) writeFileSync(join(jobDir, 'plan.md'), plan);
   const env = { ...process.env, ...GIT_ENV, FACTORY_ROOT: root };
   delete env.NODE_TEST_CONTEXT;
   const commit = (files, message = 'feat: work') => {
@@ -180,4 +182,20 @@ test('a very long test line is cut before the pattern runs, so a reference past 
   const res = t.selfcheck();
   assert.equal(res.status, 1);
   assert.match(res.stdout, /AC-1 has no test/);
+
+test('P2 AC-1: selfcheck exits 1 without plan.md', () => {
+  const t = setup({ plan: null });
+  t.commit({ 'test/theme.test.js': BOTH });
+  const res = t.selfcheck();
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /plan\.md is missing/);
+});
+
+test('P2: selfcheck exits 1 and names each of the four headings plan.md lacks', () => {
+  const t = setup({ plan: PLAN.replace('## Risks\nnone\n\n', '').replace('## Order of work', '### Order of work') });
+  t.commit({ 'test/theme.test.js': BOTH });
+  const res = t.selfcheck();
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /plan\.md lacks the headings: ## Order of work, ## Risks/);
+  assert.doesNotMatch(res.stdout, /Files that change|Proof/);
 });

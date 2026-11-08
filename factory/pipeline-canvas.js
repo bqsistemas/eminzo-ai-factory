@@ -135,7 +135,7 @@ export function bindPipelineControls({ jobSelect, canvas, getSelection, setSelec
 }
 
 export function artifactFiles(job) {
-  const files = ['issue.md', 'intake.md', 'spec.md', 'build.md'];
+  const files = ['issue.md', 'intake.md', 'spec.md', 'plan.md', 'build.md'];
   const rows = roundsOf(isObject(job) ? job : {}).slice(0, 50);
   rows.forEach((row, index) => {
     const round = index + 1;

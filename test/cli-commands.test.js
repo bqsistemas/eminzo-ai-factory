@@ -312,6 +312,7 @@ test('eminzo selfcheck <id> is `job <id> selfcheck`; eminzo protect-tests is the
   mkdirSync(jobDir, { recursive: true });
   writeFileSync(join(jobDir, 'job.json'), JSON.stringify({ id: '007-x', worktree }));
   writeFileSync(join(jobDir, 'spec.md'), '# Spec: x\n- AC-1: a thing\n');
+  writeFileSync(join(jobDir, 'plan.md'), '## Files that change\n## Order of work\n## Risks\n## Proof\n');
   const missing = t.run(['selfcheck', '007-x'], { cwd: root });
   assert.equal(missing.status, 1, missing.stderr);
   assert.match(missing.stdout, /AC-1 has no test/);

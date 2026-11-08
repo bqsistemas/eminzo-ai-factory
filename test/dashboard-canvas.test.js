@@ -109,7 +109,7 @@ test('AC-3: canvas renders selected task identity, provider and seven-stage prog
 
 test('AC-4: artifact allowlist and GitHub links reject arbitrary paths and URLs', () => {
   assert.deepEqual(artifactFiles({ round: 1, reviews: { code: 'PASS', '<img>': 'PASS' } }), [
-    'issue.md', 'intake.md', 'spec.md', 'build.md', 'round-1/checks.md', 'round-1/review-code.md', 'decision.md', 'merge-checks.md',
+    'issue.md', 'intake.md', 'spec.md', 'plan.md', 'build.md', 'round-1/checks.md', 'round-1/review-code.md', 'decision.md', 'merge-checks.md',
   ]);
   assert.equal(artifactFiles({ round: 999, history: [{}, {}, {}] }).some((name) => name.includes('999')), false);
   assert.match(html, /openDrawer\(selectedJob\.id, button\.dataset\.artifact\)/);
