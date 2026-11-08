@@ -41,7 +41,10 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    full log is in `<job folder>/nudge.log`). It remembers a pass for exactly these files,
    so the check when you stop does not run them again. To iterate on one failing test,
    run that test file alone, then run the nudge again. If you start the app, use the
-   port from your prompt.
+   port from your prompt. By hand the nudge is focused: a `factory/checks.sh` that reads
+   `FACTORY_CHECK_MODE` and `FACTORY_CHANGED_FILES` may run only what your change touches.
+   The factory runs the full checks before the gate (and again in the gate), so a focused
+   pass is not the final word; `--full` forces everything.
 4. Visual check. When the spec's surfaces include `ui`, run `factory/bin/visual <job-id>`
    after the checks and before you write `STATUS: READY`. It writes
    `<round folder>/visual.md`: the first line is `VISUAL: PASS`, `VISUAL: FAIL`,

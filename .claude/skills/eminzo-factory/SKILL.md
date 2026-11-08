@@ -78,7 +78,7 @@ factory/
   bin/gate <id>         runs checks.sh in the worktree, guards protected tests → round-N/checks.md
   bin/route <id>        prints the agent set for intake.md (job does this at intake → spec)
   bin/approve <id>      the deterministic approver: approve | escalate: <reason> | inconclusive: <reasons>
-  bin/nudge             the builder's Stop hook: runs checks.sh before it finishes
+  bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
   bin/init              writes a first factory/project.md from the repo when it is missing
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
   bin/setup             creates the GitHub labels (`/eminzo-factory setup` runs it)
@@ -372,8 +372,8 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     also checks the xs limits in the branch diff (at most 2 non-test files, none added or
     deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
   - Then `job <id> to gate`. It needs the open PR. The
-    builder's Stop hook (`factory/bin/nudge`) already ran `factory/checks.sh` in the
-    worktree and blocked its stop on a failure, so a READY build has passing checks
+    builder's Stop hook (`factory/bin/nudge`, always the full checks) already ran `factory/checks.sh` in the
+    worktree and blocked its stop on a failure (the builder's own `factory/bin/nudge <id>` is focused), so a READY build has passing checks
     and the gate rarely fails; the gate stays the authority.
 - **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes.
   <!-- rule: round-context -->

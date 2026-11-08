@@ -88,3 +88,19 @@ export function testedBy(text) {
   const inputs = (text ?? '').match(/^Checks inputs: (\S+)$/m)?.[1] ?? null;
   return { head: SHA.test(head ?? '') ? head : null, inputs: INPUTS.test(inputs ?? '') ? inputs : null };
 }
+
+/**
+ * The paths a worktree changed against `base`, one per line: committed, staged, unstaged and
+ * untracked (not ignored), compared with the merge-base of `base` and HEAD. Renames count as the
+ * old path and the new one, deletions as the deleted path. Sorted, without duplicates. Null when
+ * git cannot tell (no such base, no tree): the caller then runs everything.
+ */
+export function changedFiles(worktree, base) {
+  const mb = run('git', ['merge-base', base, 'HEAD'], { cwd: worktree });
+  const from = mb.status === 0 ? mb.stdout.trim() : '';
+  const tree = worktreeTree(worktree);
+  if (!SHA.test(from) || !tree) return null;
+  const diff = run('git', ['diff', '--name-only', '--no-renames', '-z', from, tree], { cwd: worktree });
+  if (diff.status !== 0) return null;
+  return [...new Set(diff.stdout.split('\0').filter(Boolean))].sort();
+}

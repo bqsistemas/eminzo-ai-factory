@@ -207,7 +207,7 @@ describe('check reuse', { concurrency: true }, () => {
   test('nudge skips the checks for a tree that already passed, manual (Codex) or hook (Claude)', async () => {
     const t = setup();
     const { id, worktree } = await building(t);
-    ok(await t.bin('nudge', [id]));
+    ok(await t.bin('nudge', [id, '--full'])); // a focused pass is not reusable by the hook (test/check-mode.test.js)
     assert.equal(t.runs(), 1);
     const again = await t.bin('nudge', [id]);
     assert.equal(again.status, 0);
