@@ -1,0 +1,260 @@
+{
+  "source": "PixelOfficeAssets.png",
+  "image": "office-atlas-assets.png",
+  "sourceSize": {
+    "width": 768,
+    "height": 512
+  },
+  "alphaThreshold": 200,
+  "sprites": {
+    "intake": {
+      "x": 14,
+      "y": 29,
+      "w": 23,
+      "h": 34
+    },
+    "spec-writer": {
+      "x": 72,
+      "y": 29,
+      "w": 23,
+      "h": 34
+    },
+    "builder": {
+      "x": 123,
+      "y": 29,
+      "w": 24,
+      "h": 34
+    },
+    "review-security": {
+      "x": 175,
+      "y": 29,
+      "w": 23,
+      "h": 34
+    },
+    "review-ux": {
+      "x": 226,
+      "y": 29,
+      "w": 24,
+      "h": 34
+    },
+    "review-ui": {
+      "x": 282,
+      "y": 62,
+      "w": 23,
+      "h": 33
+    },
+    "review-code": {
+      "x": 333,
+      "y": 29,
+      "w": 23,
+      "h": 34
+    },
+    "approver": {
+      "x": 386,
+      "y": 29,
+      "w": 24,
+      "h": 34
+    },
+    "desk": {
+      "x": 8,
+      "y": 132,
+      "w": 66,
+      "h": 47
+    },
+    "deskDual": {
+      "x": 146,
+      "y": 132,
+      "w": 69,
+      "h": 47
+    },
+    "deskPlant": {
+      "x": 77,
+      "y": 132,
+      "w": 65,
+      "h": 47
+    },
+    "sofaBlue": {
+      "x": 13,
+      "y": 182,
+      "w": 52,
+      "h": 35
+    },
+    "sofaGreen": {
+      "x": 70,
+      "y": 182,
+      "w": 52,
+      "h": 35
+    },
+    "table": {
+      "x": 155,
+      "y": 182,
+      "w": 46,
+      "h": 35
+    },
+    "meetingTable": {
+      "x": 104,
+      "y": 223,
+      "w": 51,
+      "h": 45
+    },
+    "plant": {
+      "x": 204,
+      "y": 179,
+      "w": 27,
+      "h": 43
+    },
+    "plantTall": {
+      "x": 407,
+      "y": 220,
+      "w": 27,
+      "h": 48
+    },
+    "shelf": {
+      "x": 527,
+      "y": 135,
+      "w": 44,
+      "h": 50
+    },
+    "server": {
+      "x": 616,
+      "y": 134,
+      "w": 26,
+      "h": 52
+    },
+    "vending": {
+      "x": 580,
+      "y": 134,
+      "w": 29,
+      "h": 51
+    },
+    "cooler": {
+      "x": 583,
+      "y": 184,
+      "w": 27,
+      "h": 43
+    },
+    "board": {
+      "x": 415,
+      "y": 135,
+      "w": 56,
+      "h": 47
+    },
+    "chair": {
+      "x": 126,
+      "y": 181,
+      "w": 27,
+      "h": 35
+    },
+    "printer": {
+      "x": 491,
+      "y": 224,
+      "w": 29,
+      "h": 44
+    },
+    "window": {
+      "x": 168,
+      "y": 277,
+      "w": 53,
+      "h": 39
+    },
+    "wall": {
+      "x": 230,
+      "y": 278,
+      "w": 77,
+      "h": 37
+    },
+    "door": {
+      "x": 194,
+      "y": 321,
+      "w": 28,
+      "h": 40
+    },
+    "floorWood": {
+      "x": 260,
+      "y": 369,
+      "w": 29,
+      "h": 31
+    },
+    "floorTile": {
+      "x": 14,
+      "y": 370,
+      "w": 31,
+      "h": 31
+    },
+    "floorCorridor": {
+      "x": 55,
+      "y": 374,
+      "w": 24,
+      "h": 24
+    },
+    "cabinet": {
+      "x": 321,
+      "y": 278,
+      "w": 58,
+      "h": 40
+    },
+    "plantSmall": {
+      "x": 208,
+      "y": 183,
+      "w": 18,
+      "h": 32
+    },
+    "plantPot": {
+      "x": 297,
+      "y": 184,
+      "w": 17,
+      "h": 32
+    },
+    "armchairOrange": {
+      "x": 237,
+      "y": 190,
+      "w": 19,
+      "h": 25
+    },
+    "armchairBlue": {
+      "x": 375,
+      "y": 186,
+      "w": 21,
+      "h": 30
+    },
+    "bubbleThink": {
+      "x": 642,
+      "y": 67,
+      "w": 18,
+      "h": 17
+    },
+    "bubbleAlert": {
+      "x": 672,
+      "y": 66,
+      "w": 19,
+      "h": 20
+    },
+    "bubbleIdea": {
+      "x": 702,
+      "y": 66,
+      "w": 18,
+      "h": 19
+    },
+    "bubbleDone": {
+      "x": 733,
+      "y": 66,
+      "w": 18,
+      "h": 20
+    }
+  },
+  "characters": {
+    "intake": "intake",
+    "spec-writer": "spec-writer",
+    "builder": "builder",
+    "review-security": "review-security",
+    "review-ux": "review-ux",
+    "review-ui": "review-ui",
+    "review-code": "review-code",
+    "approver": "approver"
+  },
+  "substitutions": [
+    "UI uses its intact side-facing pose because the front/back hat pixels are incomplete.",
+    "A single complete standing pose per role is used; walking is translation with a one-pixel bob, not invented animation frames.",
+    "The meeting table reuses the supplied rectangular coffee table at proportional scale; no occupied desk sprites are used."
+  ]
+}

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Samuel Factory</title>
+<script id="theme-init">
+(function () {
+  var KEY = 'factory-theme';
+  var root = document.documentElement;
+  function stored() {
+    try { var v = window.localStorage.getItem(KEY); return v === 'light' || v === 'navy' ? v : null; }
+    catch (e) { return null; }
+  }
+  function os() {
+    try { return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'navy'; }
+    catch (e) { return 'navy'; }
+  }
+  function apply(t) { root.setAttribute('data-theme', t); }
+  window.factoryTheme = {
+    current: function () { return root.getAttribute('data-theme') === 'light' ? 'light' : 'navy'; },
+    set: function (t) {
+      if (t !== 'light' && t !== 'navy') return;
+      apply(t);
+      try { window.localStorage.setItem(KEY, t); } catch (e) { /* storage unavailable: keep the choice for this visit */ }
+    },
+  };
+  apply(stored() || os());
+})();
+</script>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<header class="top">
+  <h1>AI Software Factory</h1>
+  <span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 21V9l6 3V9l6 3V4h3v8h3v9H3zm4-4h2v-2H7v2zm4 0h2v-2h-2v2zm4 0h2v-2h-2v2z"/></svg></span>
+  <p class="brand-sub">AI Agents · GitHub Issues → Production Ready PRs</p>
+  <span class="stats">
+    <span class="stat" data-visual-check id="stat-jobs"><span class="ico ico-jobs" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 3 .8.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.5 9.5 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.8v2.7c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
+    <span class="stat" data-visual-check id="stat-running"><span class="ico ico-running" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
+    <span class="stat" data-visual-check id="stat-agents"><span class="ico ico-agents" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7 0a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM9 13c-3 0-6 1.5-6 4v2h12v-2c0-2.5-3-4-6-4zm7 0c-.4 0-.8 0-1.2.1 1.2.9 2.2 2.2 2.2 3.9v2h5v-2c0-2.2-2.8-4-6-4z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
+    <span class="stat" data-visual-check id="stat-cost"><span class="ico ico-cost" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15.5V19h-2v-1.5c-1.4-.2-2.5-1-2.8-2.3l1.8-.5c.2.8.9 1.3 1.9 1.3 1 0 1.6-.4 1.6-1.1 0-.7-.5-1-1.9-1.4-1.8-.5-3.2-1.1-3.2-2.9 0-1.3 1-2.2 2.6-2.5V6h2v1.5c1.2.2 2.1.9 2.5 2l-1.7.6c-.3-.7-.8-1-1.6-1-.9 0-1.4.4-1.4 1 0 .6.5.9 1.8 1.3 1.9.5 3.3 1.2 3.3 3 0 1.4-1 2.3-2.8 2.6z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
+  </span>
+  <span class="top-end">
+    <span class="status" id="status">connecting…</span>
+    <button class="guide-toggle" id="guide-toggle" type="button" aria-label="Open factory guide" aria-controls="guide" aria-expanded="false" title="How the factory works">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M8 7h8M8 11h8M8 15h5"/></svg>
+    </button>
+    <button class="theme-toggle" id="theme-toggle" type="button"><span id="theme-icon" aria-hidden="true"></span></button>
+    <span class="tag" id="demo" hidden>DEMO</span>
+    <a class="parked" id="parked" href="#col-needs-human" hidden></a>
+  </span>
+</header>
+<div class="panels">
+  <section class="panel office" id="office" aria-label="Agent Office">
+    <h2>Agent Office</h2>
+    <div class="office-stage" id="office-stage">
+      <canvas id="office-canvas" aria-hidden="true"></canvas>
+      <div id="office-hits"></div>
+    </div>
+    <div id="office-status" class="office-status" aria-label="Agent work and waiting jobs"></div>
+    <ul id="office-live" class="visually-hidden" aria-live="polite"></ul>
+  </section>
+  <section class="panel pipeline" id="pipeline" aria-label="Pipeline for task">
+    <h2>Pipeline for task</h2>
+    <div class="pipeline-layout">
+      <div class="pipeline-controls">
+        <label><span id="pipeline-job-label">Job</span><select id="pipeline-job" aria-label="Select job"></select></label>
+      </div>
+      <div class="pipeline-content">
+        <header class="pipeline-task-header" id="pipeline-task-header" aria-live="polite"></header>
+        <div class="pipeline-canvas" id="pipeline-canvas" aria-label="Pipeline stages"></div>
+        <section class="pipeline-inspector" id="pipeline-inspector" aria-live="polite"></section>
+      </div>
+    </div>
+  </section>
+</div>
+<main class="board" id="board"></main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div><div class="id" id="d-id"></div><div class="title" id="d-title"></div><div class="drawer-links" id="d-links"></div></div>
+    <button class="close" id="close" aria-label="Close">×</button>
+  </div>
+  <div class="drawer-summary" id="d-summary"></div>
+  <nav class="files" id="files" role="tablist"></nav>
+  <article class="doc" id="doc" role="tabpanel" tabindex="0"></article>
+</aside>
+
+<aside class="guide" id="guide" aria-hidden="true" aria-labelledby="guide-title" role="dialog" aria-modal="true">
+  <div class="guide-head">
+    <div>
+      <span class="eyebrow">Samuel Factory</span>
+      <h2 id="guide-title">Cómo funciona la Factory</h2>
+      <p>Una guía simple para entender qué pasa con cada issue, qué hace cada agente y cómo trabajar con Claude Code o Codex.</p>
+    </div>
+    <button class="close" id="guide-close" type="button" aria-label="Cerrar guía">×</button>
+  </div>
+  <div class="guide-content" id="guide-content">
+    <section class="guide-section full" id="guide-pipeline">
+      <h3>El viaje de un issue, de la idea al merge</h3>
+      <p>La Factory toma un issue de GitHub con la etiqueta <code>factory</code> y lo acompaña hasta que queda listo para producción. Cada paso deja una evidencia visible y el siguiente comienza solo cuando el anterior está listo.</p>
+      <div class="guide-pipeline" aria-label="Pipeline de la Factory">
+        <div class="guide-step"><b>1 · Intake</b><span>Entiende el pedido y detecta si falta información.</span></div>
+        <div class="guide-step"><b>2 · Spec</b><span>Convierte la idea en un plan claro y comprobable.</span></div>
+        <div class="guide-step"><b>3 · Build</b><span>Implementa el cambio en una rama y prepara el PR.</span></div>
+        <div class="guide-step"><b>4 · Gate</b><span>Corre los checks automáticos antes de revisar.</span></div>
+        <div class="guide-step"><b>5 · Review</b><span>Varios revisores analizan el mismo cambio en paralelo.</span></div>
+        <div class="guide-step"><b>6 · Approve</b><span>Un agente reúne los veredictos y recomienda aprobar o corregir.</span></div>
+        <div class="guide-step"><b>7 · Merge</b><span>El PR se integra, o queda esperando una decisión humana.</span></div>
+      </div>
+      <div class="guide-callout"><strong>Idea clave:</strong> los agentes hacen el trabajo especializado, pero la Factory mantiene una sola fuente de verdad: el estado del job, sus archivos y el PR.</div>
+    </section>
+
+    <section class="guide-section" id="guide-agents">
+      <h3>Qué hace cada agente</h3>
+      <div class="guide-agents">
+        <div class="guide-agent"><b>Intake</b><span>Lee el issue, resume el problema y pide datos cuando no alcanza para empezar.</span></div>
+        <div class="guide-agent"><b>Spec writer</b><span>Define alcance, criterios de aceptación y una estrategia de implementación.</span></div>
+        <div class="guide-agent"><b>Builder</b><span>Escribe el código, ejecuta pruebas y abre o actualiza el PR.</span></div>
+        <div class="guide-agent"><b>Security reviewer</b><span>Busca riesgos de permisos, datos, secretos y validaciones.</span></div>
+        <div class="guide-agent"><b>UX reviewer</b><span>Revisa que el flujo sea claro, accesible y fácil de usar.</span></div>
+        <div class="guide-agent"><b>UI reviewer</b><span>Comprueba consistencia visual, estados y adaptación a pantallas.</span></div>
+        <div class="guide-agent"><b>Code reviewer</b><span>Analiza calidad, errores, regresiones y mantenibilidad.</span></div>
+        <div class="guide-agent"><b>Approver</b><span>Lee todos los veredictos y decide si el job puede pasar a merge.</span></div>
+      </div>
+    </section>
+
+    <section class="guide-section" id="guide-states">
+      <h3>Cómo leer los estados</h3>
+      <ul>
+        <li><strong>Needs info:</strong> el issue necesita una respuesta antes de continuar.</li>
+        <li><strong>Spec review:</strong> con <code>spec_review</code> activo, el spec está publicado en el issue y espera tu <code>approve-spec</code> o <code>revise-spec</code>.</li>
+        <li><strong>Gate FAIL:</strong> una prueba falló; el job vuelve a Build con el motivo.</li>
+        <li><strong>Changes:</strong> un reviewer pidió correcciones; el builder vuelve a trabajar.</li>
+        <li><strong>Needs human:</strong> hace falta una decisión o acción tuya.</li>
+        <li><strong>Awaiting merge:</strong> el PR está listo y espera que una persona haga merge.</li>
+        <li><strong>Merged / Rejected:</strong> el job terminó y queda registrado en el historial.</li>
+      </ul>
+    </section>
+
+    <section class="guide-section" id="guide-commands">
+      <h3>Cómo usarla</h3>
+      <p>Primero corré <code>setup</code> una vez por repositorio. Después usá <code>issue &lt;n&gt;</code> para un issue existente o describí una funcionalidad nueva, y <code>run</code> para continuar los jobs pendientes. Elegí los comandos según el asistente que estés usando:</p>
+      <h4 class="guide-cmds-title">Claude Code</h4>
+      <ul class="guide-cmds">
+        <li><code>/eminzo-factory setup</code><span>Una sola vez por repositorio. Ejecutalo dentro de Claude Code o Codex en la terminal de Eminzo, no en el shell: analiza el repo y actualiza <code>factory/project.md</code>.</span></li>
+        <li><code>/eminzo-factory run</code><span>Continúa los jobs locales sin terminar. Solo toma issues nuevos de la cola si <code>run_mode</code> es <code>"queue"</code>.</span></li>
+        <li><code>/eminzo-factory issue 37</code><span>Asigna el issue a tu usuario de <code>gh</code> y lo ejecuta. Se rechaza si lo tiene otra persona o si la rama <code>factory/&lt;id&gt;</code> ya existe en el remoto.</span></li>
+        <li><code>/eminzo-factory &lt;feature&gt;</code><span>Crea el issue con el label <code>factory</code> a partir de tu pedido y lo ejecuta.</span></li>
+        <li><code>/eminzo-factory xs &lt;request&gt;</code><span>Igual, pero con el label <code>factory:xs</code>: solo pide el carril XS y el script decide.</span></li>
+        <li><code>/eminzo-factory rework 37 [claude|codex]</code><span>Retoma un job en Needs human con feedback confiable del PR; opcionalmente cambia de proveedor.</span></li>
+        <li><code>/eminzo-factory approve-spec 37</code><span data-i18n="guideApproveSpec">Aprueba el spec publicado en el issue (su SHA-256) y sigue con el build. Solo cuando spec_review lo pidió.</span></li>
+        <li><code>/eminzo-factory revise-spec 37 &lt;notes&gt;</code><span data-i18n="guideReviseSpec">Pide cambios al spec con tus notas: el spec writer lo reescribe y se vuelve a publicar para revisión.</span></li>
+      </ul>
+      <h4 class="guide-cmds-title">Codex</h4>
+      <ul class="guide-cmds">
+        <li><code>$eminzo-factory setup</code><span>Una sola vez por repositorio. Ejecutalo dentro de Claude Code o Codex en la terminal de Eminzo, no en el shell: analiza el repo y actualiza <code>factory/project.md</code>.</span></li>
+        <li><code>$eminzo-factory run</code><span>Continúa los jobs locales sin terminar. Solo toma issues nuevos de la cola si <code>run_mode</code> es <code>"queue"</code>.</span></li>
+        <li><code>$eminzo-factory issue 37</code><span>Asigna el issue a tu usuario de <code>gh</code> y lo ejecuta. Se rechaza si lo tiene otra persona o si la rama <code>factory/&lt;id&gt;</code> ya existe en el remoto.</span></li>
+        <li><code>$eminzo-factory add &lt;feature&gt;</code><span>Crea el issue con el label <code>factory</code> a partir de tu pedido y lo ejecuta.</span></li>
+        <li><code>$eminzo-factory xs &lt;request&gt;</code><span>Igual, pero con el label <code>factory:xs</code>: solo pide el carril XS y el script decide.</span></li>
+        <li><code>$eminzo-factory rework 37 [claude|codex]</code><span>Retoma un job en Needs human con feedback confiable del PR; opcionalmente cambia de proveedor.</span></li>
+        <li><code>$eminzo-factory approve-spec 37</code><span data-i18n="guideApproveSpec">Aprueba el spec publicado en el issue (su SHA-256) y sigue con el build. Solo cuando spec_review lo pidió.</span></li>
+        <li><code>$eminzo-factory revise-spec 37 &lt;notes&gt;</code><span data-i18n="guideReviseSpec">Pide cambios al spec con tus notas: el spec writer lo reescribe y se vuelve a publicar para revisión.</span></li>
+      </ul>
+      <p>En Codex, <code>$eminzo-factory</code> es una skill del repositorio. En Claude Code, <code>/eminzo-factory</code> es el comando existente. Ambos usan la misma Factory, el mismo job y las mismas reglas.</p>
+    </section>
+
+    <section class="guide-section" id="guide-human">
+      <h3>Cuándo intervenís vos</h3>
+      <ul>
+        <li>Respondé el issue si Intake marca que falta información.</li>
+        <li>Revisá y hacé merge del PR cuando el job quede esperando aprobación.</li>
+        <li>Si pedís cambios, usá el flujo de rework para que el builder reciba comentarios confiables.</li>
+        <li>Usá los detalles de cada tarjeta para leer intake, spec, build, checks y reviews.</li>
+      </ul>
+      <div class="guide-callout"><strong>Consejo:</strong> no hace falta memorizar los archivos internos. Mirá el tablero como una conversación: cada columna responde “¿qué falta para que este job avance?”.</div>
+    </section>
+
+    <section class="guide-section" id="guide-safety">
+      <h3>Claude y Codex, sin mezclar responsabilidades</h3>
+      <p>El proveedor elegido queda guardado en cada job. La configuración de <code>factory/config.json</code> decide qué modelo usa cada rol para Claude o Codex, mientras que el gate y las transiciones siguen siendo los mismos.</p>
+      <p><strong>Importante:</strong> no ejecutes Claude y Codex sobre el mismo job al mismo tiempo. Elegí un asistente por job para evitar que dos sesiones escriban el mismo estado.</p>
+    </section>
+  </div>
+</aside>
+
+<script>
+  // Module scripts cannot load over file://, so the board script below never runs there.
+  if (location.protocol === 'file:') {
+    const status = document.getElementById('status');
+    status.className = 'status off';
+    status.textContent = 'serve this folder: factory/bin/dashboard';
+  }
+</script>
+<script type="application/json" id="i18n">
+{
+  "en": {
+    "costUnavailable": "Cost unavailable",
+    "costUnavailableCount": "{n} unavailable",
+    "costUnavailableShort": "{n} N/A",
+    "costUnavailableTitle": "{n} jobs with unavailable cost",
+    "costUnavailableTitleOne": "1 job with unavailable cost",
+    "costHintDefault": "Sync this job to check cost availability.",
+    "costHint_missing_price": "Configure exact-model Codex prices in factory/config.json, then sync.",
+    "costHint_missing_model": "Check the rollout model metadata, then sync.",
+    "costHint_no_associated_usage": "Run a dedicated job worker, then sync after usage is recorded.",
+    "costHint_ambiguous_session": "Use a dedicated, unforked session for this job; shared usage cannot be priced safely.",
+    "costHint_invalid_usage": "Check rollout usage counters, then sync with valid data.",
+    "pipelineJob": "Job", "pipelineStage": "Stage", "pipelineStages": "Pipeline stages", "pipelineNoJobs": "No jobs available",
+    "pipelineAvailable": "Available", "pipelineChecking": "Checking…", "pipelineUnavailable": "Not available", "pipelineNotWritten": "Not written yet",
+    "pipelineActive": "Active", "pipelinePending": "Pending", "pipelineSkipped": "Skipped", "pipelineComplete": "Complete", "pipelineBlocked": "Blocked", "pipelineStagesSuffix": "stages",
+    "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
+    "pipelineStageNeedsHuman": "Needs human", "pipelineStageNeedsInfo": "Needs info", "pipelineStageAwaitingMerge": "Awaiting merge", "pipelineStageMerging": "Merging", "pipelineStageMerged": "Merged", "pipelineStageRejected": "Rejected",
+    "pipelineOpenGithub": "Open on GitHub", "pipelineJobDetails": "Job details", "pipelineTotalDuration": "Total duration", "pipelineTitle": "Task", "pipelineProvider": "Provider", "pipelineIssue": "Issue", "pipelineStatus": "Status", "pipelineProgress": "Progress", "pipelineDuration": "Duration", "pipelineCost": "Cost", "pipelineAgentCost": "Agent cost", "pipelineAgent": "Agent / model", "pipelineRound": "Round", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Note", "pipelineArtifacts": "Job artifacts", "pipelineGithubUnavailable": "GitHub links not available",
+    "hintNeedsHumanPr": "merge the PR to approve, or rework it:",
+    "hintNeedsHumanNoPr": "no PR yet: fix the cause, then resume it:",
+    "hintAwaitingMerge": "waiting for a reviewer to merge the PR",
+    "hintNeedsInfo": "waiting for the author to reply on the issue",
+    "guideApproveSpec": "Approve the spec posted on the issue (its SHA-256) and continue with the build. Only when spec_review asked for it.",
+    "guideReviseSpec": "Ask for changes to the spec with your notes: the spec writer rewrites it and it is posted again for review.",
+    "hintSpecReview": "the spec is on the issue: approve it, or ask for changes:",
+    "pipelineStageSpecReview": "Spec review",
+    "emptyBoard": "No jobs yet. Label a GitHub issue <code>factory<\/code>, then run <code>/eminzo-factory run<\/code> in Claude Code or <code>$eminzo-factory run<\/code> in Codex. Start your agent in the repository terminal first.",
+    "openTerminal": "Open repository terminal",
+    "demoLink": "Or open the <a href=\"?demo\">demo board<\/a>.",
+    "notWritten": "Not written yet.",
+    "parkedHuman": "{n} need{s} a human",
+    "parkedInfo": "{n} waiting for info",
+    "statusLive": "Live · updated {ago}",
+    "themeToLight": "Switch to light theme",
+    "themeToNavy": "Switch to navy theme",
+    "olderMerged": "+{n} older",
+    "statJobs": "Jobs",
+    "statRunning": "Running",
+    "statAgents": "Agents",
+    "statCost": "Cost"
+  },
+  "es": {
+    "costUnavailable": "Costo no disponible",
+    "costUnavailableCount": "{n} no disponibles",
+    "costUnavailableShort": "{n} N/D",
+    "costUnavailableTitle": "{n} jobs con costo no disponible",
+    "costUnavailableTitleOne": "1 job con costo no disponible",
+    "costHintDefault": "Sincronice este job para comprobar la disponibilidad del costo.",
+    "costHint_missing_price": "Configure los precios Codex por modelo exacto en factory/config.json y sincronice.",
+    "costHint_missing_model": "Revise los metadatos del modelo en el rollout y sincronice.",
+    "costHint_no_associated_usage": "Ejecute un worker dedicado al job y sincronice cuando se registre el uso.",
+    "costHint_ambiguous_session": "Use una sesión dedicada sin fork para este job; el uso compartido no se puede valorar de forma segura.",
+    "costHint_invalid_usage": "Revise los contadores de uso del rollout y sincronice con datos válidos.",
+    "pipelineJob": "Job", "pipelineStage": "Etapa", "pipelineStages": "Etapas del pipeline", "pipelineNoJobs": "No hay jobs disponibles",
+    "pipelineAvailable": "Disponible", "pipelineChecking": "Verificando…", "pipelineUnavailable": "No disponible", "pipelineNotWritten": "Todavía no está escrito",
+    "pipelineActive": "Activa", "pipelinePending": "Pendiente", "pipelineSkipped": "Omitida", "pipelineComplete": "Completada", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
+    "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
+    "pipelineStageNeedsHuman": "Necesita intervención humana", "pipelineStageNeedsInfo": "Falta información", "pipelineStageAwaitingMerge": "Esperando merge", "pipelineStageMerging": "En proceso de merge", "pipelineStageMerged": "Integrado", "pipelineStageRejected": "Rechazado",
+    "pipelineOpenGithub": "Abrir en GitHub", "pipelineJobDetails": "Detalles del job", "pipelineTotalDuration": "Duración total", "pipelineTitle": "Tarea", "pipelineProvider": "Proveedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progreso", "pipelineDuration": "Duración", "pipelineCost": "Costo", "pipelineAgentCost": "Costo del agente", "pipelineAgent": "Agente / modelo", "pipelineRound": "Ronda", "pipelineReviewers": "Reviewers", "pipelineBranch": "Rama", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefactos del job", "pipelineGithubUnavailable": "Enlaces de GitHub no disponibles",
+    "hintNeedsHumanPr": "hacé merge del PR para aprobar, o pedí un rework:",
+    "hintNeedsHumanNoPr": "todavía no hay PR: corregí la causa y reanudá el job:",
+    "hintAwaitingMerge": "esperando que una persona haga merge del PR",
+    "hintNeedsInfo": "esperando que el autor responda en el issue",
+    "guideApproveSpec": "Aprueba el spec publicado en el issue (su SHA-256) y sigue con el build. Solo cuando spec_review lo pidió.",
+    "guideReviseSpec": "Pide cambios al spec con tus notas: el spec writer lo reescribe y se vuelve a publicar para revisión.",
+    "hintSpecReview": "el spec está en el issue: aprobalo o pedí cambios:",
+    "pipelineStageSpecReview": "Revisión del spec",
+    "emptyBoard": "Todavía no hay jobs. Etiquetá un issue de GitHub con <code>factory<\/code> y ejecutá <code>/eminzo-factory run<\/code> en Claude Code o <code>$eminzo-factory run<\/code> en Codex. Primero iniciá tu agente en la terminal del repositorio.",
+    "openTerminal": "Abrir terminal del repositorio",
+    "demoLink": "O abrí el <a href=\"?demo\">tablero de demo<\/a>.",
+    "notWritten": "Todavía no está escrito.",
+    "parkedHuman": "Necesitan una persona: {n}",
+    "parkedInfo": "Esperando info: {n}",
+    "statusLive": "En vivo · actualizado {ago}",
+    "themeToLight": "Cambiar al tema claro",
+    "themeToNavy": "Cambiar al tema navy",
+    "olderMerged": "+{n} anteriores",
+    "statJobs": "Jobs",
+    "statRunning": "En curso",
+    "statAgents": "Agentes",
+    "statCost": "Costo"
+  },
+  "pt": {
+    "costUnavailable": "Custo indisponível",
+    "costUnavailableCount": "{n} indisponíveis",
+    "costUnavailableShort": "{n} N/D",
+    "costUnavailableTitle": "{n} jobs com custo indisponível",
+    "costUnavailableTitleOne": "1 job com custo indisponível",
+    "costHintDefault": "Sincronize este job para verificar a disponibilidade do custo.",
+    "costHint_missing_price": "Configure os preços Codex por modelo exato em factory/config.json e sincronize.",
+    "costHint_missing_model": "Verifique os metadados do modelo no rollout e sincronize.",
+    "costHint_no_associated_usage": "Execute um worker dedicado ao job e sincronize após o registro de uso.",
+    "costHint_ambiguous_session": "Use uma sessão dedicada sem fork para este job; o uso compartilhado não pode ser calculado com segurança.",
+    "costHint_invalid_usage": "Verifique os contadores de uso do rollout e sincronize com dados válidos.",
+    "pipelineJob": "Job", "pipelineStage": "Etapa", "pipelineStages": "Etapas do pipeline", "pipelineNoJobs": "Nenhum job disponível",
+    "pipelineAvailable": "Disponível", "pipelineChecking": "Verificando…", "pipelineUnavailable": "Indisponível", "pipelineNotWritten": "Ainda não foi escrito",
+    "pipelineActive": "Ativa", "pipelinePending": "Pendente", "pipelineSkipped": "Omitida", "pipelineComplete": "Concluída", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
+    "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
+    "pipelineStageNeedsHuman": "Precisa de intervenção humana", "pipelineStageNeedsInfo": "Falta informação", "pipelineStageAwaitingMerge": "Aguardando merge", "pipelineStageMerging": "Em processo de merge", "pipelineStageMerged": "Integrado", "pipelineStageRejected": "Rejeitado",
+    "pipelineOpenGithub": "Abrir no GitHub", "pipelineJobDetails": "Detalhes do job", "pipelineTotalDuration": "Duração total", "pipelineTitle": "Tarefa", "pipelineProvider": "Provedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progresso", "pipelineDuration": "Duração", "pipelineCost": "Custo", "pipelineAgentCost": "Custo do agente", "pipelineAgent": "Agente / modelo", "pipelineRound": "Rodada", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefatos do job", "pipelineGithubUnavailable": "Links do GitHub indisponíveis",
+    "hintNeedsHumanPr": "faça o merge do PR para aprovar, ou peça um rework:",
+    "hintNeedsHumanNoPr": "ainda não há PR: corrija a causa e retome o job:",
+    "hintAwaitingMerge": "aguardando uma pessoa fazer o merge do PR",
+    "hintNeedsInfo": "aguardando o autor responder no issue",
+    "guideApproveSpec": "Aprova o spec publicado no issue (o seu SHA-256) e segue com o build. Só quando spec_review pediu.",
+    "guideReviseSpec": "Pede mudanças no spec com as suas notas: o spec writer reescreve e ele é publicado de novo para revisão.",
+    "hintSpecReview": "o spec está no issue: aprove-o ou peça mudanças:",
+    "pipelineStageSpecReview": "Revisão do spec",
+    "emptyBoard": "Ainda não há jobs. Marque um issue do GitHub com <code>factory<\/code> e execute <code>/eminzo-factory run<\/code> no Claude Code ou <code>$eminzo-factory run<\/code> no Codex. Primeiro inicie seu agente no terminal do repositório.",
+    "openTerminal": "Abrir terminal do repositório",
+    "demoLink": "Ou abra o <a href=\"?demo\">quadro de demo<\/a>.",
+    "notWritten": "Ainda não foi escrito.",
+    "parkedHuman": "Precisam de uma pessoa: {n}",
+    "parkedInfo": "Aguardando info: {n}",
+    "statusLive": "Ao vivo · atualizado {ago}",
+    "themeToLight": "Mudar para o tema claro",
+    "themeToNavy": "Mudar para o tema navy",
+    "olderMerged": "+{n} anteriores",
+    "statJobs": "Jobs",
+    "statRunning": "Em andamento",
+    "statAgents": "Agentes",
+    "statCost": "Custo"
+  }
+}
+</script>
+<script type="module" src="dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# factory runtime state (the orchestrator recreates it)
+factory/board.json
+factory/jobs/
+.worktrees/
+
+# per-developer override of a few factory/config.json keys (never committed)
+factory/config.local.json
+
+# Claude Code session worktrees
+.claude/worktrees/
+
+# npm
+node_modules/
+
+# eminzo CLI build output (node cli/build.mjs)
+cli/dist/
+cli/*.tgz

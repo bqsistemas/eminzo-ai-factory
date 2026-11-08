@@ -1,0 +1,330 @@
+{
+  "version": 1,
+  "generated_by": "factory/bin/job graph",
+  "stages": [
+    {
+      "id": "intake",
+      "kind": "agent",
+      "agent": "intake",
+      "group": "active"
+    },
+    {
+      "id": "needs-info",
+      "kind": "parked",
+      "group": "parked"
+    },
+    {
+      "id": "spec",
+      "kind": "agent",
+      "agent": "spec-writer",
+      "group": "active"
+    },
+    {
+      "id": "spec-review",
+      "kind": "parked",
+      "group": "parked"
+    },
+    {
+      "id": "build",
+      "kind": "agent",
+      "agent": "builder",
+      "group": "active"
+    },
+    {
+      "id": "gate",
+      "kind": "script",
+      "script": "factory/bin/gate",
+      "group": "active"
+    },
+    {
+      "id": "review",
+      "kind": "agents",
+      "agents": "routed reviewers",
+      "group": "active"
+    },
+    {
+      "id": "approve",
+      "kind": "agent-or-script",
+      "agent": "approver",
+      "script": "factory/bin/approve",
+      "group": "active"
+    },
+    {
+      "id": "merging",
+      "kind": "script",
+      "script": "factory/bin/job",
+      "group": "active"
+    },
+    {
+      "id": "awaiting-merge",
+      "kind": "waiting",
+      "group": "active"
+    },
+    {
+      "id": "needs-human",
+      "kind": "parked",
+      "group": "parked"
+    },
+    {
+      "id": "merged",
+      "kind": "terminal",
+      "group": "terminal"
+    },
+    {
+      "id": "rejected",
+      "kind": "terminal",
+      "group": "terminal"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "intake",
+      "to": "spec",
+      "kind": "happy",
+      "label": "ACCEPT (lane normal)"
+    },
+    {
+      "from": "intake",
+      "to": "build",
+      "kind": "lane",
+      "label": "ACCEPT (lane xs, no spec)"
+    },
+    {
+      "from": "intake",
+      "to": "needs-info",
+      "kind": "park",
+      "label": "NEEDS-INFO"
+    },
+    {
+      "from": "intake",
+      "to": "rejected",
+      "kind": "exit",
+      "label": "REJECT"
+    },
+    {
+      "from": "needs-info",
+      "to": "intake",
+      "kind": "resume",
+      "label": "author replied"
+    },
+    {
+      "from": "spec",
+      "to": "build",
+      "kind": "happy",
+      "label": "spec written"
+    },
+    {
+      "from": "spec",
+      "to": "spec-review",
+      "kind": "park",
+      "label": "spec_review on for the risk"
+    },
+    {
+      "from": "spec-review",
+      "to": "build",
+      "kind": "human",
+      "label": "approve-spec"
+    },
+    {
+      "from": "spec-review",
+      "to": "spec",
+      "kind": "resume",
+      "label": "revise-spec"
+    },
+    {
+      "from": "build",
+      "to": "gate",
+      "kind": "happy",
+      "label": "STATUS: READY"
+    },
+    {
+      "from": "gate",
+      "to": "review",
+      "kind": "happy",
+      "label": "GATE: PASS"
+    },
+    {
+      "from": "gate",
+      "to": "build",
+      "kind": "retry",
+      "label": "GATE: FAIL"
+    },
+    {
+      "from": "review",
+      "to": "build",
+      "kind": "retry",
+      "label": "VERDICT: CHANGES"
+    },
+    {
+      "from": "review",
+      "to": "approve",
+      "kind": "happy",
+      "label": "reviews passed"
+    },
+    {
+      "from": "approve",
+      "to": "merging",
+      "kind": "happy",
+      "label": "APPROVE"
+    },
+    {
+      "from": "needs-human",
+      "to": "intake",
+      "kind": "resume",
+      "label": "resumed by a human"
+    },
+    {
+      "from": "needs-human",
+      "to": "spec",
+      "kind": "resume",
+      "label": "resumed by a human"
+    },
+    {
+      "from": "needs-human",
+      "to": "build",
+      "kind": "resume",
+      "label": "resumed by a human, or rework requested"
+    },
+    {
+      "from": "needs-human",
+      "to": "merged",
+      "kind": "human",
+      "label": "a human merged the PR"
+    },
+    {
+      "from": "build",
+      "to": "merged",
+      "kind": "human",
+      "label": "a human merged the PR"
+    },
+    {
+      "from": "gate",
+      "to": "merged",
+      "kind": "human",
+      "label": "a human merged the PR"
+    },
+    {
+      "from": "review",
+      "to": "merged",
+      "kind": "human",
+      "label": "a human merged the PR"
+    },
+    {
+      "from": "approve",
+      "to": "merged",
+      "kind": "human",
+      "label": "a human merged the PR"
+    },
+    {
+      "from": "awaiting-merge",
+      "to": "merged",
+      "kind": "human",
+      "label": "a human merged the PR"
+    },
+    {
+      "from": "build",
+      "to": "rejected",
+      "kind": "exit",
+      "label": "PR closed without merge"
+    },
+    {
+      "from": "gate",
+      "to": "rejected",
+      "kind": "exit",
+      "label": "PR closed without merge"
+    },
+    {
+      "from": "review",
+      "to": "rejected",
+      "kind": "exit",
+      "label": "PR closed without merge"
+    },
+    {
+      "from": "awaiting-merge",
+      "to": "rejected",
+      "kind": "exit",
+      "label": "PR closed without merge"
+    },
+    {
+      "from": "approve",
+      "to": "rejected",
+      "kind": "exit",
+      "label": "PR closed without merge"
+    },
+    {
+      "from": "needs-human",
+      "to": "rejected",
+      "kind": "exit",
+      "label": "PR closed without merge"
+    },
+    {
+      "from": "*",
+      "to": "needs-human",
+      "kind": "escalate",
+      "label": "blocked or escalated"
+    },
+    {
+      "from": "approve",
+      "to": "needs-human",
+      "kind": "escalate",
+      "label": "approver ESCALATE"
+    },
+    {
+      "from": "build",
+      "to": "spec",
+      "kind": "lane",
+      "label": "promote: any failure in lane xs"
+    },
+    {
+      "from": "gate",
+      "to": "spec",
+      "kind": "lane",
+      "label": "promote: any failure in lane xs"
+    },
+    {
+      "from": "review",
+      "to": "spec",
+      "kind": "lane",
+      "label": "promote: any failure in lane xs"
+    },
+    {
+      "from": "approve",
+      "to": "spec",
+      "kind": "lane",
+      "label": "promote: any failure in lane xs"
+    },
+    {
+      "from": "merging",
+      "to": "merged",
+      "kind": "happy",
+      "label": "PR merged"
+    },
+    {
+      "from": "merging",
+      "to": "awaiting-merge",
+      "kind": "human",
+      "label": "auto_merge off: a reviewer merges"
+    },
+    {
+      "from": "merging",
+      "to": "needs-human",
+      "kind": "escalate",
+      "label": "merge stopped"
+    }
+  ],
+  "lanes": {
+    "xs": {
+      "skips": [
+        "spec",
+        "spec-review"
+      ],
+      "promote": {
+        "to": "spec",
+        "label": "promote: any failure in lane xs"
+      }
+    }
+  },
+  "limits": {
+    "max_rounds": "config.max_rounds"
+  }
+}

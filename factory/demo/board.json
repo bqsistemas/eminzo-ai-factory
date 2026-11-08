@@ -1,0 +1,597 @@
+{
+  "updated": "2026-10-27T15:42:10Z",
+  "repo": "https://github.com/example/shop",
+  "jobs": [
+    {
+      "id": "001-health-endpoint",
+      "issue": 3,
+      "title": "Health endpoint",
+      "pr": 5,
+      "branch": "factory/001-health-endpoint",
+      "worktree": "/home/demo/app/.worktrees/001-health-endpoint",
+      "port": 3001,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #5",
+      "cost_usd": 0.62,
+      "started": "2026-10-27T09:10:00Z",
+      "finished": "2026-10-27T09:41:00Z",
+      "updated": "2026-10-27T09:41:00Z"
+    },
+    {
+      "id": "012-readme-badges",
+      "issue": 21,
+      "title": "README badges",
+      "pr": 23,
+      "branch": "factory/012-readme-badges",
+      "worktree": "/home/demo/app/.worktrees/012-readme-badges",
+      "port": 3012,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #23",
+      "cost_usd": 0.4,
+      "started": "2026-10-27T10:05:00Z",
+      "finished": "2026-10-27T10:20:00Z",
+      "updated": "2026-10-27T10:20:00Z"
+    },
+    {
+      "id": "013-error-pages",
+      "issue": 22,
+      "title": "Friendly error pages",
+      "pr": 24,
+      "branch": "factory/013-error-pages",
+      "worktree": "/home/demo/app/.worktrees/013-error-pages",
+      "port": 3013,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #24",
+      "cost_usd": 0.51,
+      "started": "2026-10-27T11:00:00Z",
+      "finished": "2026-10-27T11:30:00Z",
+      "updated": "2026-10-27T11:30:00Z"
+    },
+    {
+      "id": "014-cache-headers",
+      "issue": 23,
+      "title": "Cache headers for static files",
+      "pr": 25,
+      "branch": "factory/014-cache-headers",
+      "worktree": "/home/demo/app/.worktrees/014-cache-headers",
+      "port": 3014,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #25",
+      "cost_usd": 0.62,
+      "started": "2026-10-27T12:10:00Z",
+      "finished": "2026-10-27T12:45:00Z",
+      "updated": "2026-10-27T12:45:00Z"
+    },
+    {
+      "id": "015-sitemap",
+      "issue": 24,
+      "title": "Sitemap route",
+      "pr": 26,
+      "branch": "factory/015-sitemap",
+      "worktree": "/home/demo/app/.worktrees/015-sitemap",
+      "port": 3015,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #26",
+      "cost_usd": 0.73,
+      "started": "2026-10-27T13:20:00Z",
+      "finished": "2026-10-27T13:55:00Z",
+      "updated": "2026-10-27T13:55:00Z"
+    },
+    {
+      "id": "002-csv-export",
+      "issue": 4,
+      "title": "CSV export",
+      "pr": 8,
+      "branch": "factory/002-csv-export",
+      "worktree": "/home/demo/app/.worktrees/002-csv-export",
+      "port": 3002,
+      "stage": "approve",
+      "round": 2,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "medium",
+        "surfaces": [
+          "ui"
+        ]
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "sonnet",
+          "ux": "sonnet",
+          "ui": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS",
+        "ux": "PASS",
+        "ui": "PASS"
+      },
+      "history": [
+        {
+          "gate": "PASS",
+          "reviews": {
+            "code": "PASS",
+            "ux": "CHANGES",
+            "ui": "PASS"
+          }
+        }
+      ],
+      "decision": null,
+      "note": "",
+      "cost_usd": 2.37,
+      "started": "2026-10-27T13:05:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:40:00Z"
+    },
+    {
+      "id": "003-rate-limiting",
+      "issue": 6,
+      "title": "Rate limiting",
+      "pr": 9,
+      "branch": "factory/003-rate-limiting",
+      "worktree": "/home/demo/app/.worktrees/003-rate-limiting",
+      "port": 3003,
+      "stage": "needs-human",
+      "round": 3,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": true,
+        "risk": "high",
+        "surfaces": [
+          "security"
+        ]
+      },
+      "agents": {
+        "builder": "opus",
+        "reviewers": {
+          "code": "sonnet",
+          "security": "opus"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS",
+        "security": "PASS"
+      },
+      "history": [
+        {
+          "gate": "FAIL",
+          "reviews": {}
+        },
+        {
+          "gate": "PASS",
+          "reviews": {
+            "code": "CHANGES",
+            "security": "CHANGES"
+          }
+        }
+      ],
+      "decision": "ESCALATE",
+      "note": "Adds a new runtime dependency (express-rate-limit); a human should accept it.",
+      "cost_usd": 6.91,
+      "started": "2026-10-27T11:20:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:12:00Z"
+    },
+    {
+      "id": "004-dark-mode-toggle",
+      "issue": 12,
+      "title": "Dark mode toggle",
+      "pr": 31,
+      "branch": "factory/004-dark-mode-toggle",
+      "worktree": "/home/demo/app/.worktrees/004-dark-mode-toggle",
+      "port": 3004,
+      "stage": "review",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": true,
+        "risk": "low",
+        "surfaces": [
+          "ui"
+        ]
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku",
+          "ux": "sonnet",
+          "ui": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "pending",
+        "ux": "PASS",
+        "ui": "pending"
+      },
+      "history": [],
+      "decision": null,
+      "note": "",
+      "cost_usd": 1.84,
+      "started": "2026-10-27T14:03:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:40:00Z"
+    },
+    {
+      "id": "005-search-filters",
+      "issue": 14,
+      "title": "Search filters",
+      "pr": 33,
+      "branch": "factory/005-search-filters",
+      "worktree": "/home/demo/app/.worktrees/005-search-filters",
+      "port": 3005,
+      "stage": "gate",
+      "round": 2,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "medium",
+        "surfaces": [
+          "ui"
+        ]
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "sonnet",
+          "ux": "sonnet",
+          "ui": "haiku"
+        }
+      },
+      "gate": "pending",
+      "reviews": {},
+      "history": [
+        {
+          "gate": "FAIL",
+          "reviews": {}
+        }
+      ],
+      "decision": null,
+      "note": "",
+      "cost_usd": 1.12,
+      "started": "2026-10-27T14:30:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:41:00Z"
+    },
+    {
+      "id": "006-audit-log",
+      "issue": 15,
+      "title": "Audit log",
+      "pr": 34,
+      "branch": "factory/006-audit-log",
+      "worktree": "/home/demo/app/.worktrees/006-audit-log",
+      "port": 3006,
+      "stage": "build",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "high",
+        "surfaces": [
+          "security"
+        ]
+      },
+      "agents": {
+        "builder": "opus",
+        "reviewers": {
+          "code": "sonnet",
+          "security": "opus"
+        }
+      },
+      "gate": null,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "note": "",
+      "cost_usd": 0.95,
+      "started": "2026-10-27T15:02:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:38:00Z"
+    },
+    {
+      "id": "016-payment-webhooks",
+      "issue": 24,
+      "title": "Payment webhooks",
+      "pr": null,
+      "branch": "factory/016-payment-webhooks",
+      "worktree": "/home/demo/app/.worktrees/016-payment-webhooks",
+      "port": 3016,
+      "stage": "spec-review",
+      "round": 0,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "high",
+        "surfaces": [
+          "security"
+        ]
+      },
+      "agents": {
+        "builder": "opus",
+        "reviewers": {
+          "code": "sonnet",
+          "security": "opus"
+        }
+      },
+      "gate": null,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "note": "waiting for spec review",
+      "parked_from": null,
+      "spec_posted": {
+        "sha256": "9f2c4e0b7d1a8c3e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a",
+        "at": "2026-10-27T16:05:00Z"
+      },
+      "cost_usd": 0.64,
+      "started": "2026-10-27T15:40:00Z",
+      "finished": null,
+      "updated": "2026-10-27T16:05:00Z"
+    },
+    {
+      "id": "007-slugify-utility",
+      "issue": 16,
+      "title": "Slugify utility",
+      "pr": null,
+      "branch": "factory/007-slugify-utility",
+      "worktree": "/home/demo/app/.worktrees/007-slugify-utility",
+      "port": 3007,
+      "stage": "spec",
+      "round": 0,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": null,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "note": "",
+      "cost_usd": 0.21,
+      "started": "2026-10-27T15:30:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:41:00Z"
+    },
+    {
+      "id": "008-word-count-cli",
+      "issue": 17,
+      "title": "Word count CLI",
+      "pr": null,
+      "branch": "factory/008-word-count-cli",
+      "worktree": "/home/demo/app/.worktrees/008-word-count-cli",
+      "port": 3008,
+      "stage": "intake",
+      "round": 0,
+      "max_rounds": 3,
+      "intake": null,
+      "agents": null,
+      "gate": null,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "note": "",
+      "cost_usd": 0,
+      "started": "2026-10-27T15:40:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:40:00Z"
+    },
+    {
+      "id": "009-make-it-faster",
+      "issue": 18,
+      "title": "Make it faster",
+      "pr": null,
+      "branch": "factory/009-make-it-faster",
+      "worktree": "/home/demo/app/.worktrees/009-make-it-faster",
+      "port": 3009,
+      "stage": "needs-info",
+      "round": 0,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "NEEDS-INFO",
+        "rescoped": false,
+        "risk": "medium",
+        "surfaces": []
+      },
+      "agents": null,
+      "gate": null,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "note": "waiting for the issue author",
+      "cost_usd": 0.08,
+      "started": "2026-10-27T12:00:00Z",
+      "finished": null,
+      "updated": "2026-10-27T12:04:00Z"
+    },
+    {
+      "id": "010-browser-crypto-miner",
+      "issue": 19,
+      "title": "Browser crypto miner",
+      "pr": null,
+      "branch": "factory/010-browser-crypto-miner",
+      "worktree": "/home/demo/app/.worktrees/010-browser-crypto-miner",
+      "port": 3010,
+      "stage": "rejected",
+      "round": 0,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "REJECT",
+        "rescoped": false,
+        "risk": "high",
+        "surfaces": [
+          "security"
+        ]
+      },
+      "agents": null,
+      "gate": null,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "note": "rejected at intake",
+      "cost_usd": 0.05,
+      "started": "2026-10-27T10:00:00Z",
+      "finished": "2026-10-27T10:02:00Z",
+      "updated": "2026-10-27T10:02:00Z"
+    },
+    {
+      "id": "011-footer-links",
+      "issue": 20,
+      "title": "Footer links",
+      "pr": 36,
+      "branch": "factory/011-footer-links",
+      "worktree": "/home/demo/app/.worktrees/011-footer-links",
+      "port": 3011,
+      "stage": "merging",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": [
+          "ui"
+        ]
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku",
+          "ux": "sonnet",
+          "ui": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS",
+        "ux": "PASS",
+        "ui": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "syncing with origin/main",
+      "cost_usd": 1.47,
+      "started": "2026-10-27T13:40:00Z",
+      "finished": null,
+      "updated": "2026-10-27T15:42:00Z"
+    }
+  ]
+}

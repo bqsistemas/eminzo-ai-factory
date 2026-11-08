@@ -1,0 +1,46 @@
+{
+  "name": "@eminzo/factory",
+  "version": "0.1.0",
+  "description": "The Eminzo software factory engine as a CLI: GitHub issues become reviewed, gated pull requests through Claude Code or Codex.",
+  "keywords": [
+    "ai",
+    "software-factory",
+    "claude-code",
+    "codex",
+    "github",
+    "pull-request",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bqsistemas/eminzo-ai-factory.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/bqsistemas/eminzo-ai-factory/tree/main/cli#readme",
+  "bugs": {
+    "url": "https://github.com/bqsistemas/eminzo-ai-factory/issues"
+  },
+  "type": "module",
+  "bin": {
+    "eminzo": "bin/eminzo.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs",
+    "prepublishOnly": "npm --prefix .. test"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

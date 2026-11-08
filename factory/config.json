@@ -1,0 +1,285 @@
+{
+  "repo": "https://github.com/bqsistemas/eminzo-ai-factory",
+  "base": "origin/main",
+  "concurrency": 3,
+  "max_rounds": 3,
+  "auto_merge": true,
+  "spec_review": false,
+  "notifications": {
+    "enabled": true,
+    "events": [
+      "job.started",
+      "stage.changed",
+      "job.needs_human",
+      "job.failed",
+      "job.succeeded",
+      "job.merged"
+    ]
+  },
+  "language": "es",
+  "default_provider": "claude",
+  "models": {
+    "intake": "fable",
+    "spec-writer": {
+      "low": "sonnet",
+      "medium": "opus",
+      "high": "opus"
+    },
+    "spec-writer-amend": "sonnet",
+    "approver": {
+      "low": "script",
+      "medium": "script",
+      "high": "opus"
+    },
+    "approver-llm": {
+      "low": "sonnet",
+      "medium": "sonnet",
+      "high": "opus"
+    }
+  },
+  "lanes": {
+    "xs": {
+      "reviewers": ["code"],
+      "spec": false,
+      "approver": "script",
+      "max_lines": 80
+    }
+  },
+  "routing": {
+    "builder": {
+      "low": "sonnet",
+      "medium": "sonnet",
+      "high": "opus"
+    },
+    "reviewers": {
+      "code": {
+        "always": true,
+        "model": {
+          "low": "haiku",
+          "medium": "sonnet",
+          "high": "sonnet"
+        }
+      },
+      "ux": {
+        "surface": "interaction",
+        "model": "sonnet"
+      },
+      "ui": {
+        "surface": "ui",
+        "model": "haiku"
+      },
+      "security": {
+        "surface": "security",
+        "model": "opus"
+      }
+    }
+  },
+  "providers": {
+    "claude": {
+      "models": {
+        "intake": "fable",
+        "spec-writer": {
+          "low": "sonnet",
+          "medium": "opus",
+          "high": "opus"
+        },
+        "spec-writer-amend": "sonnet",
+        "approver": {
+          "low": "script",
+          "medium": "script",
+          "high": "opus"
+        },
+        "approver-llm": {
+          "low": "sonnet",
+          "medium": "sonnet",
+          "high": "opus"
+        }
+      },
+      "lanes": {
+        "xs": {
+          "builder": "sonnet",
+          "reviewer": "haiku"
+        }
+      },
+      "routing": {
+        "builder": {
+          "low": "sonnet",
+          "medium": "sonnet",
+          "high": "opus"
+        },
+        "reviewers": {
+          "code": {
+            "always": true,
+            "model": {
+              "low": "haiku",
+              "medium": "sonnet",
+              "high": "sonnet"
+            }
+          },
+          "ux": {
+            "surface": "interaction",
+            "model": "sonnet"
+          },
+          "ui": {
+            "surface": "ui",
+            "model": "haiku"
+          },
+          "security": {
+            "surface": "security",
+            "model": "opus"
+          }
+        }
+      }
+    },
+    "codex": {
+      "prices": {
+        "gpt-6-luna": {
+          "input": 0.1,
+          "output": 0.5,
+          "cache_read": 0.01,
+          "cache_write": 0.125
+        },
+        "gpt-6.1-sol": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.1,
+          "cache_write": 2.5
+        }
+      },
+      "models": {
+        "intake": "gpt-6-luna",
+        "spec-writer": {
+          "low": "gpt-6-luna",
+          "medium": "gpt-6-luna",
+          "high": "gpt-6.1-sol"
+        },
+        "spec-writer-amend": "gpt-6-luna",
+        "approver": {
+          "low": "script",
+          "medium": "script",
+          "high": "gpt-6.1-sol"
+        },
+        "approver-llm": {
+          "low": "gpt-6-luna",
+          "medium": "gpt-6-luna",
+          "high": "gpt-6.1-sol"
+        }
+      },
+      "lanes": {
+        "xs": {
+          "builder": "gpt-6-luna",
+          "reviewer": "gpt-6-luna"
+        }
+      },
+      "routing": {
+        "builder": {
+          "low": "gpt-6-luna",
+          "medium": "gpt-6-luna",
+          "high": "gpt-6.1-sol"
+        },
+        "reviewers": {
+          "code": {
+            "always": true,
+            "model": {
+              "low": "gpt-6-luna",
+              "medium": "gpt-6-luna",
+              "high": "gpt-6.1-sol"
+            }
+          },
+          "ux": {
+            "surface": "interaction",
+            "model": "gpt-6-luna"
+          },
+          "ui": {
+            "surface": "ui",
+            "model": "gpt-6-luna"
+          },
+          "security": {
+            "surface": "security",
+            "model": "gpt-6.1-sol"
+          }
+        }
+      }
+    }
+  },
+  "prices": {
+    "fable": {
+      "input": 0,
+      "output": 0,
+      "cache_write": 0,
+      "cache_read": 0
+    },
+    "opus": {
+      "input": 5,
+      "output": 25,
+      "cache_write": 6.25,
+      "cache_read": 0.5
+    },
+    "sonnet": {
+      "input": 3,
+      "output": 15,
+      "cache_write": 3.75,
+      "cache_read": 0.3
+    },
+    "haiku": {
+      "input": 1,
+      "output": 5,
+      "cache_write": 1.25,
+      "cache_read": 0.1
+    }
+  },
+  "visual": {
+    "start": "FACTORY_ROOT=\"$PWD\" sh factory/bin/dashboard {port}",
+    "ready_url": "http://localhost:{port}/dashboard.html?demo",
+    "pages": ["/dashboard.html?demo"],
+    "viewports": [390, 768, 1024, 1440],
+    "locales": ["en", "es", "pt"],
+    "locale": {
+      "json": {
+        "url": "board.json",
+        "key": "language"
+      }
+    },
+    "themes": ["light", "dark"],
+    "theme": {
+      "media": "prefers-color-scheme"
+    },
+    "fixture": null,
+    "max_points": 48
+  },
+  "review_paths": {
+    "ui": [
+      "factory/dashboard.html",
+      "factory/dashboard.js",
+      "factory/office*.js",
+      "factory/pipeline-canvas.js",
+      "factory/activity.js",
+      "factory/avatars.js",
+      "factory/sprite-atlas.js",
+      "factory/assets/**",
+      "public/**",
+      "**/*.css",
+      "**/*.html"
+    ],
+    "ux": [
+      "factory/dashboard.html",
+      "factory/dashboard.js",
+      "factory/office*.js",
+      "factory/pipeline-canvas.js",
+      "factory/activity.js",
+      "factory/avatars.js",
+      "factory/sprite-atlas.js",
+      "factory/assets/**",
+      "public/**",
+      "**/*.css",
+      "**/*.html"
+    ]
+  },
+  "protected_tests": [
+    "test/route.test.js",
+    "test/job.test.js",
+    "test/gate.test.js",
+    "test/cost.test.js",
+    "test/codex-cost.test.js"
+  ]
+}

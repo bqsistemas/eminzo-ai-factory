@@ -1,0 +1,16 @@
+{
+  "name": "eminzo-ai-factory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Eminzo AI software factory: GitHub issues become reviewed, gated pull requests through Claude Code or Codex.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "24.43.1"
+  }
+}
