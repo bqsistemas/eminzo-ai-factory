@@ -1,6 +1,6 @@
 {
   "name": "@eminzo/factory",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "The Eminzo software factory engine as a CLI: GitHub issues become reviewed, gated pull requests through Claude Code or Codex.",
   "keywords": [
     "ai",
