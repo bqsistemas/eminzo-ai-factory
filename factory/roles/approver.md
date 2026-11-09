@@ -33,6 +33,12 @@ branches. `git fetch origin` is fine.
    deviation that another lens's blocker forced, with the Goal intact, is not a reason
    to escalate; record it under `## Accepted deviations` in `decision.md`.
 
+**Proof of a blocker.** A `[blocker]` is proven by an indented `Proof:` line under its bullet: the
+`path:line`, why it is wrong, and how to reproduce it (a command or steps). A `path:line` on the
+bullet alone is not proof. Proof never waives check 1: a lens whose latest verdict is `CHANGES` is
+an ESCALATE, proven or not, and a missing `Proof:` never lowers a blocker. Under `## For the human`
+list each open blocker as **proven** or **not proven**, so the human can weigh it.
+
 APPROVE only if all six hold. Otherwise ESCALATE. Either way, `decision.md` ends with a
 `## Lessons` section (see the format below): the factory collects those lines into
 `factory/project.md`.
@@ -40,12 +46,11 @@ APPROVE only if all six hold. Otherwise ESCALATE. Either way, `decision.md` ends
 For a `low` or `medium` job the orchestrator runs `factory/bin/approve <job-id>` first;
 it checks 1 to 5 deterministically and only spawns you when it is inconclusive (an
 unknown file, a protected test, a sensitive path, an AC deviation, and so on). Its
-reasons are in your prompt as `Script:` when it passes them. Judge those exact points;
-do not trust the script's silence on anything you can read for yourself.
+reasons are in your prompt as `Script:`. Judge those exact points, and don't trust its silence on anything you can read yourself.
 
 **Write** `<job folder>/decision.md` and nothing else. The first line is exactly
-`APPROVE` or `ESCALATE`. The second line is a one-sentence reason; the board shows
-it.
+`APPROVE` or `ESCALATE`. The second line is one plain sentence a person can read alone (the
+reason), never starting with `WORD:`; the board shows it.
 
 ```
 ESCALATE

@@ -28,7 +28,7 @@ The gate reports uncovered added/moved modules as a non-blocking freshness warni
   worktree → spec → builder commit/push/draft PR → deterministic gate → routed
   reviews → approval → merge or human intervention. Only `job` writes pipeline
   state and performs engine merge side effects. Tests: `test/job*.test.js`,
-  `gate.test.js`, `route.test.js`, `codex-routing.test.js`, `lane-xs.test.js`.
+  `gate.test.js`, `route.test.js`, `codex-routing.test.js`, `lane-xs*.test.js`.
 - **Rules:** code review always runs; `ui` includes everyday UX; `interaction` adds
   UX and UI; `security` adds security review. Wait for all routed lenses after a
   passing gate. XS requires script-validated low-risk trivial scope, skips spec,
@@ -98,7 +98,7 @@ Portable factory engine:
   `visual*.js` browser checks; `project-map.js` context freshness; `run-mode.js`
   `config.run_mode` (`own` default, `queue`); `claim.js` the `job new` issue claim; `util.js`
   config, paths and `EMINZO_ENGINE` (`installedEngine()`/`engineDir()`/`engineCommand()`);
-  remaining helpers, init and static dashboard server. Engine modules remain dependency-free.
+  `stacks.js` per-stack detection, commands, `ac_pattern` and `checks.sh` (templates in `factory/templates/checks/`); remaining helpers, init and static dashboard server. Engine modules remain dependency-free.
 - `factory/pipeline.json`: generated stage/transition graph consumed by dashboards and the desktop.
 - `factory/roles/`: eight provider-neutral worker contracts; `factory/templates/`:
   project structure and installer config template.
@@ -118,7 +118,7 @@ eminzo CLI (npm package `@eminzo/factory`; this repo runs its own committed engi
   its own); `install.js`, `doctor.js`, `enable.js` (pull request with the repo footprint), `semver.js`,
   `paths.js`.
 - `cli/src/installer/`: pure install modules shared with the Eminzo desktop installer: `preflight.js`,
-  `remote.js`, `checks.js` (stack detection), `plan.js` (`.gitignore` lines), `kit.js` (the engine
+  `remote.js`, `checks.js` (stack detection, via `factory/lib/stacks.js`), `plan.js` (`.gitignore` lines), `kit.js` (the engine
   file list).
 
 Dashboard and office (plain browser ESM, no build):

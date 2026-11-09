@@ -14,8 +14,11 @@ import { parseRange, satisfies } from './semver.js';
 const NODE_COMMANDS = ['job', 'gate', 'approve', 'route', 'visual', 'nudge', 'ensure-output', 'protect-tests', 'dashboard', 'init'];
 /** Engine commands that are shell scripts in bin/. */
 const SHELL_COMMANDS = ['setup', 'setup-spec-review'];
-/** Commands that are a `job` subcommand: `eminzo selfcheck <id>` runs `eminzo job <id> selfcheck`. */
-export const JOB_ALIASES = Object.freeze({ selfcheck: (args) => [args[0], 'selfcheck', ...args.slice(1)] });
+/** Commands that are a `job` subcommand: `eminzo selfcheck <id>` runs `eminzo job <id> selfcheck`, `eminzo profile <id>` runs `eminzo job <id> profile`. */
+export const JOB_ALIASES = Object.freeze({
+  selfcheck: (args) => [args[0], 'selfcheck', ...args.slice(1)],
+  profile: (args) => [args[0], 'profile', ...args.slice(1)],
+});
 export const ENGINE_COMMANDS = [...NODE_COMMANDS, ...SHELL_COMMANDS, ...Object.keys(JOB_ALIASES)];
 
 /** Signals passed on to the engine, so a hook timeout or kill that reaches eminzo also stops the engine. */
@@ -60,8 +63,14 @@ export async function runEngine(command, args, { dist, version, env = process.en
   const configFile = join(root, 'factory', 'config.json');
   if (!existsSync(configFile)) throw new CliError('no factory in this repo; run /eminzo-factory enable (Codex: $eminzo-factory enable)');
 
+  if (Object.hasOwn(JOB_ALIASES, command) && (!args[0] || args[0].startsWith('-'))) throw new CliError(`usage: eminzo ${command} <job-id>`, 2);
   if (hasCommittedEngine(root)) {
-    const own = join(root, 'factory', 'bin', command);
+    let own = join(root, 'factory', 'bin', command);
+    // An older committed engine has no wrapper for an alias: its job script still runs the subcommand (or says it does not know it).
+    if (!existsSync(own) && Object.hasOwn(JOB_ALIASES, command)) {
+      own = join(root, 'factory', 'bin', 'job');
+      args = JOB_ALIASES[command](args);
+    }
     if (!existsSync(own)) throw new CliError(`this repository commits its own engine, which has no factory/bin/${command}`);
     const childEnv = { ...env };
     delete childEnv.EMINZO_ENGINE;
@@ -89,7 +98,7 @@ export async function runEngine(command, args, { dist, version, env = process.en
 
   const engine = engineFolder(dist);
   const childEnv = { ...env, EMINZO_ENGINE: engine, EMINZO_VERSION: version };
-  return SHELL_COMMANDS.includes(command)
-    ? runChild('sh', [join(engine, 'bin', command), ...args], { cwd, env: childEnv })
-    : runChild(process.execPath, [join(engine, 'lib', `${command}.js`), ...args], { cwd, env: childEnv });
+  if (SHELL_COMMANDS.includes(command)) return runChild('sh', [join(engine, 'bin', command), ...args], { cwd, env: childEnv });
+  if (Object.hasOwn(JOB_ALIASES, command)) return runChild(process.execPath, [join(engine, 'lib', 'job.js'), ...JOB_ALIASES[command](args)], { cwd, env: childEnv });
+  return runChild(process.execPath, [join(engine, 'lib', `${command}.js`), ...args], { cwd, env: childEnv });
 }

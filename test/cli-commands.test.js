@@ -272,6 +272,29 @@ test('doctor --json gives each check an id and the state of the repository', () 
   assert.equal(notEnabled.checks.find((c) => c.id === 'repository').level, 'warn');
 });
 
+test('eminzo profile <id> runs the engine\'s job <id> profile', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  const res = t.run(['profile', '042-none'], { cwd: root });
+  assert.equal(res.status, 1, 'the job does not exist: the engine refuses it, so the alias reached job.js');
+  assert.match(res.stderr, /042-none/);
+  const bare = t.run(['profile'], { cwd: root });
+  assert.equal(bare.status, 2);
+  assert.match(bare.stderr, /usage: eminzo profile <job-id>/);
+});
+
+test('in a repo whose committed engine has no factory/bin/profile, eminzo profile runs its job script', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  mkdirSync(join(root, 'factory/lib'), { recursive: true });
+  mkdirSync(join(root, 'factory/bin'), { recursive: true });
+  writeFileSync(join(root, 'factory/lib/job.js'), '// committed engine\n');
+  writeFileSync(join(root, 'factory/bin/job'), '#!/bin/sh\necho "repo job $*"\n', { mode: 0o755 });
+  const res = t.run(['profile', '042-x'], { cwd: root });
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout.trim(), 'repo job 042-x profile');
+});
+
 test('eminzo nudge passes --full through to the engine: focused by hand, full with the flag', () => {
   const t = sandbox();
   const root = repoWith(t.dir, { engine: null });

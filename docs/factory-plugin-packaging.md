@@ -242,7 +242,7 @@ pasarían a validar lo generado.
   cliente. Se pueden dejar, no molestan. Las que importan siguen: `.claude/**` (un repo podría
   pisar los agentes del plugin con copias en `.claude/agents/eminzo-*.md`), `.codex/**`,
   `factory/config.json`, `factory/checks.sh`, `factory/project.md` y CI.
-- **`protected_tests`.** Los 5 de este repo son tests del motor. En un repo cliente el default
+- **`protected_tests`.** Los 10 de este repo son tests del motor (`job.test.js` está partido en cinco archivos más su harness compartido). En un repo cliente el default
   es `[]`, y este repo pasa a ser solo el que consume el motor.
 - **Integridad del motor.** Hoy el builder tiene Bash con los permisos del usuario. Podría editar el
   motor en el disco (hoy `factory/lib` del checkout principal; mañana el caché del plugin) sin que

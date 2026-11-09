@@ -1,4 +1,4 @@
-// Job 020: language setting. Same fake-gh harness as test/job-merge.test.js (copied).
+// Job 020: language setting. Same fake-gh harness as test/job-merge.test.js (its own copy, not shared).
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';

@@ -43,7 +43,7 @@ test('AC-8: config.json runs 3 jobs at a time and protects the spine tests; pric
   assert.equal(config.max_rounds, 3);
   assert.equal(config.base, 'origin/main');
   assert.match(config.repo, /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/);
-  for (const file of ['test/route.test.js', 'test/job.test.js', 'test/gate.test.js', 'test/cost.test.js']) {
+  for (const file of ['test/route.test.js', 'test/job.test.js', 'test/job-approve-sync.test.js', 'test/job-lens-rounds.test.js', 'test/job-amend.test.js', 'test/job-prompt-context.test.js', 'test/helpers/job-harness.js', 'test/gate.test.js', 'test/cost.test.js']) {
     assert.ok(config.protected_tests.includes(file), `${file} is protected`);
     assert.ok(existsSync(join(repo, file)), `${file} exists`);
   }
@@ -71,7 +71,7 @@ test('AC-8: checks.sh and every factory/bin script are executable; checks.sh run
   exec('factory/checks.sh');
   assert.match(read('factory/checks.sh'), /^npm test\b/m);
   const bins = readdirSync(join(repo, 'factory/bin'));
-  assert.deepEqual(bins.sort(), ['approve', 'dashboard', 'ensure-output', 'gate', 'init', 'job', 'nudge', 'protect-tests', 'route', 'selfcheck', 'setup', 'setup-spec-review', 'visual']);
+  assert.deepEqual(bins.sort(), ['approve', 'dashboard', 'ensure-output', 'gate', 'init', 'job', 'nudge', 'profile', 'protect-tests', 'route', 'selfcheck', 'setup', 'setup-spec-review', 'visual']);
   for (const bin of bins) {
     exec(`factory/bin/${bin}`);
     assert.ok(statSync(join(repo, 'factory/bin', bin)).isFile());

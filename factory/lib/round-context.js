@@ -49,9 +49,14 @@ function openBlockers(root, job) {
   for (const name of readdirSync(dir).sort()) {
     const lens = name.match(/^review-([a-z-]+)\.md$/)?.[1];
     if (!lens || !/^VERDICT: CHANGES\b/.test(firstLine(join(dir, name)) ?? '')) continue;
-    for (const line of (readText(join(dir, name)) ?? '').split('\n')) {
-      if (BLOCKER_LINE.test(line)) out.push(`- ${lens}: ${line.trim().replace(/^[-*]\s*/, '')}`);
-    }
+    const lines = (readText(join(dir, name)) ?? '').split('\n');
+    lines.forEach((line, i) => {
+      if (!BLOCKER_LINE.test(line)) return;
+      // The indented `Proof:` lines right under the bullet travel with it: the builder needs the repro.
+      const proof = [];
+      for (let j = i + 1; j < lines.length && /^\s+Proof:/.test(lines[j]); j++) proof.push(`  ${lines[j].trim()}`);
+      out.push([`- ${lens}: ${line.trim().replace(/^[-*]\s*/, '')}`, ...proof].join('\n'));
+    });
   }
   return out;
 }
