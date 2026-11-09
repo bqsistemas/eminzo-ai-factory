@@ -50,11 +50,16 @@ export function runVisualCheck(root, config, job, checksFile) {
   return { status: 'ERROR', text: `VISUAL: ERROR\n\nReason: ${reason}\n`, reason };
 }
 
-/** Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved. */
-export function runChecks(root, cwd) {
+/**
+ * Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved.
+ * With `pidFile`, the shell writes its PID there first (the same process then runs checks.sh), so a
+ * caller can tell whether checks it started are still running after it died.
+ */
+export function runChecks(root, cwd, { pidFile } = {}) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT; // a gate started from a test run must not report into it
-  const res = run('sh', ['-c', 'exec sh "$0" 2>&1', join(root, 'factory/checks.sh')], { cwd, env });
+  const script = pidFile ? 'printf "%s\n" "$$" > "$1"; exec sh "$0" 2>&1' : 'exec sh "$0" 2>&1';
+  const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env });
   const output = `${res.stdout ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
   return { code: res.status ?? 1, output };
 }
