@@ -6,7 +6,8 @@
 # Go: `go vet` (the compiler's own lint) and `go test`. FACTORY_CHECK_MODE is "focused" while a
 # builder iterates and "full" for the gate and the merge; in focused mode FACTORY_CHANGED_FILES
 # names a file that lists the changed paths, one repo-relative path per line. Narrowing is a
-# shortcut: an empty selection runs everything, and the full run below is the backstop.
+# shortcut: an empty selection runs everything, and the full run below is the backstop. A focused
+# run tests only the changed packages, not the packages that depend on them.
 set -e
 MODE="${FACTORY_CHECK_MODE:-full}"
 CHANGED="${FACTORY_CHANGED_FILES:-}"
@@ -14,9 +15,13 @@ CHANGED="${FACTORY_CHANGED_FILES:-}"
 unset FACTORY_CHECK_MODE FACTORY_CHANGED_FILES
 
 if [ "$MODE" = focused ] && [ -n "$CHANGED" ] && [ -s "$CHANGED" ]; then
-  # The packages of the changed .go files that still exist (./ keeps a name starting with - from being an option).
-  sel=$(while IFS= read -r f; do [ -e "$f" ] && printf '%s\n' "./$f"; done < "$CHANGED" | grep '\.go$' | while IFS= read -r f; do dirname "$f"; done | sort -u || true)
-  if [ -n "$sel" ]; then printf '%s\n' "$sel" | tr '\n' '\0' | xargs -0 go test; exit $?; fi
+  # The packages of the changed .go files that still exist and hold a *_test.go file (./ keeps a name
+  # starting with - from being an option). None selected falls through to the full run: never a green with no tests.
+  sel=$(while IFS= read -r f; do [ -e "$f" ] && printf '%s\n' "./$f"; done < "$CHANGED" | grep '\.go$' | while IFS= read -r f; do dirname "$f"; done | sort -u | while IFS= read -r d; do set -- "$d"/*_test.go; [ -e "$1" ] && printf '%s\n' "$d"; done || true)
+  if [ -n "$sel" ]; then
+    printf '%s\n' "$sel" | tr '\n' '\0' | xargs -0 go vet || exit $?
+    printf '%s\n' "$sel" | tr '\n' '\0' | xargs -0 go test; exit $?
+  fi
 fi
 
 go vet ./...
