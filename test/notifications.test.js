@@ -36,7 +36,7 @@ test('AC-2: classify and select all supported lifecycle events without merge/suc
 
 test('AC-4: lifecycle events carry the spec payload fields, GitHub links only, and nothing else from the job', () => {
   const event = lifecycleEvent({ ...job, stage: 'needs-human', note: 'blocked on review', pr: 12, round: 2, max_rounds: 3, lane: 'xs', body: 'PRIVATE', worktree: '/secret/path', env: { X: 1 } }, 'review', config);
-  assert.deepEqual(Object.keys(event).sort(), ['eventId', 'from', 'id', 'issue', 'lane', 'language', 'max_rounds', 'note', 'prUrl', 'round', 'timestamp', 'title', 'to', 'type', 'url']);
+  assert.deepEqual(Object.keys(event).sort(), ['eventId', 'from', 'id', 'issue', 'lane', 'language', 'max_rounds', 'note', 'prUrl', 'repoUrl', 'round', 'timestamp', 'title', 'to', 'type', 'url']);
   assert.equal(event.title, 'Private title');
   assert.equal(event.note, 'blocked on review');
   assert.equal(event.url, 'https://github.com/acme/repo/issues/106');
@@ -139,8 +139,10 @@ test('AC-1 AC-2 AC-5 AC-6: CLI emits only after persistence, preserves results o
       if (process.env.DELIVERY === 'error') throw Error(url);
       return { status: Number(process.env.DELIVERY || 204) };
     };`);
+  // This child posts through the stubbed fetch above, so it must not look like a test run.
+  const { NODE_TEST_CONTEXT, ...parentEnv } = process.env;
   const run = (args, delivery = '204') => spawnSync(process.execPath, ['--import', preload, fileURLToPath(new URL('../factory/lib/job.js', import.meta.url)), ...args], {
-    encoding: 'utf8', env: { ...process.env, FACTORY_ROOT: root, FACTORY_GH: gh, FACTORY_DISCORD_WEBHOOK_URL: webhook, FACTORY_TRANSCRIPTS: join(root, 'transcripts'), DELIVERY: delivery },
+    encoding: 'utf8', env: { ...parentEnv, FACTORY_ROOT: root, FACTORY_GH: gh, FACTORY_DISCORD_WEBHOOK_URL: webhook, FACTORY_TRANSCRIPTS: join(root, 'transcripts'), DELIVERY: delivery },
   });
   const requests = () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   const created = run(['new', '106']);
@@ -172,4 +174,41 @@ test('AC-1 AC-2 AC-5 AC-6: CLI emits only after persistence, preserves results o
   rmSync(join(root, 'factory/jobs'), { recursive: true });
   assert.equal(run(['new', '106']).status, 0);
   assert.equal(requests().length, before);
+});
+
+test('AC-8: lifecycle events carry validated risk, reviews, cost and started, and omit each when invalid', () => {
+  const rich = { ...job, stage: 'merged', intake: { risk: 'medium' }, reviews: { code: 'PASS', ux: 'CHANGES' }, cost_usd: 8.8649, started: '2026-11-05T10:00:00Z' };
+  const event = lifecycleEvent(rich, 'approve', config);
+  assert.equal(event.risk, 'medium');
+  assert.deepEqual(event.reviews, { code: 'PASS', ux: 'CHANGES' });
+  assert.equal(event.cost_usd, 8.86);
+  assert.equal(event.started, '2026-11-05T10:00:00Z');
+  const has = (e, key) => key in e;
+  assert.equal(has(lifecycleEvent({ ...rich, intake: { risk: 'extreme' } }, 'approve', config), 'risk'), false);
+  assert.equal(has(lifecycleEvent({ ...rich, intake: 'x' }, 'approve', config), 'risk'), false);
+  assert.deepEqual(lifecycleEvent({ ...rich, reviews: { code: 'PASS', 'Bad Lens!': 'PASS', ux: 'MAYBE', 'A': 'PASS' } }, 'approve', config).reviews, { code: 'PASS' });
+  assert.equal(has(lifecycleEvent({ ...rich, reviews: { ux: 'MAYBE' } }, 'approve', config), 'reviews'), false);
+  assert.equal(has(lifecycleEvent({ ...rich, reviews: [] }, 'approve', config), 'reviews'), false);
+  const many = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`lens${i}`, 'PASS']));
+  assert.equal(Object.keys(lifecycleEvent({ ...rich, reviews: many }, 'approve', config).reviews).length, 8);
+  for (const bad of [NaN, -1, Infinity, '3', null]) assert.equal(has(lifecycleEvent({ ...rich, cost_usd: bad }, 'approve', config), 'cost_usd'), false, String(bad));
+  assert.equal(lifecycleEvent({ ...rich, cost_usd: 0 }, 'approve', config).cost_usd, 0);
+  for (const bad of ['not a date', 42, null]) assert.equal(has(lifecycleEvent({ ...rich, started: bad }, 'approve', config), 'started'), false, String(bad));
+  assert.equal(lifecycleEvent(rich, 'approve', config).eventId, lifecycleEvent({ ...job, stage: 'merged' }, 'approve', config).eventId);
+});
+
+test('AC-10: lifecycle events carry the validated repository URL and omit an invalid one', () => {
+  assert.equal(lifecycleEvent(job, 'spec', config).repoUrl, 'https://github.com/acme/repo');
+  for (const repo of [undefined, 'https://evil.example/acme/repo', 'https://github.com/acme/repo/issues', 'http://github.com/acme/repo']) {
+    assert.equal('repoUrl' in lifecycleEvent(job, 'spec', { ...config, repo }), false, String(repo));
+  }
+});
+
+test('AC-11: a process started by the node test runner never reaches a real webhook', async () => {
+  let calls = 0;
+  const notify = createNotifier({ adapters: { discord: async () => { calls++; return { status: 'sent' }; } } });
+  await notify(lifecycleEvent(job, 'spec', config), { config, env: { FACTORY_DISCORD_WEBHOOK_URL: webhook, NODE_TEST_CONTEXT: 'child-v8' } });
+  assert.equal(calls, 0);
+  await notify(lifecycleEvent(job, 'spec', config), context);
+  assert.equal(calls, 1);
 });

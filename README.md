@@ -633,7 +633,19 @@ keys, `Bearer ...`, `password=`/`token:`-style pairs, long opaque strings) are r
 by `[redacted]`, and Markdown, masked links, autolinks and mentions are shown literally;
 `allowed_mentions` is empty, so nobody is pinged. Redaction is best-effort: do not put
 secrets in issue titles or `--note` text. Issue bodies, environment values, worktree
-paths, costs and other job artifacts are never sent.
+paths and other job artifacts are never sent.
+
+Each message is a compact embed: the repository (`owner/repo`, linked, from `repo` in
+`factory/config.json`) above the title, the stage change (`Spec → Build`, `New` for a started
+job), links to the issue and the PR, the round, the intake risk (with an `XS` marker on
+the fast lane) and the note. When leaving `review` it adds one line with each reviewer's
+verdict (`code ✅ · ui ✏️`); on `merged`, `awaiting-merge`, `needs-human`, `needs-info`
+and `rejected` it adds the total cost and the time since the job started. Only
+validated enums, numbers and GitHub links are added, never free text.
+
+A process started by `node --test` (it has `NODE_TEST_CONTEXT` set) never sends, even when
+the shell that ran the tests holds a real webhook.
+
 [Discord's webhook reference](https://github.com/discord/discord-api-docs/blob/main/developers/resources/webhook.mdx)
 describes the JSON format used by this connector.
 

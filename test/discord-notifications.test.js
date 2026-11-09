@@ -81,7 +81,7 @@ test('AC-2: colours are four distinct integers and every other stage has a plain
 test('AC-3: round, PR and note are inline fields and action appears only for the three actionable stages', () => {
   const base = { ...event, from: 'review', to: 'build', round: 2, max_rounds: 3, prUrl: 'https://github.com/acme/repo/pull/9', note: 'syncing with origin/main', language: 'en' };
   const { fields } = embedOf(base);
-  assert.deepEqual(fields.map((f) => f.value), ['2/3', '#9', 'syncing with origin/main']);
+  assert.deepEqual(fields.map((f) => f.value), ['Review → Build', '[#106](https://github.com/acme/repo/issues/106)', '[#9](https://github.com/acme/repo/pull/9)', '2/3', 'syncing with origin/main']);
   assert.ok(fields.every((f) => f.inline === true));
   const action = (to, language = 'en') => embedOf({ ...base, to, language }).fields.find((f) => !f.inline);
   assert.match(action('needs-human').value, /`\/eminzo-factory rework 106`/);
@@ -182,4 +182,87 @@ for (const [label, fetch, expected] of [
   const result = await send(event, { webhookUrl: webhook, fetch, timeoutMs: 10 });
   assert.equal(result.status, expected);
   assert.ok(!JSON.stringify(result).includes(webhook));
+});
+
+const fieldMap = (e) => Object.fromEntries(embedOf(e).fields.map((f) => [f.name, f.value]));
+const rich = { ...event, from: 'spec', to: 'build', round: 2, max_rounds: 3, prUrl: 'https://github.com/acme/repo/pull/178', language: 'en' };
+
+test('AC-9: Stage field shows origin and destination, localized, with New for started jobs', () => {
+  assert.equal(fieldMap(rich).Stage, 'Spec → Build');
+  assert.equal(fieldMap({ ...rich, language: 'es' }).Fase, 'Spec → Build');
+  assert.equal(fieldMap({ ...rich, language: 'es', from: 'build', to: 'gate' }).Fase, 'Build → Gate');
+  assert.equal(fieldMap({ ...rich, from: null, to: 'intake' }).Stage, 'New → Intake');
+  assert.equal(fieldMap({ ...rich, from: null, to: 'intake', language: 'es' }).Fase, 'Nuevo → Intake');
+  assert.equal(fieldMap({ ...rich, from: null, to: 'intake', language: 'pt' }).Fase, 'Novo → Intake');
+  assert.equal(fieldMap({ ...rich, from: 'awaiting-merge', to: 'merged', language: 'es' }).Fase, 'Esperando merge → Mergeado');
+  assert.equal(fieldMap({ ...rich, from: 'we!ird', to: 'spec' }).Stage, 'weird → Spec');
+  assert.equal(embedOf(rich).fields[0].inline, true);
+});
+
+test('AC-9: Issue and PR are masked links when URLs validate, plain numbers otherwise', () => {
+  const m = fieldMap(rich);
+  assert.equal(m.Issue, '[#106](https://github.com/acme/repo/issues/106)');
+  assert.equal(m.PR, '[#178](https://github.com/acme/repo/pull/178)');
+  const plain = fieldMap({ ...rich, url: 'https://evil.example/x/issues/1', prUrl: undefined });
+  assert.equal(plain.Issue, '#106');
+  assert.equal('PR' in plain, false);
+  assert.equal(fieldMap({ ...rich, prUrl: 'javascript:alert(1)' }).PR, undefined);
+});
+
+test('AC-9: Risk is localized with an XS marker; Reviews only when leaving review', () => {
+  assert.equal(fieldMap({ ...rich, risk: 'high' }).Risk, 'High');
+  assert.equal(fieldMap({ ...rich, risk: 'low', lane: 'xs' }).Risk, 'Low · XS');
+  assert.equal(fieldMap({ ...rich, risk: 'medium', language: 'es' }).Riesgo, 'medio');
+  assert.equal(fieldMap({ ...rich, risk: 'high', language: 'pt' }).Risco, 'alto');
+  assert.equal(fieldMap({ ...rich, risk: 'bogus' }).Risk, undefined);
+  const reviews = { code: 'PASS', ux: 'PASS', ui: 'CHANGES' };
+  assert.equal(fieldMap({ ...rich, from: 'review', to: 'build', reviews }).Reviews, 'code ✅ · ux ✅ · ui ✏️');
+  assert.equal(fieldMap({ ...rich, from: 'review', to: 'build', reviews, language: 'es' }).Revisiones, 'code ✅ · ux ✅ · ui ✏️');
+  assert.equal(fieldMap({ ...rich, reviews }).Reviews, undefined);
+  const f = embedOf({ ...rich, from: 'review', to: 'approve', reviews }).fields.find((x) => x.name === 'Reviews');
+  assert.equal(f.inline, false);
+});
+
+test('AC-9: Cost and Duration appear only on terminal or parked stages and format durations', () => {
+  const done = { ...rich, from: 'approve', to: 'merged', cost_usd: 8.86, started: '2026-11-05T11:15:00Z', timestamp: '2026-11-05T12:00:00Z' };
+  assert.equal(fieldMap(done).Cost, '$8.86');
+  assert.equal(fieldMap(done).Duration, '45m');
+  assert.equal(fieldMap({ ...done, language: 'es' }).Costo, '$8.86');
+  assert.equal(fieldMap({ ...done, language: 'es' }).Duración, '45m');
+  assert.equal(fieldMap({ ...done, language: 'pt' }).Custo, '$8.86');
+  assert.equal(fieldMap({ ...done, language: 'pt' }).Duração, '45m');
+  assert.equal(fieldMap({ ...done, started: '2026-11-05T09:55:00Z' }).Duration, '2h 05m');
+  assert.equal(fieldMap({ ...done, started: '2026-11-02T08:00:00Z' }).Duration, '3d 4h');
+  for (const to of ['awaiting-merge', 'needs-human', 'needs-info', 'rejected']) {
+    assert.equal(fieldMap({ ...done, to }).Cost, '$8.86', to);
+  }
+  for (const to of ['build', 'gate', 'review', 'approve', 'merging']) {
+    const m = fieldMap({ ...done, to });
+    assert.ok(!('Cost' in m) && !('Duration' in m), to);
+  }
+  assert.equal(fieldMap({ ...done, started: '2026-11-05T13:00:00Z' }).Duration, undefined);
+  assert.equal(fieldMap({ ...done, started: 'nope' }).Duration, undefined);
+  assert.equal(fieldMap({ ...done, cost_usd: -1 }).Cost, undefined);
+  assert.equal(fieldMap({ ...done, cost_usd: NaN }).Cost, undefined);
+});
+
+test('AC-9: field order is stable and the embed still respects every limit', () => {
+  const full = { ...rich, from: 'review', to: 'needs-human', risk: 'high', lane: 'xs', reviews: { code: 'PASS', ux: 'CHANGES' },
+    cost_usd: 1.5, started: '2026-11-05T10:00:00Z', timestamp: '2026-11-05T12:00:00Z', note: 'n' };
+  assert.deepEqual(embedOf(full).fields.map((f) => f.name), ['Stage', 'Issue', 'PR', 'Round', 'Risk', 'Reviews', 'Cost', 'Duration', 'Note', 'What to do']);
+  const lens = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`l${'x'.repeat(28)}${i}`, 'PASS']));
+  const huge = embedOf({ ...full, id: 'x'.repeat(1e6), title: 'a'.repeat(1e6), note: 'b'.repeat(1e6), reviews: lens });
+  assert.ok(total(huge) <= 6000);
+  for (const f of huge.fields) {
+    assert.ok(f.value.length <= 1024 && f.name.length <= 256);
+    if (/^\[#/.test(f.value)) assert.match(f.value, /^\[#\d+\]\(https:\/\/github\.com\/[^)]+\)$/);
+  }
+});
+
+test('AC-10: the embed names the repository as its author, linked, only when the URL is a GitHub repo', () => {
+  const embed = embedOf({ ...event, repoUrl: 'https://github.com/acme/repo' });
+  assert.deepEqual(embed.author, { name: 'acme/repo', url: 'https://github.com/acme/repo' });
+  for (const repoUrl of [undefined, 'https://evil.example/acme/repo', 'https://github.com/acme/repo/pull/1', 'https://github.com/acme', '[x](https://evil.example)']) {
+    assert.equal('author' in embedOf({ ...event, repoUrl }), false, String(repoUrl));
+  }
 });
