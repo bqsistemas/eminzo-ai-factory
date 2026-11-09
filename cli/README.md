@@ -264,6 +264,8 @@ reach the builder.
 | `eminzo job metrics [--last N] [--json]` | over the last N jobs (default 20): the `GATE: PASS` rate in round 1 and rounds per job (median), both over finished jobs only (`merged` or `rejected`), the `CHANGES` rate per lens, minutes per kind of work (from `time_by_kind` when a job has it) and repeated lessons; `--json` prints the same as JSON. The dashboard shows it as a collapsible table (`board.json` carries it as `metrics`) |
 | `eminzo job config [<key>]` | the effective configuration, and whether each key comes from `config.json` or `config.local.json` |
 | `eminzo profile <job-id>` | where the builder's time went in a job (checks, waits, git, other) from its Claude transcripts; stored in `job.json` and shown on the dashboard's build stage. A repository adds its own check commands in `config.json` `profile.patterns` (`{ "check": ["run e2e"] }`) |
+| `eminzo selfcheck <job-id>` | what the builder runs before `STATUS: READY`: every `AC-n` has a test in the diff, `plan.md` exists with its four sections, no protected test changed and nothing is uncommitted (a stale Module map is only a warning); exits 1 and names each problem, or prints `selfcheck: ok` |
+| `eminzo nudge <job-id> [--full]` | runs the repository's `factory/checks.sh` for a job: focused by default (only what the change touches, when `checks.sh` reads `FACTORY_CHECK_MODE`; see How a round runs), `--full` runs everything; the gate and the merge always run full |
 | `eminzo show roles/<role>.md` | prints a role the agents follow (`intake`, `spec-writer`, `builder`, `review-code`, `review-ui`, `review-ux`, `review-security`, `approver`) |
 | `eminzo --version`, `eminzo help` | the version, and every command |
 
@@ -279,6 +281,10 @@ the rest while a job runs; you do not need to run those yourself.
 | `factory:needs-info` | the factory asked the issue author a question; answer on the issue, then `/eminzo-factory run` |
 | `factory:needs-human` | the job needs you: merge its pull request, or comment and run `/eminzo-factory rework <n>` |
 | `factory:spec-review` | the spec is posted on the issue and waits for `approve-spec` or `revise-spec` |
+
+## How a round runs
+
+Focused and full checks, the builder's plan and self-check, the optional review policy, proof for blockers and the Factory record in the pull request are described in the [repository README](../README.md#how-a-round-runs).
 
 ## How it works
 
