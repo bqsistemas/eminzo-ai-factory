@@ -44,6 +44,7 @@ function rewriteSkillPaths(text) {
     .split('Roles live in `factory/roles/<role>.md`:').join('Roles ship with the engine (`eminzo show roles/<role>.md` prints one):')
     .split('`factory/roles/<role>.md` body').join('role body (`eminzo show roles/<role>.md` prints it)')
     .split('`factory/templates/project.md`').join('the template that `eminzo show templates/project.md` prints')
+    .split('`factory/templates/review.md`').join('the template that `eminzo show templates/review.md` prints')
     .split('and point to the role body.').join('and carry the role body.')
     .split('`.claude/agents/`').join('`~/.claude/agents/`')
     .split('`.codex/agents/`').join('`~/.codex/agents/`')

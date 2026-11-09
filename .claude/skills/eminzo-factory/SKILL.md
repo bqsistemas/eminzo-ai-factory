@@ -79,7 +79,7 @@ factory/
   bin/route <id>        prints the agent set for intake.md (job does this at intake → spec)
   bin/approve <id>      the deterministic approver: approve | escalate: <reason> | inconclusive: <reasons>
   bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
-  bin/init              writes a first factory/project.md from the repo when it is missing
+  bin/init [review]     writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
   bin/setup             creates the GitHub labels (`/eminzo-factory setup` runs it)
   bin/setup-spec-review creates the factory:spec-review label (`/eminzo-factory setup` runs it after bin/setup)
@@ -127,6 +127,7 @@ developer's spec review).
   repo-specific guidance already in the file, remove stale claims/TODOs when evidence resolves
   them, update the analysis date, and add the exact marker `<!-- eminzo:setup-complete -->` only
   after completing the analysis. Do not include secrets or environment-specific credentials.
+- `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
 - Report labels and the sections refreshed. No job, issue or agent is started by setup.
 - `/eminzo-factory run`: continue every unfinished local job, `concurrency` jobs at a time.
   It takes new issues from the queue (every open `factory` issue) only when `run_mode` in
