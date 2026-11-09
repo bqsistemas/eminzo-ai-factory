@@ -42,7 +42,8 @@ if (a === 'issue' && b === 'view') { if (!issue) fail('no such issue'); out(issu
 else if (a === 'issue' && (b === 'comment' || b === 'edit')) { if (!issue) fail('no such issue'); }
 else if (a === 'pr' && b === 'list') {
   out(state.prs.filter((p) => p.headRefName === flag('--head') && p.state === 'OPEN'));
-} else if (a === 'pr' && b === 'view') { if (!pr) fail('no such pr'); out(pr); }
+} else if (a === 'pr' && b === 'view' && process.env.FAKE_VIEW_FAIL && args.includes('body,state')) { fail('boom view'); }
+else if (a === 'pr' && b === 'view') { if (!pr) fail('no such pr'); out(pr); }
 else if (a === 'pr' && b === 'merge') { if (!pr) fail('no such pr'); pr.state = 'MERGED'; save(); }
 else if (a === 'pr' && b === 'edit') {
   if (!pr) fail('no such pr');
@@ -256,6 +257,61 @@ test('applyRecord: appends once, replaces in place, tolerates dollar signs', () 
   const once = applyRecord('Hi\n', sec('a'), 'j');
   assert.equal(applyRecord(once, sec('b $& $1'), 'j'), `Hi\n\n${sec('b $& $1')}\n`);
   assert.equal(applyRecord(`before ${sec('old')} after`, sec('new'), 'j'), `before ${sec('new')} after`);
+});
+
+test('applyRecord: stray, lone or reversed markers are never replaced or appended to', () => {
+  const start = '<!-- factory:record-start j -->';
+  const end = '<!-- factory:record-end j -->';
+  const section = `${start}\nnew\n${end}`;
+  const cases = [
+    `Human\n${start}\nold\n${end}\nmore ${start} fake\n`, // extra start
+    `Human ${start} only a start\n`,
+    `Human ${end} only an end\n`,
+    `Human ${end}\nbackwards\n${start}\n`,
+    `${start} a ${end} b ${end}\n`, // extra end
+  ];
+  for (const body of cases) assert.equal(applyRecord(body, section, 'j'), null, body);
+  assert.equal(applyRecord('A\n<!-- factory:record-start other -->x<!-- factory:record-end other -->', section, 'j')?.startsWith('A\n'), true, 'another job id does not count');
+});
+
+test('a body with a stray marker is left byte for byte, with a warning', async () => {
+  const t = setup();
+  const id = await building(t);
+  t.pr(31, `factory/${id}`, `Human\n<!-- factory:record-start ${id} -->\nlone\n`);
+  t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n');
+  ok(await t.job(id, 'to', 'gate'));
+  ok(await t.bin('gate', [id]));
+  const res = await t.job(id, 'to', 'review');
+  ok(res);
+  assert.equal(t.prBody(31), `Human\n<!-- factory:record-start ${id} -->\nlone\n`);
+  assert.match(res.stderr, /stray or duplicate record marker/);
+});
+
+test('an oversized body is skipped with a warning', async () => {
+  const t = setup();
+  const id = await building(t);
+  const big = `${'x'.repeat(65000)}\n`;
+  t.pr(31, `factory/${id}`, big);
+  t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n');
+  ok(await t.job(id, 'to', 'gate'));
+  ok(await t.bin('gate', [id]));
+  const res = await t.job(id, 'to', 'review');
+  ok(res);
+  assert.equal(t.prBody(31), big);
+  assert.match(res.stderr, /over GitHub's limit/);
+});
+
+test('a failed gh pr view is a warning, not silence', async () => {
+  const t = setup();
+  const id = await building(t);
+  t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n');
+  t.pr(31, `factory/${id}`);
+  ok(await t.job(id, 'to', 'gate'));
+  ok(await t.bin('gate', [id]));
+  t.env.FAKE_VIEW_FAIL = '1';
+  const res = await t.job(id, 'to', 'review');
+  ok(res);
+  assert.match(res.stderr, /gh pr view failed/);
 });
 
 test('comment templates: en, es and pt share the same kinds, markers and no stray placeholders', () => {

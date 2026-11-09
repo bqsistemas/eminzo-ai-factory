@@ -89,3 +89,26 @@ test('contract: --out writes the same format (merge-checks.md)', () => {
   assert.equal(text.split('\n')[0], 'GATE: PASS');
   assert.ok(testedBy(text).head);
 });
+
+test('contract: line 2 is ENGINE: <version> and line 3 is blank, in checks.md and merge-checks.md', () => {
+  const t = gateFixture();
+  t.env.EMINZO_VERSION = '4.5.6';
+  t.gate();
+  t.gate('--out', join(t.jobDir, 'merge-checks.md'));
+  for (const rel of ['round-1/checks.md', 'merge-checks.md']) {
+    const lines = t.report(rel).split('\n');
+    assert.match(lines[0], /^GATE: (PASS|FAIL)$/);
+    assert.equal(lines[1], 'ENGINE: 4.5.6');
+    assert.match(lines[1], /^ENGINE: \S+$/);
+    assert.equal(lines[2], '');
+  }
+});
+
+test('contract: without a version there is no ENGINE line and the old layout holds', async () => {
+  const { engineLines, reusedReport } = await import('../factory/lib/report.js');
+  assert.deepEqual(engineLines(null), []);
+  const lines = reusedReport({ round: 1, base: 'origin/main', head: 'a'.repeat(40), inputs: `sha256:${'b'.repeat(64)}`, engine: null }).split('\n');
+  assert.equal(lines[0], 'GATE: PASS');
+  assert.equal(lines[1], '');
+  assert.ok(!lines.some((l) => l.startsWith('ENGINE:')));
+});

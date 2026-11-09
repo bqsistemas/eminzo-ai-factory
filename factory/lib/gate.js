@@ -9,7 +9,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { checksInputs, headSha } from './check-stamp.js';
 import { withImplied } from './intake.js';
 import { projectMapLines, projectMapStatus } from './project-map.js';
-import { LOG_LINES, engineLines, formatSpan, summarySentence, table } from './report.js';
+import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
 import { roundContext } from './round-context.js';
 import { visualStatus } from './visual-analysis.js';
 import { Usage, baseRef, engineDir, factoryRoot, isMain, jobDir, engineVersion, loadConfig, readText, run, runCli, tail, writeAtomic } from './util.js';
@@ -117,7 +117,7 @@ export function gate(root, job, outFile) {
   const fence = '`'.repeat(Math.max(3, longest + 1));
   const violations = guard.error ? [guard.error] : guard.paths;
   const logFile = outFile.replace(/\.md$/, '') + '.log';
-  writeAtomic(logFile, checks.output);
+  writeAtomic(logFile, capLog(checks.output)); // stays in the job folder: see capLog
   const visualCell = visual ? (visual.status === 'ERROR' ? 'ERROR (not blocking)' : visual.status) : null;
   writeAtomic(outFile, [
     `GATE: ${pass ? 'PASS' : 'FAIL'}`,

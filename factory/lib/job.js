@@ -454,15 +454,26 @@ export function commentKinds(lang) {
 
 /**
  * `body` with the factory's record section: replaced in place when this job's markers are already there,
- * appended after the human's text otherwise. Everything outside the markers is returned untouched.
+ * appended after the human's text when there are no markers. null when the markers are not exactly one
+ * ordered pair. Everything outside the markers is returned untouched.
  */
 export function applyRecord(body, section, id) {
   const text = String(body ?? '');
-  const start = text.indexOf(recordStart(id));
-  const end = start < 0 ? -1 : text.indexOf(recordEnd(id), start);
-  if (start >= 0 && end >= 0) return text.slice(0, start) + section + text.slice(end + recordEnd(id).length);
-  const kept = text.replace(/\s+$/, '');
-  return kept ? `${kept}\n\n${section}\n` : `${section}\n`;
+  const open = recordStart(id);
+  const close = recordEnd(id);
+  const count = (needle) => text.split(needle).length - 1;
+  const starts = count(open);
+  const ends = count(close);
+  if (starts === 0 && ends === 0) {
+    const kept = text.replace(/\s+$/, '');
+    return kept ? `${kept}\n\n${section}\n` : `${section}\n`;
+  }
+  // Exactly one well-ordered pair is ours to replace. Anything else (a stray or pasted marker) is
+  // ambiguous, and guessing would eat or duplicate the human's text: return null, the caller skips.
+  const start = text.indexOf(open);
+  const end = text.indexOf(close);
+  if (starts !== 1 || ends !== 1 || start > end) return null;
+  return text.slice(0, start) + section + text.slice(end + close.length);
 }
 
 function postIntake(c, job, text, decision) {
@@ -1579,16 +1590,29 @@ function recordFacts(c, job) {
  */
 function updatePrRecord(c, job) {
   if (!job.pr) return;
-  try {
+  const warn = (why) => process.stderr.write(`warning: Factory record on PR #${job.pr} not updated: ${why}\n`);
+  const read = () => {
     const view = run(c.gh, ['pr', 'view', String(job.pr), '--json', 'body,state'], { cwd: c.root });
-    if (view.status !== 0) return;
-    const { body, state } = JSON.parse(view.stdout);
-    if (state !== 'OPEN' || typeof body !== 'string') return;
-    const next = applyRecord(body, githubBody(c.lang, 'pr-record', recordFacts(c, job)), job.id);
-    if (next === body) return;
+    if (view.status !== 0) return { error: `gh pr view failed: ${(view.stderr || view.error?.message || `exit ${view.status}`).trim().split('\n').slice(-1)[0]}` };
+    const parsed = JSON.parse(view.stdout);
+    return { body: parsed.body, state: parsed.state };
+  };
+  try {
+    const first = read();
+    if (first.error) return warn(first.error);
+    if (first.state !== 'OPEN' || typeof first.body !== 'string') return; // merged, closed or unreadable: nothing to keep up to date
+    const next = applyRecord(first.body, githubBody(c.lang, 'pr-record', recordFacts(c, job)), job.id);
+    if (next === null) return warn('the body holds a stray or duplicate record marker; fix it by hand');
+    if (next === first.body) return;
+    if (next.length > MAX_COMMENT) return warn(`the new body would be ${next.length} characters, over GitHub's limit (${MAX_COMMENT} kept)`);
+    // gh has no compare-and-set for a PR body. Re-reading right before the edit shrinks the window in
+    // which a human's save could be overwritten to the time between this read and the edit (milliseconds);
+    // it does not close it. The next transition retries.
+    const again = read();
+    if (again.error || again.body !== first.body) return warn(again.error ?? 'the body changed while the record was prepared; the next transition retries');
     ghWithBody(c, ['pr', 'edit', String(job.pr)], next);
   } catch (err) {
-    process.stderr.write(`warning: could not update the Factory record on PR #${job.pr}: ${err.message}\n`);
+    warn(err.message);
   }
 }
 

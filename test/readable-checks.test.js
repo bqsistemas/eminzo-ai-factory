@@ -82,3 +82,26 @@ test('reusedReport keeps the parsed lines and adds the sentence and engine', asy
   assert.match(text, /Reused the round-2 gate: the sync with origin\/main brought no changes/);
   assert.deepEqual(testedBy(text), { head, inputs });
 });
+
+test('capLog keeps the last lines and the last bytes', async () => {
+  const { capLog } = await import('../factory/lib/report.js');
+  const text = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n');
+  const byLines = capLog(text, { lines: 10 }).split('\n');
+  assert.equal(byLines.length, 11);
+  assert.equal(byLines.at(-1), 'line 50');
+  assert.ok(!byLines.includes('line 39'));
+  const byBytes = capLog('x'.repeat(100) + 'END', { bytes: 20 });
+  assert.equal(byBytes.length, 20);
+  assert.ok(byBytes.endsWith('END'));
+  assert.equal(capLog('short\n'), 'short\n');
+});
+
+test('engineVersion ignores a cli/package.json that is not the engine package', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'engine-pkg-'));
+  mkdirSync(join(dir, 'factory/lib'), { recursive: true });
+  mkdirSync(join(dir, 'cli'));
+  writeFileSync(join(dir, 'cli/package.json'), JSON.stringify({ name: 'my-own-cli', version: '3.3.3' }));
+  assert.equal(engineVersion({}, join(dir, 'factory/lib')), null);
+  writeFileSync(join(dir, 'cli/package.json'), JSON.stringify({ name: '@eminzo/factory', version: '3.3.3' }));
+  assert.equal(engineVersion({}, join(dir, 'factory/lib')), '3.3.3');
+});

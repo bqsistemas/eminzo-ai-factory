@@ -3,6 +3,22 @@
 // bounded log tail are added around them. Written by gate.js and by job.js (a reused gate).
 
 export const LOG_LINES = 60;
+export const LOG_FILE_LINES = 5000;
+export const LOG_FILE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * The text kept in checks.log / merge-checks.log: the last 5000 lines and at most 5 MB. The log stays in the
+ * job folder (gitignored); the dashboard never serves it and no PR gets it attached. checks.md itself is not
+ * redacted anywhere in the engine, so neither is this file.
+ */
+export function capLog(text, { lines = LOG_FILE_LINES, bytes = LOG_FILE_BYTES } = {}) {
+  let out = String(text ?? '');
+  const all = out.split('\n');
+  if (all.length > lines + 1) out = all.slice(-(lines + 1)).join('\n');
+  const buf = Buffer.from(out, 'utf8');
+  if (buf.length > bytes) out = buf.subarray(buf.length - bytes).toString('utf8').replace(/^\uFFFD+/, '');
+  return out;
+}
 
 /** A span as a person reads it: `8s`, `2m 14s`, `1h 3m`. */
 export function formatSpan(ms) {
