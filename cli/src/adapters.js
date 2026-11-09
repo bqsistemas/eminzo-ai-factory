@@ -44,6 +44,7 @@ function rewriteSkillPaths(text) {
     .split('Roles live in `factory/roles/<role>.md`:').join('Roles ship with the engine (`eminzo show roles/<role>.md` prints one):')
     .split('`factory/roles/<role>.md` body').join('role body (`eminzo show roles/<role>.md` prints it)')
     .split('`factory/templates/project.md`').join('the template that `eminzo show templates/project.md` prints')
+    .split('`factory/templates/review.md`').join('the template that `eminzo show templates/review.md` prints')
     .split('and point to the role body.').join('and carry the role body.')
     .split('`.claude/agents/`').join('`~/.claude/agents/`')
     .split('`.codex/agents/`').join('`~/.codex/agents/`')
@@ -148,6 +149,7 @@ export function sharedFragments(text) {
   return out;
 }
 
+// Optional per role: protect (Claude PreToolUse hook), nudge (Stop hook), alsoWrites (extra files it may write), mustPrint.
 const FIELDS = ['description', 'codexDescription', 'tools', 'model', 'scope', 'file', 'regex', 'tokens', 'inputs', 'rules'];
 
 function check(role, meta) {
@@ -166,6 +168,9 @@ function parts(role, meta, shared, { path, hookNote }) {
     description: meta.description, codexDescription: meta.codexDescription, tools: meta.tools, model: meta.model,
     tokens: meta.tokens, inputs: meta.inputs, file: meta.file, path,
     rules: meta.rules.join('\n'),
+    // Extra files a role may write next to its own (the builder's plan.md), spelled for each provider.
+    'also-claude': (meta.alsoWrites ?? []).map((f) => ` and \`${f}\` in the same folder`).join(''),
+    'also-codex': (meta.alsoWrites ?? []).map((f) => ` and \`${path.slice(0, path.length - meta.file.length)}${f}\``).join(''),
     'data-rule': shared['data-rule'],
     language: shared.language,
     finish: fill(shared.finish, vars, `agent-shared.md finish (${role})`),

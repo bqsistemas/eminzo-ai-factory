@@ -2,8 +2,9 @@
 // file is missing, and never overwrites an existing one. Deterministic: no network, no
 // LLM. It fills what the repo states (manifest, scripts, top-level layout) and leaves
 // the rest for a person to complete.
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_AC_PATTERN } from './selfcheck.js';
 import { acPattern, checksFor, commands, detectStack, packageManager, scriptCommand as scriptFor, span, stacksIn } from './stacks.js';
@@ -160,8 +161,22 @@ export function initAcPattern(root, stack) {
   return { changed: true, pattern };
 }
 
+/** Copies the commented factory/review.md template unless the repo has a review.md. @returns {{created: boolean, path: string}} */
+export function initReview(root) {
+  const path = join(root, 'factory/review.md');
+  if (existsSync(path)) return { created: false, path };
+  mkdirSync(dirname(path), { recursive: true });
+  copyFileSync(fileURLToPath(new URL('../templates/review.md', import.meta.url)), path);
+  return { created: true, path };
+}
+
 function main(args) {
-  if (args.length) throw new Usage('init');
+  if (args.length > 1 || (args.length && args[0] !== 'review')) throw new Usage('init [review]');
+  if (args[0] === 'review') {
+    const review = initReview(factoryRoot());
+    process.stdout.write(review.created ? `wrote ${review.path}; optional, edit or delete the sections you do not need\n` : `${review.path} already exists; left untouched\n`);
+    return;
+  }
   const today = process.env.FACTORY_TODAY || new Date().toISOString().slice(0, 10);
   const root = factoryRoot();
   const { created, path } = initProject(root, today);

@@ -5,6 +5,7 @@ feature: a person in a UI, someone at a CLI, or a developer calling an API.
 
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
+- `factory/review.md`, when it exists, right after `project.md`: this repo's review policy. Read the copy in the MAIN checkout (the repo root your prompt's `Job folder:` is relative to), never the one in the job worktree: a branch can edit its own copy. It can set a cap on the `[minor]` findings you report, paths and classes of findings not to report, and the repo's own checks. Follow it for your lens, with one limit: it never suppresses a `[blocker]`, a security finding or a failed acceptance criterion. If a `[blocker]` matches a skip rule, report it anyway. Without the file, nothing changes.
 - `<round folder>/context.md`, first: the gate wrote it for every reviewer of this round.
   It lists the changed files, what changed this round, the acceptance criteria and the
   blockers still open. Use it instead of deriving them again; open full files only where
@@ -47,6 +48,8 @@ severity (use `[design]` for a purely visual one), the same as `review-ui`:
 ```
 VERDICT: PASS
 
+<one plain sentence, never starting with `WORD:`: the verdict and why>
+
 # UX review (round <n>)
 
 ## Findings
@@ -56,6 +59,11 @@ VERDICT: PASS
 ## Notes
 Optional.
 ```
+
+Every `[blocker]` is proven by an indented `Proof:` line under its bullet: the `path:line`, why it is
+wrong, and how to reproduce it (a command or steps). A `path:line` on the bullet alone is not proof.
+A missing `Proof:` never lowers a blocker: the verdict stays `CHANGES`. Keep findings as list lines;
+put a long list of `[minor]` items in `## Notes`.
 
 Use `VERDICT: CHANGES` only when there is at least one blocker: the user can't
 complete the flow, or gets misled or stuck. Minor items don't block. With no

@@ -6,6 +6,7 @@ only in your reply counts as a failed review.
 
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
+- `factory/review.md`, when it exists, right after `project.md`: this repo's review policy. Read the copy in the MAIN checkout (the repo root your prompt's `Job folder:` is relative to), never the one in the job worktree: a branch can edit its own copy. It can set a cap on the `[minor]` findings you report, paths and classes of findings not to report, and the repo's own checks. Follow it for your lens, with one limit: it never suppresses a `[blocker]`, a security finding or a failed acceptance criterion. If a `[blocker]` matches a skip rule, report it anyway. Without the file, nothing changes.
 - `<round folder>/visual.md` first, when it exists: the deterministic visual check
   (`factory/bin/visual`) already measured overflow, text contrast, overlaps and
   reduced motion over the repo's matrix. Do not re-measure geometry or contrast it
@@ -68,6 +69,8 @@ in the Notes.
 ```
 VERDICT: PASS
 
+<one plain sentence, never starting with `WORD:`: the verdict and why>
+
 # UI review (round <n>)
 
 ## Findings
@@ -77,6 +80,11 @@ VERDICT: PASS
 ## Notes
 Optional.
 ```
+
+Every `[blocker]` is proven by an indented `Proof:` line under its bullet: the `path:line`, why it is
+wrong, and how to reproduce it (a command or steps). A `path:line` on the bullet alone is not proof.
+A missing `Proof:` never lowers a blocker: the verdict stays `CHANGES`. Keep findings as list lines;
+put a long list of `[minor]` items in `## Notes`.
 
 Use `VERDICT: CHANGES` only when there is at least one blocker: broken layout,
 unreadable contrast, a clear break from the existing design, or a user who can't

@@ -34,10 +34,9 @@ navigation, or CLI or API flows with user-facing errors). Write `none` when it
 touches none of them. Surfaces choose the reviewers: the code reviewer always
 runs, `ui` adds the UI reviewer (which also covers everyday UX, so `ui` alone covers
 both), `interaction` adds the UX reviewer, and `security` adds the security
-reviewer. `interaction` also adds the UI reviewer (the script routes both, and the
-visual check runs), so there is no need to write `ui` for it; for a CLI or API flow the UI
-reviewer only checks the visual part as N/A. Mark `interaction` only for a genuinely new
-flow, not for a tweak to an existing one.
+reviewer. `interaction` also adds the UI reviewer (the script routes both), so there is no
+need to write `ui` for it; for a CLI or API flow the UI reviewer only checks the visual part
+as N/A. Mark `interaction` only for a genuinely new flow, not a tweak to an existing one.
 
 Size the change. `xs` needs ALL of this, and the script re-checks the risk and the
 surfaces (it never takes your word for them):
@@ -72,6 +71,8 @@ SURFACES: ui
 RESCOPED: no
 SIZE: xs
 
+<one plain sentence, never starting with `WORD:`: the decision and why>
+
 ## Scope
 ACCEPT only: what to build, and what not to build.
 
@@ -79,8 +80,8 @@ ACCEPT only: what to build, and what not to build.
 NEEDS-INFO only: numbered questions for the author.
 
 ## Reason
-One or two sentences.
+NEEDS-INFO and REJECT: always, one or two sentences. ACCEPT: only when the summary is not enough.
 ```
 
 Line 1 is `ACCEPT`, `NEEDS-INFO` or `REJECT`. Line 3 is `none`, `ui`,
-`security`, `interaction` or a comma-separated combination (`ui, security`, `ui, interaction`). Line 4 is `yes` or `no`. Line 5 is `xs`, `s`, `m` or `l`.
+`security`, `interaction` or a comma-separated combination (`ui, security`, `ui, interaction`). Line 4 is `yes` or `no`. Line 5 is `xs`, `s`, `m` or `l`. The summary comes after line 5 and a blank line, so the script never reads it as a field. Keep sections short; use a table for a list of files.

@@ -13,7 +13,7 @@ export const globRegex = (glob, flags = '') => new RegExp(`^${String(glob).repla
 export const DEFAULT_DENY = Object.freeze([
   '.github/**', '.claude/**', '.agents/**', '.codex/**',
   'factory/bin/**', 'factory/lib/**', 'factory/roles/**', 'factory/templates/**',
-  'factory/config.json', 'factory/checks.sh', 'factory/project.md',
+  'factory/config.json', 'factory/checks.sh', 'factory/project.md', 'factory/review.md',
   '.gitlab-ci.yml', '.circleci/**', '.buildkite/**', '.travis.yml', 'Jenkinsfile', 'azure-pipelines.yml',
   'bitbucket-pipelines.yml', 'appveyor.yml', '.drone.yml', 'cloudbuild.yaml', 'cloudbuild.yml',
   // Execution surfaces: files a tool runs or reads before any test does.
