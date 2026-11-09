@@ -86,7 +86,7 @@ factory/
   roles/<role>.md       the role bodies, shared by Claude and Codex
   templates/project.md  the project.md template (required sections)
   board.json            all job.json files; the dashboard polls it
-  jobs/<id>/            job.json issue.md intake.md spec.md spec-review-notes.md build.md decision.md merge-checks.md
+  jobs/<id>/            job.json issue.md intake.md spec.md spec-review-notes.md plan.md build.md decision.md merge-checks.md
                         round-N/checks.md round-N/review-<lens>.md round-N/review-human.md
 <repo>/.worktrees/<id>/ the job's worktree on branch factory/<id>
 ```

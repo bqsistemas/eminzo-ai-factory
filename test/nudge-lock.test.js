@@ -79,7 +79,7 @@ const NO_BACKGROUND = /run_in_background|pgrep|\bsleep\b/;
 
 test('AC-3: the builder role runs the nudge in the foreground and never says to background or poll it', () => {
   const role = readFileSync(join(repo, 'factory/roles/builder.md'), 'utf8');
-  const step = role.slice(role.indexOf('3. Run the repo\'s checks'), role.indexOf('4. Visual check'));
+  const step = role.slice(role.indexOf('4. Run the repo\'s checks'), role.indexOf('5. Visual check'));
   assert.match(step, /in the foreground/);
   assert.match(step, /refused: nudge running/);
   assert.doesNotMatch(role, NO_BACKGROUND);

@@ -40,6 +40,9 @@ in the worktree only when you need to probe something `checks.md` doesn't show.
   starts with `GATE: PASS`.
 - Correct logic, including edge cases: empty input, boundaries, error paths.
 - The diff stays inside the spec's scope: no unrelated changes, no dead code.
+- The diff matches `<job folder>/plan.md` (the builder's plan: files, order, risks, proof), or
+  `build.md` explains the difference.
+- `plan.md` is at most 30 lines. A longer one is a `[minor]`.
 - Naming, layout, and style match the conventions in `project.md` and nearby code.
 - The simplest design that works; no premature abstraction.
 - `build.md` `## Flaky` lists checks the builder saw fail and then pass with no code change

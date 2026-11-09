@@ -148,6 +148,7 @@ export function sharedFragments(text) {
   return out;
 }
 
+// Optional per role: protect (Claude PreToolUse hook), nudge (Stop hook), alsoWrites (extra files it may write), mustPrint.
 const FIELDS = ['description', 'codexDescription', 'tools', 'model', 'scope', 'file', 'regex', 'tokens', 'inputs', 'rules'];
 
 function check(role, meta) {
@@ -166,6 +167,9 @@ function parts(role, meta, shared, { path, hookNote }) {
     description: meta.description, codexDescription: meta.codexDescription, tools: meta.tools, model: meta.model,
     tokens: meta.tokens, inputs: meta.inputs, file: meta.file, path,
     rules: meta.rules.join('\n'),
+    // Extra files a role may write next to its own (the builder's plan.md), spelled for each provider.
+    'also-claude': (meta.alsoWrites ?? []).map((f) => ` and \`${f}\` in the same folder`).join(''),
+    'also-codex': (meta.alsoWrites ?? []).map((f) => ` and \`${path.slice(0, path.length - meta.file.length)}${f}\``).join(''),
     'data-rule': shared['data-rule'],
     language: shared.language,
     finish: fill(shared.finish, vars, `agent-shared.md finish (${role})`),

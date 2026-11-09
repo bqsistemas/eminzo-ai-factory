@@ -14,11 +14,13 @@
 //    followed by `..` or `to` and another number (`AC-1..AC-3`) covers the whole range. In a spec, a
 //    line that starts `AC-1, AC-2: ...` or `AC-1..AC-3: ...` defines each of those ACs.
 // 2. Protected tests. No path of `config.protected_tests` changed against the base (gate.js' rule).
-// 3. Uncommitted changes. The worktree holds none (gate.js' rule).
+// 3. plan.md. <job folder>/plan.md exists and has the four headings the builder role asks for.
+// 4. Uncommitted changes. The worktree holds none (gate.js' rule).
 // Warnings
 // - Module map. factory/project.md does not mention the paths the branch added or moved
 //   (project-map.js). The gate reports the same finding as informational and never fails on it, so
 //   selfcheck does not fail on it either.
+// - plan.md is longer than 30 lines.
 import { join } from 'node:path';
 
 import { isTestFile } from './diff.js';
@@ -29,6 +31,8 @@ import { baseRef, jobDir, readText, run } from './util.js';
 
 export const DEFAULT_AC_PATTERN = 'AC-\\d+';
 export const MAX_LINE = 2000;
+export const PLAN_MAX_LINES = 30;
+export const PLAN_HEADINGS = Object.freeze(['Files that change', 'Order of work', 'Risks', 'Proof']);
 
 // A spec line that defines ACs: a list item or table row starting with `AC-n`, then more numbers after `,`, `&`, `and`, `..` or `to`.
 const SEP = String.raw`(?:,|&|\band\b|\.{2,3}|…|–|—|\bto\b)`;
@@ -137,6 +141,27 @@ function coverageProblems(root, job, config, worktree, base, notes) {
   return acs.filter((n) => !seen.has(n)).map((n) => `AC-${n} has no test: no test added or changed in the diff against ${base} references it (pattern ${source})`);
 }
 
+/** Problems and warnings of the job's plan.md: missing or lacking a `## ` heading (fenced lines do not count) is a problem; over 30 lines a warning. */
+export function planFindings(root, job) {
+  const text = readText(join(jobDir(root, job.id), 'plan.md'));
+  if (text === null) return { problems: ['plan.md is missing: write it in the job folder before your first code edit'], warnings: [] };
+  const lines = text.replace(/\r/g, '').replace(/\n$/, '').split('\n');
+  const headings = new Set();
+  let fenced = false;
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    else if (!fenced) {
+      const h = /^##\s+(.*?)\s*#*\s*$/.exec(line)?.[1];
+      if (h) headings.add(h);
+    }
+  }
+  const missing = PLAN_HEADINGS.filter((h) => !headings.has(h));
+  return {
+    problems: missing.length ? [`plan.md lacks the heading${missing.length > 1 ? 's' : ''}: ${missing.map((h) => `## ${h}`).join(', ')}`] : [],
+    warnings: lines.length > PLAN_MAX_LINES ? [`plan.md has ${lines.length} lines (the limit is ${PLAN_MAX_LINES}); the code reviewer files a [minor]`] : [],
+  };
+}
+
 /**
  * Everything selfcheck found for the job's branch.
  * @param {string} root the main checkout
@@ -153,6 +178,9 @@ export function selfcheckFindings(root, job, config) {
   const guard = protectedChanges(worktree, base, config.protected_tests ?? []);
   if (guard.error) problems.push(`protected tests not checked: ${guard.error}`);
   problems.push(...guard.paths.map((p) => `protected test changed (the gate fails the round): ${p}`));
+  const plan = planFindings(root, job);
+  problems.push(...plan.problems);
+  warnings.push(...plan.warnings);
   const map = projectMapStatus(worktree, base);
   if (map.status === 'stale') {
     warnings.push(`Module map in factory/project.md does not mention: ${map.paths.slice(0, 20).join(', ')}${map.paths.length > 20 ? `, and ${map.paths.length - 20} more` : ''} (the gate reports it too, without failing)`);
