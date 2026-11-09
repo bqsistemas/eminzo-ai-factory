@@ -6,9 +6,16 @@
 // for its own checks). Exit 2 means the checks failed; 64 means the call itself was
 // wrong (bad id, unknown job, no worktree).
 //
-// A pass is remembered in the job folder (nudge.json: the worktree's tree and the hash
+// Modes: by hand, `nudge <job-id>` runs the checks focused (FACTORY_CHECK_MODE=focused and
+// FACTORY_CHANGED_FILES, the file listing the paths changed against the base, for a checks.sh
+// that uses them), `nudge <job-id> --full` and the Stop hook run everything. A checks.sh that
+// ignores the variables runs everything either way. When the changed files cannot be computed
+// the nudge runs full.
+//
+// A pass is remembered in the job folder (nudge.json: the worktree's tree, the mode, and the hash
 // of checks.sh + config.json), so the next nudge on exactly the same files does not run
-// the checks again. A failure forgets it and keeps the full log in nudge.log. The gate
+// the checks again. A focused pass never satisfies a full nudge (nor the hook); a full pass
+// satisfies both. A failure forgets it and keeps the full log in nudge.log. The gate
 // never reads nudge.json: it always runs the checks itself.
 //
 // One nudge per job at a time: while the checks run, nudge.lock in the job folder records the
@@ -17,12 +24,13 @@
 // as the Stop hook (so the builder keeps waiting). A lock is stale, and taken over, when neither
 // process is alive or it is older than MAX_LOCK_AGE (a recycled PID never blocks forever). The
 // builder runs the nudge in the foreground and waits for it, so there is never a reason to start another.
-import { existsSync, linkSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { checksInputs, worktreeTree } from './check-stamp.js';
+import { changedFiles, checksInputs, mergeBase, worktreeTree } from './check-stamp.js';
 import { runChecks } from './gate.js';
-import { JOB_ID, factoryRoot, isMain, readText, runCli, tail, writeAtomic } from './util.js';
+import { JOB_ID, baseRef, factoryRoot, isMain, loadConfig, readText, runCli, tail, writeAtomic } from './util.js';
 
 // Exit codes: 0 checks pass (or nothing to check), 1 another nudge of the job is running,
 // 2 checks failed, 64 bad usage or unknown job.
@@ -47,9 +55,11 @@ function jobIdFromHook() {
 }
 
 function main(args = []) {
-  const manual = args[0];
-  if (manual !== undefined && !JOB_ID.test(manual)) {
-    process.stderr.write('usage: nudge [<job-id>]\n');
+  const full = args.includes('--full');
+  const rest = args.filter((a) => a !== '--full');
+  const manual = rest[0];
+  if ((manual !== undefined && !JOB_ID.test(manual)) || rest.length > 1 || (full && manual === undefined)) {
+    process.stderr.write('usage: nudge [<job-id> [--full]]\n');
     return EXIT_USAGE;
   }
   const id = manual ?? jobIdFromHook();
@@ -81,7 +91,20 @@ function main(args = []) {
   const inputs = checksInputs(root);
   const tree = worktreeTree(job.worktree);
   const last = readStamp(stampFile);
-  if (tree && last?.tree === tree && last.inputs === inputs) {
+  // The hook (no job id) and --full need a full pass; only a by-hand nudge may settle for a focused one.
+  const wantFull = full || !manual;
+  // A focused pass also needs the base it was made against: after the base moves the diff is another one.
+  const focusedOk = () => {
+    try {
+      return typeof last.base === 'string' && last.base === mergeBase(job.worktree, baseRef(loadConfig(root)).base);
+    } catch {
+      return false;
+    }
+  };
+  // Full callers accept only a full pass (no mode = recorded before modes existed); anything else re-runs.
+  const fullPass = last?.mode === undefined || last.mode === 'full';
+  const passed = fullPass || (!wantFull && last.mode === 'focused' && focusedOk());
+  if (tree && last?.tree === tree && last.inputs === inputs && passed) {
     process.stderr.write(`factory nudge: the checks already passed for this tree (${tree.slice(0, 12)}); not running them again.\n`);
     return 0;
   }
@@ -99,17 +122,66 @@ function main(args = []) {
     return EXIT_BUSY;
   }
   try {
-    return runAndReport({ root, job, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
+    return runAndReport({ root, job, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
     if (!lock.unlocked) releaseLock(lockFile);
   }
 }
 
-function runAndReport({ root, job, stampFile, logFile, tree, inputs, childFile }) {
-  const { code, output } = runChecks(root, job.worktree, childFile ? { pidFile: childFile } : {});
+const CHANGED_PREFIX = 'factory-changed-';
+const STALE_CHANGED = 24 * 60 * 60 * 1000;
+
+/**
+ * Removes the changed-files folders a killed nudge left in the temp dir (SIGTERM and SIGINT skip the
+ * `finally` while the checks run, and a signal handler cannot run while this process waits on them).
+ */
+function sweepStaleChangedFolders() {
+  try {
+    for (const name of readdirSync(tmpdir())) {
+      if (!name.startsWith(CHANGED_PREFIX)) continue;
+      const dir = join(tmpdir(), name);
+      if (Date.now() - statSync(dir).mtimeMs > STALE_CHANGED) rmSync(dir, { recursive: true, force: true });
+    }
+  } catch { /* best effort */ }
+}
+
+/** The focused run's options: the changed-files list in a throwaway folder (`cleanup` removes it), or {} (full) when it cannot be made. */
+function focusedOptions(root, job) {
+  const none = { options: {}, cleanup() {} };
+  sweepStaleChangedFolders();
+  try {
+    const found = changedFiles(job.worktree, baseRef(loadConfig(root)).base);
+    if (found.reason) {
+      process.stderr.write(`factory nudge: ${found.reason}; running the full checks.\n`);
+      return none;
+    }
+    const tmp = mkdtempSync(join(tmpdir(), CHANGED_PREFIX));
+    const file = join(tmp, 'changed-files.txt');
+    try {
+      writeFileSync(file, found.files.map((f) => `${f}\n`).join(''));
+    } catch (err) {
+      rmSync(tmp, { recursive: true, force: true });
+      throw err;
+    }
+    return { options: { mode: 'focused', changedFiles: file }, base: found.base, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
+  } catch {
+    return none;
+  }
+}
+
+function runAndReport({ root, job, wantFull, stampFile, logFile, tree, inputs, childFile }) {
+  const focus = wantFull ? { options: {}, cleanup() {} } : focusedOptions(root, job);
+  const mode = focus.options.mode ?? 'full';
+  let result;
+  try {
+    result = runChecks(root, job.worktree, { ...focus.options, ...(childFile ? { pidFile: childFile } : {}) });
+  } finally {
+    focus.cleanup();
+  }
+  const { code, output } = result;
   if (code === 0) {
     bestEffort(() => (tree
-      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, at: new Date().toISOString() })}\n`)
+      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, ...(mode === 'focused' ? { base: focus.base } : {}), at: new Date().toISOString() })}\n`)
       : rmSync(stampFile, { force: true })));
     return 0;
   }

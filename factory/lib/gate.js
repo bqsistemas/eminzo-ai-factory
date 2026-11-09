@@ -54,10 +54,18 @@ export function runVisualCheck(root, config, job, checksFile) {
  * Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved.
  * With `pidFile`, the shell writes its PID there first (the same process then runs checks.sh), so a
  * caller can tell whether checks it started are still running after it died.
+ * The checks see FACTORY_CHECK_MODE: `full` unless the caller passes mode `focused` together with
+ * `changedFiles` (the absolute path of a file listing the changed paths, one per line), which
+ * becomes FACTORY_CHANGED_FILES. Whatever the environment already holds for either variable is
+ * dropped, so the gate and the merge always run full.
  */
-export function runChecks(root, cwd, { pidFile } = {}) {
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles } = {}) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT; // a gate started from a test run must not report into it
+  delete env.FACTORY_CHANGED_FILES;
+  const focused = mode === 'focused' && typeof changedFiles === 'string';
+  env.FACTORY_CHECK_MODE = focused ? 'focused' : 'full';
+  if (focused) env.FACTORY_CHANGED_FILES = changedFiles;
   const script = pidFile ? 'printf "%s\n" "$$" > "$1"; exec sh "$0" 2>&1' : 'exec sh "$0" 2>&1';
   const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env });
   const output = `${res.stdout ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
