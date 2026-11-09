@@ -32,9 +32,11 @@ List the surfaces it touches: `ui` (anything rendered or user-facing),
 `interaction` (the change adds a new interactive flow: forms, multi-step
 navigation, or CLI or API flows with user-facing errors). Write `none` when it
 touches none of them. Surfaces choose the reviewers: the code reviewer always
-runs, `ui` adds the UI reviewer (it also covers everyday UX), `interaction` adds the UX
-and UI reviewers (no need to write `ui` for it), and `security` adds the security
-reviewer. Mark `interaction` only for a genuinely new flow, not a tweak to an existing one.
+runs, `ui` adds the UI reviewer (which also covers everyday UX, so `ui` alone covers
+both), `interaction` adds the UX reviewer, and `security` adds the security
+reviewer. `interaction` also adds the UI reviewer (the script routes both), so there is no
+need to write `ui` for it; for a CLI or API flow the UI reviewer only checks the visual part
+as N/A. Mark `interaction` only for a genuinely new flow, not a tweak to an existing one.
 
 Size the change. `xs` needs ALL of this, and the script re-checks the risk and the
 surfaces (it never takes your word for them):

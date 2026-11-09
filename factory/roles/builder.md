@@ -50,7 +50,8 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    run that test file alone, then run the nudge again. If you start the app, use the
    port from your prompt. By hand the nudge is focused: a `factory/checks.sh` that reads
    `FACTORY_CHECK_MODE` and `FACTORY_CHANGED_FILES` may run only what your change touches.
-   A focused pass is not the final word: the factory runs the full checks before the gate and in it; `--full` forces everything.
+   The factory runs the full checks before the gate (and again in the gate), so a focused
+   pass is not the final word; `--full` forces everything.
    Write `STATUS: READY` only when the checks exit 0 and `selfcheck` (step 7) exits 0; on a failure fix it and run the nudge
    again, within these limits:
    - Run the same failing check command at most 2 times per round. The nudge also stops
@@ -126,9 +127,9 @@ STATUS: READY
 ## Checks
 | Step | Mode | Result |
 |------|------|--------|
-| `factory/bin/nudge` (last run) | focused or full | pass 12, fail 0 |
+| `factory/bin/nudge` (last run) | full | pass 12, fail 0 |
 | `factory/bin/selfcheck` | | ok |
-Add a row per other check that ran, and one line under the table naming what failed, if anything.
+Mode is the one the nudge reported (focused or full). Add a row per other check that ran, and one line under the table naming what failed, if anything.
 
 ## Review responses
 - security: <finding> → <what you did, or why not>
