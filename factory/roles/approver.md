@@ -33,7 +33,9 @@ branches. `git fetch origin` is fine.
    deviation that another lens's blocker forced, with the Goal intact, is not a reason
    to escalate; record it under `## Accepted deviations` in `decision.md`.
 
-APPROVE only if all six hold. Otherwise ESCALATE.
+APPROVE only if all six hold. Otherwise ESCALATE. Either way, `decision.md` ends with a
+`## Lessons` section (see the format below): the factory collects those lines into
+`factory/project.md`.
 
 For a `low` or `medium` job the orchestrator runs `factory/bin/approve <job-id>` first;
 it checks 1 to 5 deterministically and only spawns you when it is inconclusive (an
@@ -59,6 +61,10 @@ Adds a new runtime dependency (express-rate-limit); a human should accept it.
 
 ## Accepted deviations
 Only when approving with deviations: `AC-n | what changed → why`, one per line.
+
+## Lessons
+One line per finding a future builder should avoid, in plain words and without job
+ids. Always write this section. `None` when there is nothing to learn.
 
 ## For the human
 What to look at, and what you would decide. Only when escalating. Also list here every
