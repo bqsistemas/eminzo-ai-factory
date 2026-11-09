@@ -28,7 +28,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    main checkout, write only your `build.md` and `plan.md`. Never commit files under
    `factory/jobs/` or `factory/board.json`.
 2. Plan. Before your first code edit, write `<job folder>/plan.md` (in the main checkout, next
-   to `build.md`), at most 30 lines, starting with one plain sentence that says the plan, then exactly these four headings:
+   to `build.md`), at most 30 lines, starting with one plain sentence (never starting with `WORD:`) that says the plan, then exactly these four headings:
    - `## Files that change`: the files, in the order you will change them.
    - `## Order of work`: the steps.
    - `## Risks`: the riskiest step, and what could break outside the diff.
@@ -112,7 +112,7 @@ decides, and it always runs the checks itself.
 ```
 STATUS: READY
 
-<one plain sentence: what was built and whether the checks passed, readable alone>
+<one plain sentence, never starting with `WORD:`: what was built and whether the checks passed>
 
 # Build: <title> (round <n>)
 

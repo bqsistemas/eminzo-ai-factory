@@ -42,11 +42,41 @@ test('B2 AC-3: reviewers attach proof to every [blocker]; the approver treats a 
     assert.match(text, /reproduce/i, `${name}.md`);
   }
   const approver = role('approver');
-  assert.match(approver, /without proof is not proven/i);
-  assert.match(approver, /does not block on it alone/i);
+  assert.match(approver, /not proven/i);
+  assert.match(approver, /never waives check 1/i);
   assert.match(approver, /## For the human/);
 });
 
 test('B2: roles keep the engine generic (no repo, product or suite names)', () => {
   for (const name of ['intake', 'spec-writer', 'builder', 'review-code', 'review-security', 'review-ui', 'review-ux', 'approver']) assert.doesNotMatch(role(name), /smoke|eminzo/i, name);
+});
+
+test('B2: each review role defines proof as an indented Proof: line, and a bare path:line is not proof', () => {
+  for (const name of ['review-code', 'review-security', 'review-ui', 'review-ux']) {
+    const text = role(name).replace(/\s+/g, ' ');
+    assert.match(text, /indented `Proof:` line under its bullet/, name);
+    assert.match(text, /A `path:line` on the bullet alone is not proof/, name);
+    assert.match(text, /A missing `Proof:` never lowers a blocker/, name);
+  }
+});
+
+test('B2: the approver never lets proof waive a CHANGES verdict, and lists blockers as proven or not proven', () => {
+  const text = role('approver').replace(/\s+/g, ' ');
+  assert.match(text, /Proof never waives check 1: a lens whose latest verdict is `CHANGES` is an ESCALATE/);
+  assert.match(text, /\*\*proven\*\* or \*\*not proven\*\*/);
+  assert.match(text, /A `path:line` on the bullet alone is not proof/);
+  assert.doesNotMatch(text, /otherwise note it/i);
+  assert.doesNotMatch(text, /approve[^.]*when a lens is `?CHANGES/i);
+});
+
+test('B2: intake keeps SIZE as the fifth header line and a reason for NEEDS-INFO and REJECT', () => {
+  const text = role('intake');
+  assert.ok(text.includes('RESCOPED: no\nSIZE: xs\n\n<one plain sentence'));
+  assert.match(text.replace(/\s+/g, ' '), /NEEDS-INFO and REJECT: always/);
+});
+
+test('B2: no summary sentence may start with an uppercase word and a colon', () => {
+  for (const name of ['intake', 'spec-writer', 'builder', 'review-code', 'review-security', 'review-ui', 'review-ux', 'approver']) {
+    assert.match(role(name).replace(/\s+/g, ' '), /never starting with `WORD:`/, name);
+  }
 });

@@ -40,7 +40,7 @@ Read-only. Don't edit code, commit, or switch branches.
 ```
 VERDICT: PASS
 
-<one plain sentence: the verdict and why, readable alone>
+<one plain sentence, never starting with `WORD:`: the verdict and why>
 
 # Security review (round <n>)
 
@@ -52,9 +52,10 @@ VERDICT: PASS
 Optional.
 ```
 
-Every `[blocker]` carries proof on an indented `Proof:` line under it: the `path:line`, why it is
-wrong, and how to reproduce it (a command or steps). Without proof the approver treats it as not
-proven. Keep findings as list lines; put a long list of `[minor]` items in `## Notes`.
+Every `[blocker]` is proven by an indented `Proof:` line under its bullet: the `path:line`, why it is
+wrong, and how to reproduce it (a command or steps). A `path:line` on the bullet alone is not proof.
+A missing `Proof:` never lowers a blocker: the verdict stays `CHANGES`. Keep findings as list lines;
+put a long list of `[minor]` items in `## Notes`.
 
 Use `VERDICT: CHANGES` only when there is at least one blocker: a concrete,
 exploitable issue or a violation of the spec. Minor items don't block. With no

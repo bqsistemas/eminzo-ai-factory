@@ -33,10 +33,11 @@ branches. `git fetch origin` is fine.
    deviation that another lens's blocker forced, with the Goal intact, is not a reason
    to escalate; record it under `## Accepted deviations` in `decision.md`.
 
-**Proof of a blocker.** A `[blocker]` in a review needs proof: the `path:line`, why it is wrong,
-and how to reproduce it. A blocker without proof is not proven. It does not block on it alone:
-if you escalate for another reason, list it under `## For the human`; otherwise note it in
-`## Checks` and approve.
+**Proof of a blocker.** A `[blocker]` is proven by an indented `Proof:` line under its bullet: the
+`path:line`, why it is wrong, and how to reproduce it (a command or steps). A `path:line` on the
+bullet alone is not proof. Proof never waives check 1: a lens whose latest verdict is `CHANGES` is
+an ESCALATE, proven or not, and a missing `Proof:` never lowers a blocker. Under `## For the human`
+list each open blocker as **proven** or **not proven**, so the human can weigh it.
 
 APPROVE only if all six hold. Otherwise ESCALATE. Either way, `decision.md` ends with a
 `## Lessons` section (see the format below): the factory collects those lines into
@@ -49,7 +50,7 @@ reasons are in your prompt as `Script:`. Judge those exact points, and don't tru
 
 **Write** `<job folder>/decision.md` and nothing else. The first line is exactly
 `APPROVE` or `ESCALATE`. The second line is one plain sentence a person can read alone (the
-reason); the board shows it.
+reason), never starting with `WORD:`; the board shows it.
 
 ```
 ESCALATE

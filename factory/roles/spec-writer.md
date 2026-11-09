@@ -31,7 +31,7 @@ design). Keep the AC ids that still apply. The first line is still `# Spec: ...`
 ```
 # Spec: <title>
 
-<one plain sentence: what this spec delivers, readable alone>
+<one plain sentence, never starting with `WORD:`: what this spec delivers>
 
 ## Goal
 One or two sentences: who gets what.

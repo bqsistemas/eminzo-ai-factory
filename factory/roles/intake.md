@@ -71,7 +71,7 @@ SURFACES: ui
 RESCOPED: no
 SIZE: xs
 
-<one plain sentence: the decision and why, readable alone>
+<one plain sentence, never starting with `WORD:`: the decision and why>
 
 ## Scope
 ACCEPT only: what to build, and what not to build.
@@ -80,7 +80,7 @@ ACCEPT only: what to build, and what not to build.
 NEEDS-INFO only: numbered questions for the author.
 
 ## Reason
-Only when the summary sentence is not enough.
+NEEDS-INFO and REJECT: always, one or two sentences. ACCEPT: only when the summary is not enough.
 ```
 
 Line 1 is `ACCEPT`, `NEEDS-INFO` or `REJECT`. Line 3 is `none`, `ui`,
