@@ -128,10 +128,63 @@ export const PHRASES = Object.freeze({
 });
 
 const LABELS = Object.freeze({
-  en: { round: 'Round', pr: 'PR', note: 'Note', action: 'What to do' },
-  es: { round: 'Ronda', pr: 'PR', note: 'Nota', action: 'Qué hacer' },
-  pt: { round: 'Rodada', pr: 'PR', note: 'Nota', action: 'O que fazer' },
+  en: { stage: 'Stage', issue: 'Issue', round: 'Round', pr: 'PR', risk: 'Risk', reviews: 'Reviews', cost: 'Cost', duration: 'Duration', note: 'Note', action: 'What to do' },
+  es: { stage: 'Fase', issue: 'Issue', round: 'Ronda', pr: 'PR', risk: 'Riesgo', reviews: 'Revisiones', cost: 'Costo', duration: 'Duración', note: 'Nota', action: 'Qué hacer' },
+  pt: { stage: 'Fase', issue: 'Issue', round: 'Rodada', pr: 'PR', risk: 'Risco', reviews: 'Revisões', cost: 'Custo', duration: 'Duração', note: 'Nota', action: 'O que fazer' },
 });
+
+// Stage display names; `new` is the origin of a job that just started.
+const STAGES = Object.freeze({
+  en: {
+    new: 'New', intake: 'Intake', spec: 'Spec', 'spec-review': 'Spec review', build: 'Build', gate: 'Gate', review: 'Review',
+    approve: 'Approve', merging: 'Merging', merged: 'Merged', 'awaiting-merge': 'Awaiting merge',
+    'needs-info': 'Needs info', 'needs-human': 'Needs human', rejected: 'Rejected',
+  },
+  es: {
+    new: 'Nuevo', intake: 'Intake', spec: 'Spec', 'spec-review': 'Revisión de spec', build: 'Build', gate: 'Gate', review: 'Revisión',
+    approve: 'Aprobación', merging: 'Mergeando', merged: 'Mergeado', 'awaiting-merge': 'Esperando merge',
+    'needs-info': 'Falta info', 'needs-human': 'Necesita decisión', rejected: 'Rechazado',
+  },
+  pt: {
+    new: 'Novo', intake: 'Intake', spec: 'Spec', 'spec-review': 'Revisão da spec', build: 'Build', gate: 'Gate', review: 'Revisão',
+    approve: 'Aprovação', merging: 'Fazendo merge', merged: 'Merge feito', 'awaiting-merge': 'Aguardando merge',
+    'needs-info': 'Faltam informações', 'needs-human': 'Precisa de decisão', rejected: 'Rejeitado',
+  },
+});
+
+const RISKS = Object.freeze({
+  en: { low: 'Low', medium: 'Medium', high: 'High' },
+  es: { low: 'bajo', medium: 'medio', high: 'alto' },
+  pt: { low: 'baixo', medium: 'médio', high: 'alto' },
+});
+
+// Stages where cost and duration are final or the job is parked.
+const SETTLED = Object.freeze(['merged', 'awaiting-merge', 'needs-human', 'needs-info', 'rejected']);
+const VERDICTS = Object.freeze({ PASS: '✅', CHANGES: '✏️' });
+
+function stageName(lang, token) {
+  const table = STAGES[lang];
+  const id = identifier(token);
+  return Object.hasOwn(table, id) ? table[id] : id;
+}
+
+function duration(startedAt, endedAt) {
+  const start = typeof startedAt === 'string' ? Date.parse(startedAt) : NaN;
+  const end = typeof endedAt === 'string' ? Date.parse(endedAt) : NaN;
+  const minutes = Math.floor((end - start) / 60000);
+  if (!Number.isFinite(minutes) || minutes < 0) return '';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+function reviewsLine(reviews) {
+  if (!reviews || typeof reviews !== 'object' || Array.isArray(reviews)) return '';
+  return Object.entries(reviews).slice(0, 8)
+    .filter(([lens, verdict]) => /^[a-z][a-z0-9-]{0,30}$/.test(lens) && Object.hasOwn(VERDICTS, verdict))
+    .map(([lens, verdict]) => `${identifier(lens)} ${VERDICTS[verdict]}`).join(' · ');
+}
 
 // {cmd} is built here from a validated integer, never from event text.
 const ACTIONS = Object.freeze({
@@ -213,19 +266,37 @@ export function discordPayload(event) {
   if (description) embed.description = clip(description, LIMITS.description);
   const url = prUrl ?? issueUrl;
   if (url) embed.url = url;
+  const repo = typeof event.repoUrl === 'string' ? /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)$/.exec(event.repoUrl) : null;
+  if (repo) embed.author = { name: repo[1], url: event.repoUrl };
 
   const fields = [];
+  const fromToken = identifier(event.from) || 'new';
+  if (to) fields.push({ name: labels.stage, value: `${stageName(lang, fromToken)} → ${stageName(lang, to)}`, inline: true });
+  if (issue) fields.push({ name: labels.issue, value: issueUrl ? `[#${issue}](${issueUrl})` : `#${issue}`, inline: true, link: Boolean(issueUrl) });
+  if (prNumber != null) fields.push({ name: labels.pr, value: `[#${prNumber}](${prUrl})`, inline: true, link: true });
   if (round != null && maxRounds != null) fields.push({ name: labels.round, value: `${round}/${maxRounds}`, inline: true });
-  if (prNumber != null) fields.push({ name: labels.pr, value: `#${prNumber}`, inline: true });
+  if (Object.hasOwn(RISKS[lang], event.risk)) {
+    fields.push({ name: labels.risk, value: `${RISKS[lang][event.risk]}${event.lane === 'xs' ? ' · XS' : ''}`, inline: true });
+  }
+  const reviewed = fromToken === 'review' ? reviewsLine(event.reviews) : '';
+  if (reviewed) fields.push({ name: labels.reviews, value: reviewed, inline: false });
+  if (SETTLED.includes(to)) {
+    if (typeof event.cost_usd === 'number' && Number.isFinite(event.cost_usd) && event.cost_usd >= 0) {
+      fields.push({ name: labels.cost, value: `$${event.cost_usd.toFixed(2)}`, inline: true });
+    }
+    const elapsed = duration(event.started, event.timestamp);
+    if (elapsed) fields.push({ name: labels.duration, value: elapsed, inline: true });
+  }
   const note = safeText(event.note, 300);
   if (note) fields.push({ name: labels.note, value: note, inline: true });
   if (Object.hasOwn(ACTIONS[lang], to)) {
     const cmd = issue ? `\`/eminzo-factory rework ${issue}\`` : '`/eminzo-factory rework`';
     fields.push({ name: labels.action, value: ACTIONS[lang][to].replace('{cmd}', cmd) });
   }
-  embed.fields = fields.slice(0, LIMITS.fields).map((f) => ({
-    ...f, name: clip(f.name, LIMITS.name), value: clip(f.value, LIMITS.value),
-  }));
+  // Masked links are never clipped: a link that does not fit is dropped whole.
+  embed.fields = fields.slice(0, LIMITS.fields)
+    .filter((f) => !f.link || f.value.length <= LIMITS.value)
+    .map(({ link, ...f }) => ({ ...f, name: clip(f.name, LIMITS.name), value: link ? f.value : clip(f.value, LIMITS.value) }));
   const id = identifier(event.id);
   embed.footer = { text: clip(id ? `Eminzo Factory · ${id}` : 'Eminzo Factory', LIMITS.footer) };
   if (typeof event.timestamp === 'string' && Number.isFinite(Date.parse(event.timestamp))) {
@@ -233,7 +304,7 @@ export function discordPayload(event) {
   }
   // Whole-embed budget: drop optional fields from the end until it fits.
   const size = () => embed.title.length + (embed.description?.length ?? 0) + embed.footer.text.length
-    + embed.fields.reduce((sum, f) => sum + f.name.length + f.value.length, 0);
+    + (embed.author?.name.length ?? 0) + embed.fields.reduce((sum, f) => sum + f.name.length + f.value.length, 0);
   while (size() > LIMITS.total && embed.fields.length) embed.fields.pop();
   return { username: 'Eminzo Factory', embeds: [embed], allowed_mentions: { parse: [] } };
 }
