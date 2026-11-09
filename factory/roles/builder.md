@@ -44,7 +44,17 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    The factory runs the full checks before the gate (and again in the gate), so a focused
    pass is not the final word; `--full` forces everything.
    Write `STATUS: READY` only when the checks exit 0; on a failure fix it and run the nudge
-   again.
+   again, within these limits:
+   - Run the same failing check command at most 2 times per round. The nudge also stops
+     running the checks after `checks.max_runs_per_round` runs in a round (default 6) and
+     exits 2 with `cap reached: write build.md with what is still failing`; then stop
+     iterating and write `build.md`.
+   - If the failure is not in files of your diff, do not chase it: note it in `build.md`
+     under `## Notes for the next round` and move on. The gate decides.
+   - A check that fails and then passes with no code change in between is flaky. Record it
+     in `build.md` under a level-2 heading written exactly `## Flaky` (never `### Flaky`, which
+     would be read as part of `## Spec deviations`), one line per check as `command | error`, and do not fix
+     it in this job.
 4. Visual check. When the spec's surfaces include `ui`, run `factory/bin/visual <job-id>`
    after the checks and before you write `STATUS: READY`. It writes
    `<round folder>/visual.md`: the first line is `VISUAL: PASS`, `VISUAL: FAIL`,
@@ -107,6 +117,9 @@ AC-2 | Design: <what changed> → <why: the blocker that forced it, with lens an
 
 ## Commits
 <output of `git log --oneline <base>..factory/<job-id>`>
+
+## Flaky
+<command | error, one line per flaky check; leave empty when none>
 
 ## Notes for the next round
 - Files you changed and why, one line each
