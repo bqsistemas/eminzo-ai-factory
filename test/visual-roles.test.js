@@ -20,11 +20,8 @@ test('builder runs factory/bin/visual for a ui surface before STATUS: READY, fix
   assert.match(role, /surfaces include `ui`[^]*?before[^]*?STATUS: READY/);
   for (const status of STATUSES) assert.ok(role.includes(`\`${status}\``), `builder names ${status}`);
   assert.match(role, /Fix only\s+`FAIL`/);
-  const toml = read('.codex/agents/eminzo-builder.toml');
-  assert.match(toml, /factory\/bin\/visual/);
-  assert.match(toml, /`ui`/);
-  assert.match(toml, /fix only FAIL/);
-  assert.match(toml, /VISUAL: ERROR/);
+  // The Codex profile no longer restates the step: it reads this role (sync-agents.test.js proves the generated profile).
+  assert.match(read('.codex/agents/eminzo-builder.toml'), /factory\/roles\/builder\.md/);
 });
 
 test('review-ui reads round-N/visual.md first, judges design, and measures itself on SKIPPED or ERROR', () => {
@@ -34,9 +31,7 @@ test('review-ui reads round-N/visual.md first, judges design, and measures itsel
   assert.match(role, /consistency, tokens, hierarchy/i);
   assert.match(role, /do not block on a matrix point/i);
   assert.match(role, /`VISUAL: SKIPPED` or `VISUAL: ERROR`/);
-  const toml = read('.codex/agents/eminzo-review-ui.toml');
-  assert.match(toml, /visual\.md/);
-  assert.match(toml, /VISUAL: ERROR/);
+  assert.match(read('.codex/agents/eminzo-review-ui.toml'), /factory\/roles\/review-ui\.md/);
 });
 
 test('spec-writer requires a verifiable UI AC and file:line ranges in Design', () => {

@@ -57,8 +57,8 @@ export function hostAllowed(header, port) {
   return match[2] === undefined || Number(match[2]) === port;
 }
 
-/** The repo data the dashboard reads when its page comes from somewhere else: the board and the job folders. */
-const DATA = new Set(['board.json', 'jobs']);
+/** The repo data the dashboard reads when its page comes from somewhere else: the board, the job folders and the review policy. */
+const DATA = new Set(['board.json', 'jobs', 'review.md']);
 
 /** The folder a request path is served from: `data` for the board and jobs when given, `root` for the rest. */
 function folderFor(root, data, rawPath) {

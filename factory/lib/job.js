@@ -16,6 +16,7 @@
 //   job <id> prompt                    the worker prompt contract, with Base, Base branch and Language
 //   job <id> lane                      "xs" or "normal: <reason>", from intake.md (a read, nothing is written)
 //   job <id> provider <name>           rebind to another provider (not while merging or finished); re-routes agents/models
+//   job <id> selfcheck                 the builder's check before READY: AC tests, protected tests, Module map, no uncommitted changes (exit 1 lists each problem; "selfcheck: ok")
 //   job <id> promote                   xs lane only: lane becomes normal, stage spec, the XS round counts as round 1
 //   job <id> approve-spec              at spec-review: records the gh user's approval of the posted spec.md (its SHA-256);
 //                                      the stage does not change: run `job <id> to build` next
@@ -26,6 +27,11 @@
 //   job <id> overlap                   "wait: <id> (<files>)" per job ahead that shares a file, else "none" (a read)
 //   job graph                          the pipeline as JSON (the content of factory/pipeline.json); read-only, touches no job
 //   job summary [--orchestrator]       one line per job, then a total (and the orchestrator sessions)
+//   job lessons [--last N]             the `## Lessons` of the last N decision.md (default 20), deduplicated, become project.md
+//                                      `## Things the builder gets wrong` (15 lines at most) on a branch; opens a PR for a human to merge
+//   job metrics [--last N] [--json]    GATE: PASS rate in round 1, rounds per job (median), CHANGES rate per lens, minutes per kind
+//                                      (job.json time_by_kind) and repeated lessons, over the last N jobs (default 20); a read.
+//                                      board.json also carries the same object as `metrics` for the dashboard
 //
 // Issue and comment text is attacker-controlled. It reaches agents only as
 // "> "-quoted data in issue.md, and gh gets every text through --body-file.
@@ -41,15 +47,19 @@ import { checksInputs, testedBy } from './check-stamp.js';
 import { gate as runGate } from './gate.js';
 import { diffEntries, globRegex, isTestFile, scopeTokens, xsLimitProblems } from './diff.js';
 import { KNOWN_SURFACES, parseIntake } from './intake.js';
+import { hasLessonsSection, lessonsCommand, parseLast } from './lessons.js';
+import { computeMetrics, metricsText } from './metrics.js';
 import { overlapReport, overlaps } from './overlap.js';
 import { claimIssue } from './claim.js';
+import { reusedReport } from './report.js';
 import { runMode } from './run-mode.js';
+import { acNumbers, selfcheckFindings } from './selfcheck.js';
 import { lifecycleEvent, notify } from './notifications.js';
 import { sectionLines } from './section.js';
 import { DEFAULT_PROVIDER, decideLane, laneRule, providerConfig, route, stageModels } from './route.js';
 import {
   JOB_ID, Refused, Usage, baseRef, codexSessionsDir, configLanguage, effectiveConfig, engineCommand, factoryRoot, firstLine, isMain, jobDir, loadConfig, mustRun, now,
-  readText, run, runCli, specReviewFor, transcriptsDir, writeAtomic,
+  readText, run, runCli, specReviewFor, transcriptsDir, writeAtomic, engineVersion,
 } from './util.js';
 
 export { parseIntake, sectionLines };
@@ -94,7 +104,9 @@ function allJobs(root) {
 }
 
 function writeBoard(c) {
-  const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, config_overrides: c.overrides ?? [], jobs: allJobs(c.root) };
+  let metrics = null;
+  try { metrics = computeMetrics(c.root); } catch (err) { metrics = { error: String(err?.message ?? err) }; } // the dashboard shows nothing for an error
+  const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, config_overrides: c.overrides ?? [], jobs: allJobs(c.root), metrics };
   writeAtomic(join(c.root, 'factory/board.json'), `${JSON.stringify(board, null, 2)}\n`);
 }
 
@@ -337,10 +349,69 @@ const specReviewBody = (lang) => ({ id, issue, sha256, spec }) => {
   ].join('\n');
 };
 
+const RECORD_TEXT = {
+  en: {
+    title: 'Factory record',
+    lead: (id, round) => `Job \`${id}\` is in round ${round}. The factory keeps this table up to date; the text outside it is yours.`,
+    step: 'Step', result: 'Result', intake: 'Intake', spec: 'Spec', plan: 'Plan', checks: 'Checks', reviews: 'Reviews', decision: 'Decision',
+    risk: 'risk', criteria: (n) => `${n} acceptance ${n === 1 ? 'criterion' : 'criteria'}`,
+    planYes: 'plan.md written', planNo: 'no plan.md', pending: 'pending', engine: (v) => `Engine ${v}.`,
+  },
+  es: {
+    title: 'Registro de la factory',
+    lead: (id, round) => `El job \`${id}\` está en la ronda ${round}. La factory mantiene esta tabla al día; el texto fuera de ella es tuyo.`,
+    step: 'Paso', result: 'Resultado', intake: 'Intake', spec: 'Spec', plan: 'Plan', checks: 'Checks', reviews: 'Reviews', decision: 'Decisión',
+    risk: 'riesgo', criteria: (n) => `${n} ${n === 1 ? 'criterio' : 'criterios'} de aceptación`,
+    planYes: 'plan.md escrito', planNo: 'sin plan.md', pending: 'pendiente', engine: (v) => `Motor ${v}.`,
+  },
+  pt: {
+    title: 'Registro da factory',
+    lead: (id, round) => `O job \`${id}\` está na rodada ${round}. A factory mantém esta tabela atualizada; o texto fora dela é seu.`,
+    step: 'Etapa', result: 'Resultado', intake: 'Intake', spec: 'Spec', plan: 'Plan', checks: 'Checks', reviews: 'Reviews', decision: 'Decisão',
+    risk: 'risco', criteria: (n) => `${n} ${n === 1 ? 'critério' : 'critérios'} de aceitação`,
+    planYes: 'plan.md escrito', planNo: 'sem plan.md', pending: 'pendente', engine: (v) => `Motor ${v}.`,
+  },
+};
+
+const recordStart = (id) => `<!-- factory:record-start ${id} -->`;
+const recordEnd = (id) => `<!-- factory:record-end ${id} -->`;
+
+const prRecordBody = (lang) => ({ id, round, engine, intakeDecision, risk, acs, plan, gate, reviews, approval }) => {
+  const t = RECORD_TEXT[lang];
+  const dash = '-';
+  return [
+    recordStart(id),
+    `### ${t.title}`, '',
+    t.lead(id, round), '',
+    `| ${t.step} | ${t.result} |`, '|---|---|',
+    `| ${t.intake} | ${intakeDecision ? `${intakeDecision}, ${t.risk} ${risk ?? dash}` : dash} |`,
+    `| ${t.spec} | ${Number.isInteger(acs) ? t.criteria(acs) : dash} |`,
+    `| ${t.plan} | ${plan ? t.planYes : t.planNo} |`,
+    `| ${t.checks} | ${gate ? `GATE: ${gate} (${lang === 'en' ? 'round' : lang === 'es' ? 'ronda' : 'rodada'} ${round})` : t.pending} |`,
+    `| ${t.reviews} | ${reviews || t.pending} |`,
+    `| ${t.decision} | ${approval || t.pending} |`,
+    ...(engine ? ['', t.engine(engine)] : []),
+    recordEnd(id),
+  ].join('\n');
+};
+
+const DECISION_TEXT = {
+  en: { ESCALATE: 'The approver escalated this job: a person decides.', APPROVE: 'The approver approved this job.' },
+  es: { ESCALATE: 'El aprobador escaló este job: decide una persona.', APPROVE: 'El aprobador aprobó este job.' },
+  pt: { ESCALATE: 'O aprovador escalou este job: uma pessoa decide.', APPROVE: 'O aprovador aprovou este job.' },
+};
+
+const decisionBody = (lang) => ({ id, decision }) => {
+  const word = /^APPROVE\b/.test(String(decision)) ? 'APPROVE' : 'ESCALATE';
+  return `${marker('decision', id)}\n${DECISION_TEXT[lang][word]}\n\n${decision}`;
+};
+
 const TEMPLATES = Object.freeze({
   en: Object.freeze({
     intake: intakeBody('en'),
     'spec-review': specReviewBody('en'),
+    decision: decisionBody('en'),
+    'pr-record': prRecordBody('en'),
     'needs-human-pr': ({ id, note }) => `${marker('note', id)}\n**Factory needs a human:** ${note}\n`,
     'needs-human-issue': ({ id, note }) => `${marker('note', id)}\n**Factory needs a human** for job \`${id}\`: ${note}\n`,
     'awaiting-merge': ({ id, pr }) => `${marker('note', id)}\nThe factory approved PR #${pr}, but \`auto_merge\` is off, so the factory will not merge it. `
@@ -350,6 +421,8 @@ const TEMPLATES = Object.freeze({
   es: Object.freeze({
     intake: intakeBody('es'),
     'spec-review': specReviewBody('es'),
+    decision: decisionBody('es'),
+    'pr-record': prRecordBody('es'),
     'needs-human-pr': ({ id, note }) => `${marker('note', id)}\n**La factory necesita a una persona:** ${note}\n`,
     'needs-human-issue': ({ id, note }) => `${marker('note', id)}\n**La factory necesita a una persona** para el job \`${id}\`: ${note}\n`,
     'awaiting-merge': ({ id, pr }) => `${marker('note', id)}\nLa factory aprobó el PR #${pr}, pero \`auto_merge\` está desactivado, así que la factory no lo va a mergear. `
@@ -359,6 +432,8 @@ const TEMPLATES = Object.freeze({
   pt: Object.freeze({
     intake: intakeBody('pt'),
     'spec-review': specReviewBody('pt'),
+    decision: decisionBody('pt'),
+    'pr-record': prRecordBody('pt'),
     'needs-human-pr': ({ id, note }) => `${marker('note', id)}\n**A factory precisa de uma pessoa:** ${note}\n`,
     'needs-human-issue': ({ id, note }) => `${marker('note', id)}\n**A factory precisa de uma pessoa** para o job \`${id}\`: ${note}\n`,
     'awaiting-merge': ({ id, pr }) => `${marker('note', id)}\nA factory aprovou o PR #${pr}, mas \`auto_merge\` está desativado, então a factory não vai fazer o merge. `
@@ -372,6 +447,36 @@ export function githubBody(lang, kind, params) {
   if (!Object.hasOwn(TEMPLATES, lang)) throw new Error(`unknown language: ${JSON.stringify(lang)}`);
   if (!Object.hasOwn(TEMPLATES[lang], kind)) throw new Error(`unknown comment kind: ${JSON.stringify(kind)}`);
   return TEMPLATES[lang][kind](params);
+}
+
+/** The comment kinds the factory can post, in a language. The three languages must list the same ones. */
+export function commentKinds(lang) {
+  if (!Object.hasOwn(TEMPLATES, lang)) throw new Error(`unknown language: ${JSON.stringify(lang)}`);
+  return Object.keys(TEMPLATES[lang]);
+}
+
+/**
+ * `body` with the factory's record section: replaced in place when this job's markers are already there,
+ * appended after the human's text when there are no markers. null when the markers are not exactly one
+ * ordered pair. Everything outside the markers is returned untouched.
+ */
+export function applyRecord(body, section, id) {
+  const text = String(body ?? '');
+  const open = recordStart(id);
+  const close = recordEnd(id);
+  const count = (needle) => text.split(needle).length - 1;
+  const starts = count(open);
+  const ends = count(close);
+  if (starts === 0 && ends === 0) {
+    const kept = text.replace(/\s+$/, '');
+    return kept ? `${kept}\n\n${section}\n` : `${section}\n`;
+  }
+  // Exactly one well-ordered pair is ours to replace. Anything else (a stray or pasted marker) is
+  // ambiguous, and guessing would eat or duplicate the human's text: return null, the caller skips.
+  const start = text.indexOf(open);
+  const end = text.indexOf(close);
+  if (starts !== 1 || ends !== 1 || start > end) return null;
+  return text.slice(0, start) + section + text.slice(end + close.length);
 }
 
 function postIntake(c, job, text, decision) {
@@ -389,6 +494,7 @@ function setIntake(job, { decision, rescoped, risk, surfaces, size }) {
 function nextRound(job) {
   job.history.push({ gate: job.gate, reviews: job.reviews, ...(Object.keys(job.carried ?? {}).length ? { carried: job.carried } : {}) });
   job.round += 1;
+  job.engine_version = engineVersion();
   job.gate = null;
   job.reviews = {};
   delete job.carried;
@@ -715,6 +821,7 @@ function merge(c, job) {
   // GitHub must merge exactly the commit that was just pushed and gated.
   const head = run('git', ['rev-parse', 'HEAD'], wt);
   if (head.status !== 0) return stop('git rev-parse HEAD', why(head));
+  updatePrRecord(c, job);
   res = run(c.gh, ['pr', 'ready', String(job.pr)], { cwd: c.root });
   if (res.status !== 0) return stop('gh pr ready', why(res));
   // Only a missing key or boolean true merges; any other value means the factory does not.
@@ -746,15 +853,7 @@ function merge(c, job) {
 function reuseRoundGate(c, job, head, base) {
   const g = job.gated;
   if (!g || g.round !== job.round || g.head !== head || g.inputs !== checksInputs(c.root)) return false;
-  writeAtomic(file(c, job, 'merge-checks.md'), [
-    'GATE: PASS',
-    '',
-    `Reused the round-${g.round} gate: the sync with ${base} brought no changes, so ${head}`,
-    `is the commit round-${g.round}/checks.md tested, with the same checks.sh and config.json.`,
-    `Tested head: ${head}`,
-    `Checks inputs: ${g.inputs}`,
-    '',
-  ].join('\n'));
+  writeAtomic(file(c, job, 'merge-checks.md'), reusedReport({ round: g.round, base, head, inputs: g.inputs, engine: engineVersion() }));
   return true;
 }
 
@@ -962,6 +1061,7 @@ function enterBuildFromSpec(c, job) {
   // A promoted job already moved its round counter on (the XS round was round 1).
   if (job.promoted_from && job.round >= 2) return;
   job.round = 1;
+  job.engine_version = engineVersion();
   job.gate = null;
   job.reviews = {};
   clearDecision(c, job);
@@ -1307,6 +1407,10 @@ export const TRANSITIONS = {
     if (!/^APPROVE\b/.test(text ?? '')) {
       throw new Refused(`decision.md does not start with APPROVE${job.lane === 'xs' ? `; an inconclusive script promotes the job: ${engineCommand('job')} ${job.id} promote` : ''}`);
     }
+    // Opt-in: with config lessons.required the decision must carry the approver's `## Lessons` (lines or `None`).
+    if (c.config.lessons?.required === true && !hasLessonsSection(text)) {
+      throw new Refused('decision.md has no `## Lessons` section, and config lessons.required is true; the approver adds it: one line per lesson a future builder should avoid, or `None`');
+    }
     // Every lane: the merge is bound to the head the reviewers saw (re-read from git, not from a file).
     const head = branchHead(c, job);
     const reviewed = job.round_heads?.[job.round];
@@ -1461,6 +1565,60 @@ export function buildGraph({ transitions = TRANSITIONS } = {}) {
   };
 }
 
+/** The facts the PR's Factory record shows, read from job.json and the job folder. */
+function recordFacts(c, job) {
+  const xs = job.lane === 'xs';
+  const specText = readText(file(c, job, xs ? 'intake.md' : 'spec.md'));
+  const acLines = specText === null ? null : xs ? (sectionLines(specText, 'Scope') ?? []).map((l) => l.text) : specText.split('\n');
+  const verdictsNow = { ...Object.fromEntries(Object.entries(job.carried ?? {}).map(([l, p]) => [l, p.verdict])), ...(job.reviews ?? {}) };
+  const decisionText = job.decision ?? firstLine(file(c, job, 'decision.md'))?.match(/^(APPROVE|ESCALATE)\b/)?.[1] ?? null;
+  return {
+    id: job.id,
+    round: Math.max(1, job.round ?? 1),
+    engine: job.engine_version ?? engineVersion(),
+    intakeDecision: job.intake?.decision ?? null,
+    risk: job.intake?.risk ?? null,
+    acs: acLines === null ? null : acNumbers(acLines).length,
+    plan: existsSync(file(c, job, 'plan.md')),
+    gate: job.gate ?? null,
+    reviews: Object.entries(verdictsNow).map(([lens, v]) => `${lens}: ${v}`).join(', '),
+    approval: decisionText,
+  };
+}
+
+/**
+ * Sets or refreshes the "Factory record" section of the job's PR body, between HTML markers. The builder
+ * opens the PR and owns its text, so only the marked section is touched and a body that cannot be read is
+ * never rewritten. Best effort: a failure here is a warning, never a reason to stop a transition.
+ */
+function updatePrRecord(c, job) {
+  if (!job.pr) return;
+  const warn = (why) => process.stderr.write(`warning: Factory record on PR #${job.pr} not updated: ${why}\n`);
+  const read = () => {
+    const view = run(c.gh, ['pr', 'view', String(job.pr), '--json', 'body,state'], { cwd: c.root });
+    if (view.status !== 0) return { error: `gh pr view failed: ${(view.stderr || view.error?.message || `exit ${view.status}`).trim().split('\n').slice(-1)[0]}` };
+    const parsed = JSON.parse(view.stdout);
+    return { body: parsed.body, state: parsed.state };
+  };
+  try {
+    const first = read();
+    if (first.error) return warn(first.error);
+    if (first.state !== 'OPEN' || typeof first.body !== 'string') return; // merged, closed or unreadable: nothing to keep up to date
+    const next = applyRecord(first.body, githubBody(c.lang, 'pr-record', recordFacts(c, job)), job.id);
+    if (next === null) return warn('the body holds a stray or duplicate record marker; fix it by hand');
+    if (next === first.body) return;
+    if (next.length > MAX_COMMENT) return warn(`the new body would be ${next.length} characters, over GitHub's limit (${MAX_COMMENT} kept)`);
+    // gh has no compare-and-set for a PR body. Re-reading right before the edit shrinks the window in
+    // which a human's save could be overwritten to the time between this read and the edit (milliseconds);
+    // it does not close it. The next transition retries.
+    const again = read();
+    if (again.error || again.body !== first.body) return warn(again.error ?? 'the body changed while the record was prepared; the next transition retries');
+    ghWithBody(c, ['pr', 'edit', String(job.pr)], next);
+  } catch (err) {
+    warn(err.message);
+  }
+}
+
 function toNeedsHuman(c, job, note) {
   if (job.stage === 'approve') {
     const decision = readText(file(c, job, 'decision.md'));
@@ -1468,7 +1626,7 @@ function toNeedsHuman(c, job, note) {
       const reason = (note ?? decision.split(/\r?\n/)[1] ?? '').trim() || 'the approver escalated';
       if (prState(c, job) === 'OPEN') {
         gh(c, ['pr', 'ready', String(job.pr)]);
-        ghWithBody(c, ['pr', 'comment', String(job.pr)], `${marker('decision', job.id)}\n${decision}`);
+        ghWithBody(c, ['pr', 'comment', String(job.pr)], githubBody(c.lang, 'decision', { id: job.id, decision }));
       }
       addLabel(c, job, LABEL.needsHuman);
       job.parked_from = job.stage;
@@ -1506,6 +1664,7 @@ function transition(c, id, to, note) {
     if (job.stage === from) job.stage = to;
     if (note && job.stage !== 'needs-human') job.note = note;
   }
+  if (['review', 'approve', 'needs-human'].includes(job.stage)) updatePrRecord(c, job);
   saveJob(c, job);
   return `${job.id} ${job.stage}`;
 }
@@ -1549,7 +1708,7 @@ function newJob(c, n, requestedProvider) {
   const title = safeTitle(issue.title);
   const job = {
     id, issue: n, title, pr: null, branch: `factory/${id}`, worktree: join(c.root, '.worktrees', id),
-    port, stage: 'intake', round: 0, max_rounds: c.config.max_rounds ?? 3,
+    engine_version: engineVersion(), port, stage: 'intake', round: 0, max_rounds: c.config.max_rounds ?? 3,
     provider, intake: null, agents: null, models: stageModels(c.config, provider), gate: null, reviews: {}, history: [],
     ...(xsRequested(issue) ? { xs_requested: true } : {}),
     decision: null, note: '', parked_from: null, cost_usd: provider === 'codex' ? null : 0,
@@ -1668,6 +1827,7 @@ function workerPrompt(c, id) {
     `Language: ${c.lang}`,
     ...(job.round >= 2 ? previousHeadLine(job) : []),
     ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length ? reviewLines(c, job) : []),
+    ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length && existsSync(join(c.root, 'factory/review.md')) ? ['Review policy: factory/review.md (main checkout)'] : []),
   ].join('\n');
 }
 
@@ -1679,11 +1839,20 @@ function configLines(c, key) {
   return line(key);
 }
 
-const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> profile | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator]';
+const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> profile | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator] | job lessons [--last N] | job metrics [--last N] [--json]';
+
+/** `job <id> selfcheck`: warnings, then one line per problem, or `selfcheck: ok`. Exit 1 on any problem. */
+function selfcheck(c, id) {
+  const { job } = loadJob(c, id);
+  const { problems, warnings } = selfcheckFindings(c.root, job, c.config);
+  const lines = [...warnings.map((w) => `selfcheck: warning: ${w}`), ...(problems.length ? problems.map((p) => `selfcheck: ${p}`) : ['selfcheck: ok'])];
+  return { out: lines.join('\n'), code: problems.length ? 1 : 0 };
+}
 
 function main(args) {
   const [first, second, third, ...rest] = args;
   let out;
+  let code = 0;
   if (first === 'new' && (args.length === 2 || args.length === 4)) {
     if (!/^[1-9]\d*$/.test(second ?? '')) throw new Usage(USAGE);
     if (args.length === 4 && third !== '--provider') throw new Usage(USAGE);
@@ -1696,6 +1865,12 @@ function main(args) {
     out = JSON.stringify(buildGraph(), null, 2);
   } else if (first === 'summary' && (args.length === 1 || (args.length === 2 && second === '--orchestrator'))) {
     out = summary(context(), args.length === 2);
+  } else if (first === 'metrics') {
+    const json = args.includes('--json');
+    const m = computeMetrics(factoryRoot(), parseLast(args.slice(1).filter((a) => a !== '--json'), USAGE));
+    out = json ? JSON.stringify(m, null, 2) : metricsText(m);
+  } else if (first === 'lessons') {
+    out = lessonsCommand(context(), parseLast(args.slice(1), USAGE));
   } else if (JOB_ID.test(first ?? '') && second === 'sync' && args.length === 2) {
     out = sync(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'profile' && args.length === 2) {
@@ -1704,6 +1879,8 @@ function main(args) {
     out = workerPrompt(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'lane' && args.length === 2) {
     out = laneOf(context(), first);
+  } else if (JOB_ID.test(first ?? '') && second === 'selfcheck' && args.length === 2) {
+    ({ out, code } = selfcheck(context(), first));
   } else if (JOB_ID.test(first ?? '') && second === 'promote' && args.length === 2) {
     out = promote(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'approve-spec' && args.length === 2) {
@@ -1726,6 +1903,7 @@ function main(args) {
     throw new Usage(USAGE);
   }
   process.stdout.write(`${out}\n`);
+  return code;
 }
 
 if (isMain(import.meta.url)) runCli(main);

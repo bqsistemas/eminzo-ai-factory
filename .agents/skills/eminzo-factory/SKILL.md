@@ -250,7 +250,7 @@ more, then `needs-human`. `none`: continue. The script enforces this: `to gate` 
 
 <!-- rule: checks-before-gate -->
 **Checks before the gate.** Codex has no `Stop` hook, so before `job <id> to gate`
-run `factory/bin/nudge <id>` (it runs `factory/checks.sh` in the job's worktree, or returns 0 at once when exactly these files already passed; exit 2 means the checks failed, with the full log in `<job folder>/nudge.log`; exit 64 means the call was wrong, such as an unknown job, so fix the call) yourself.
+run `factory/bin/nudge <id> --full` (the builder's own `factory/bin/nudge <id>` is focused: `FACTORY_CHECK_MODE=focused` and `FACTORY_CHANGED_FILES`, which a `factory/checks.sh` may use to run less; your `--full` run is the full pass, and only a full pass counts here). It runs `factory/checks.sh` in the job's worktree, or returns 0 at once when exactly these files already passed in full; exit 2 means the checks failed, with the full log in `<job folder>/nudge.log`; exit 64 means the call was wrong, such as an unknown job, so fix the call) yourself.
 On a failure, give the log to the same builder (`eminzo-builder`) with a resume
 prompt, without consuming a round: do not run `job <id> to gate` or `to build`,
 because both start a round. Only a passing run moves on to `to gate`. The builder
@@ -327,6 +327,7 @@ never interpret a displayed `$0.00` as verified Codex cost.
   remove stale TODOs, update the date, and add `<!-- eminzo:setup-complete -->` only after the
   analysis is complete. Do not include credentials or secrets. Report labels and refreshed
   sections. No job, issue or agent is started.
+- `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
 - `$eminzo-factory run`: resume every unfinished local job, respecting `concurrency` (from
   `factory/bin/job config concurrency`). It drains
   the queue of open `factory` issues only when `run_mode` in `factory/config.json` is `"queue"`;

@@ -4,14 +4,15 @@
 // uncommitted changes, and writes round-N/checks.md plus round-N/context.md for the
 // reviewers. Exit 0 on PASS, 1 on FAIL.
 import { mkdirSync, rmSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 import { checksInputs, headSha } from './check-stamp.js';
 import { withImplied } from './intake.js';
 import { projectMapLines, projectMapStatus } from './project-map.js';
+import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
 import { roundContext } from './round-context.js';
 import { visualStatus } from './visual-analysis.js';
-import { Usage, baseRef, engineDir, factoryRoot, isMain, jobDir, loadConfig, readText, run, runCli, tail, writeAtomic } from './util.js';
+import { Usage, baseRef, engineDir, factoryRoot, isMain, jobDir, engineVersion, loadConfig, readText, run, runCli, tail, writeAtomic } from './util.js';
 
 function visualLines(visual) {
   const label = visual.status === 'ERROR' ? 'ERROR (not blocking)' : visual.status;
@@ -50,11 +51,24 @@ export function runVisualCheck(root, config, job, checksFile) {
   return { status: 'ERROR', text: `VISUAL: ERROR\n\nReason: ${reason}\n`, reason };
 }
 
-/** Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved. */
-export function runChecks(root, cwd) {
+/**
+ * Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved.
+ * With `pidFile`, the shell writes its PID there first (the same process then runs checks.sh), so a
+ * caller can tell whether checks it started are still running after it died.
+ * The checks see FACTORY_CHECK_MODE: `full` unless the caller passes mode `focused` together with
+ * `changedFiles` (the absolute path of a file listing the changed paths, one per line), which
+ * becomes FACTORY_CHANGED_FILES. Whatever the environment already holds for either variable is
+ * dropped, so the gate and the merge always run full.
+ */
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles } = {}) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT; // a gate started from a test run must not report into it
-  const res = run('sh', ['-c', 'exec sh "$0" 2>&1', join(root, 'factory/checks.sh')], { cwd, env });
+  delete env.FACTORY_CHANGED_FILES;
+  const focused = mode === 'focused' && typeof changedFiles === 'string';
+  env.FACTORY_CHECK_MODE = focused ? 'focused' : 'full';
+  if (focused) env.FACTORY_CHANGED_FILES = changedFiles;
+  const script = pidFile ? 'printf "%s\n" "$$" > "$1"; exec sh "$0" 2>&1' : 'exec sh "$0" 2>&1';
+  const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env });
   const output = `${res.stdout ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
   return { code: res.status ?? 1, output };
 }
@@ -91,17 +105,25 @@ export function gate(root, job, outFile) {
   const dirty = uncommitted(job.worktree); // before the checks, which may write files
   const head = headSha(job.worktree);
   const inputs = checksInputs(root);
+  const started = Date.now();
   const checks = runChecks(root, job.worktree);
+  const spanMs = Date.now() - started;
   const guard = protectedChanges(job.worktree, base, config.protected_tests ?? []);
   const visual = checks.code === 0 ? runVisualCheck(root, config, job, outFile) : null;
   const visualSkippedForChecks = checks.code !== 0 && config.visual && withImplied(job.intake?.surfaces).includes('ui');
   const pass = checks.code === 0 && !guard.error && guard.paths.length === 0 && dirty.length === 0 && visual?.status !== 'FAIL';
-  const log = tail(checks.output, 200);
+  const log = tail(checks.output, LOG_LINES);
   const longest = Math.max(0, ...(log.match(/`+/g) ?? []).map((m) => m.length));
   const fence = '`'.repeat(Math.max(3, longest + 1));
   const violations = guard.error ? [guard.error] : guard.paths;
+  const logFile = outFile.replace(/\.md$/, '') + '.log';
+  writeAtomic(logFile, capLog(checks.output)); // stays in the job folder: see capLog
+  const visualCell = visual ? (visual.status === 'ERROR' ? 'ERROR (not blocking)' : visual.status) : null;
   writeAtomic(outFile, [
     `GATE: ${pass ? 'PASS' : 'FAIL'}`,
+    ...engineLines(engineVersion()),
+    '',
+    summarySentence({ pass, spanMs, head, code: checks.code, violations: violations.length, dirty: dirty.length, visualFailed: visual?.status === 'FAIL' }),
     '',
     `Checks exit code: ${checks.code}`,
     `Tested head: ${head ?? 'unknown'}`,
@@ -112,9 +134,20 @@ export function gate(root, job, outFile) {
     ...dirty.slice(0, 20).map((v) => `- ${v}`),
     ...(visual ? visualLines(visual) : visualSkippedForChecks ? ['Visual check: not run (checks failed)'] : []),
     ...projectMapLines(projectMapStatus(job.worktree, base)),
+    '',
+    '## Steps',
+    '',
+    ...table(['Step', 'Result'], [
+      ['Checks (full mode)', `exit ${checks.code} in ${formatSpan(spanMs)}`],
+      ['Protected tests', violations.length ? `${violations.length} problem${violations.length === 1 ? '' : 's'}` : 'none changed'],
+      ['Working tree', dirty.length ? 'uncommitted changes' : 'clean'],
+      ...(visualCell ? [['Visual check', visualCell]] : []),
+    ]),
     ...(visual?.status === 'FAIL' ? ['', '## Visual findings', '', ...tail(visual.text, 80).split('\n')] : []),
     '',
-    '## Log (last 200 lines)',
+    `## Log (last ${LOG_LINES} lines)`,
+    '',
+    `Full log: \`${basename(logFile)}\``,
     '',
     fence,
     log,
