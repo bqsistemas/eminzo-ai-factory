@@ -326,8 +326,9 @@ test('the providers say it: Claude hook is full, Codex orchestrator runs --full,
   const codexSkill = read('.agents/skills/eminzo-factory/SKILL.md');
   assert.match(codexSkill, /run `factory\/bin\/nudge <id> --full`/);
   assert.match(read('.claude/skills/eminzo-factory/SKILL.md'), /always the full checks/);
-  assert.match(read('.codex/agents/eminzo-builder.toml'), /`factory\/bin\/nudge <id>` in the foreground/);
+  assert.match(read('.codex/agents/eminzo-builder.toml'), /factory\/roles\/builder\.md/);
   assert.doesNotMatch(read('.codex/agents/eminzo-builder.toml'), /nudge <id> --full/);
+  assert.match(read('factory/roles/builder.md'), /`factory\/bin\/nudge <job-id>` in the foreground/);
   assert.match(read('factory/roles/builder.md'), /full checks before the gate[\s\S]*not the final word/);
 });
 

@@ -179,7 +179,7 @@ test('Claude and Codex builders both run their checks through the nudge, so both
   const role = readFileSync(join(repo, 'factory/roles/builder.md'), 'utf8');
   const codex = readFileSync(join(repo, '.codex/agents/eminzo-builder.toml'), 'utf8');
   assert.match(role, /Run the repo's checks with `factory\/bin\/nudge <job-id>`/);
-  assert.match(codex, /factory\/bin\/nudge <id>/);
+  assert.match(codex, /factory\/roles\/builder\.md/); // the profile reads the role that names the nudge
   assert.doesNotMatch(codex, /Run `factory\/checks\.sh` in the worktree/);
 });
 

@@ -1,7 +1,5 @@
 You are the builder in the software factory.
 
-**Language.** Use the language in the `Language:` line of your prompt (`en`, `es` or `pt`; missing means `en`). Write prose in the configured language; keep technical terms and protocol tokens in English. First-line protocol tokens, section headings, code, identifiers, commit messages, file names and paths always stay English.
-
 Your prompt gives the job folder, the round folder, the branch, the worktree (an
 absolute path), the issue number, the port, the base (`Base:`, for example
 `<remote>/<branch>`, the ref to diff and merge against) and the base branch (`Base branch:`,
@@ -45,6 +43,8 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    `FACTORY_CHECK_MODE` and `FACTORY_CHANGED_FILES` may run only what your change touches.
    The factory runs the full checks before the gate (and again in the gate), so a focused
    pass is not the final word; `--full` forces everything.
+   Write `STATUS: READY` only when the checks exit 0; on a failure fix it and run the nudge
+   again.
 4. Visual check. When the spec's surfaces include `ui`, run `factory/bin/visual <job-id>`
    after the checks and before you write `STATUS: READY`. It writes
    `<round folder>/visual.md`: the first line is `VISUAL: PASS`, `VISUAL: FAIL`,
@@ -130,13 +130,3 @@ lane xs it promotes the job to the normal lane instead (a spec-writer writes `sp
 and you continue in round 2). In lane xs use `BLOCKED` when the change needs more than
 the 1 or 2 existing files the scope names, a new file, a dependency or an edit to a
 protected test; never widen an xs change on your own.
-
-**Before you finish**
-1. Call the Write tool to create `<job folder>/build.md`
-   with the whole deliverable as its content. Do not paste it into your reply
-   instead.
-2. Run `head -1 <job folder>/build.md`. It must print
-   `STATUS: READY` or `STATUS: BLOCKED`. If the file is missing or the line is wrong, write it again. A stop hook
-   checks this and will not let you finish otherwise.
-3. Reply to the orchestrator with exactly one line: the first line of
-   `build.md`.

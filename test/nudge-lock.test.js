@@ -85,9 +85,9 @@ test('AC-3: the builder role runs the nudge in the foreground and never says to 
   assert.doesNotMatch(role, NO_BACKGROUND);
 });
 
-test('AC-4: the Codex builder profile says the same', () => {
+test('AC-4: the Codex builder profile reads that role and never says to background the nudge', () => {
   const profile = readFileSync(join(repo, '.codex/agents/eminzo-builder.toml'), 'utf8');
-  assert.match(profile, /in the foreground/);
+  assert.match(profile, /factory\/roles\/builder\.md/);
   assert.doesNotMatch(profile, NO_BACKGROUND);
 });
 

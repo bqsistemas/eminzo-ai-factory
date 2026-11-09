@@ -15,7 +15,9 @@ export const KIT_FLAT = [
 // factory/activity.js and avatars.js are imported by lib/job.js; package.json marks factory/ as ES modules.
 export const KIT_SINGLE = ['factory/pipeline.json', 'factory/package.json', 'factory/activity.js', 'factory/avatars.js'];
 /** In a kit tree but not part of the kit: the dashboard server needs the dashboard page and assets, which the kit does not carry (Eminzo renders the dashboard itself). */
-export const KIT_EXCLUDE = ['factory/bin/dashboard', 'factory/lib/dashboard.js'];
+export const KIT_EXCLUDE = ['factory/bin/dashboard', 'factory/lib/dashboard.js',
+  // The agent generator's inputs: only `npm run sync-agents` in this repo reads them; the installer ships the generated agents.
+  'factory/templates/agents.json', 'factory/templates/agent-claude.md', 'factory/templates/agent-codex.toml', 'factory/templates/agent-shared.md'];
 /**
  * Shipped in the installer bundle (so run.js can read it from kit.dir) but never copied into the target repo:
  * the installer turns it into the target's factory/config.json, and nothing in the target reads the template.

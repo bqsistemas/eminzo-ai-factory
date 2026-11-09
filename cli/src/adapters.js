@@ -4,6 +4,10 @@
 // (intake and spec-writer have no Bash, and a Read outside the repo can stop for a permission), and
 // the skills learn the `enable` command. A source that no longer has an expected sentence fails the
 // build instead of shipping a half-rewritten adapter.
+//
+// The agents' sources are themselves generated here: `repoAgents` renders this repo's committed
+// `.claude/agents/` and `.codex/agents/` from factory/roles/*.md, one template per provider and the
+// per-role data in factory/templates/agents.json (`npm run sync-agents`; `--check` fails on drift).
 
 /** An engine path in a prompt: what must never reach a generated adapter. */
 export const ENGINE_PATH = /factory\/(bin|lib|roles|templates)\//;
@@ -115,4 +119,93 @@ export function codexAgent(source, { role, roleName, version }) {
   if (close < 0 || text.indexOf("'''") === close) throw new Error(`${where}: no ''' literal string`);
   text = `${text.slice(0, close).trimEnd()}\n\nRole:\n\n${body}\n${text.slice(close)}`;
   return assertNoEnginePath(`# ${stamp(version)}\n${engineCommands(text)}`, where);
+}
+
+// ---- Repository adapters: .claude/agents/*.md and .codex/agents/*.toml, generated from the roles ----
+
+const FILL = /\{\{([\w-]+)\}\}/g;
+
+/** Replaces every `{{name}}` in one pass; an unknown placeholder fails instead of reaching a prompt. */
+function fill(template, vars, where) {
+  return template.replace(FILL, (_, name) => {
+    if (!(name in vars)) throw new Error(`${where}: no value for {{${name}}}`);
+    return vars[name];
+  });
+}
+
+/** `## name` blocks of factory/templates/agent-shared.md -> { name: text }. The first (comment) block is dropped. */
+export function sharedFragments(text) {
+  const out = {};
+  for (const block of text.replace(/\r\n/g, '\n').split(/^## /m).slice(1)) {
+    const nl = block.indexOf('\n');
+    const name = (nl < 0 ? block : block.slice(0, nl)).trim();
+    const body = nl < 0 ? '' : block.slice(nl + 1).trim();
+    if (!['data-rule', 'language', 'finish'].includes(name)) throw new Error(`agent-shared.md: unexpected "## ${name}" (a fragment cannot contain a "## " line)`);
+    if (name in out) throw new Error(`agent-shared.md: "## ${name}" appears twice`);
+    out[name] = body;
+  }
+  for (const name of ['data-rule', 'language', 'finish']) if (!out[name]) throw new Error(`agent-shared.md has no "## ${name}" block`);
+  return out;
+}
+
+const FIELDS = ['description', 'codexDescription', 'tools', 'model', 'scope', 'file', 'regex', 'tokens', 'inputs', 'rules'];
+
+function check(role, meta) {
+  for (const f of FIELDS) if (meta[f] === undefined) throw new Error(`agents.json: ${role} has no "${f}"`);
+  if (!['job', 'round'].includes(meta.scope)) throw new Error(`agents.json: ${role} scope must be "job" or "round"`);
+  if (/\n|: | #|^[\s'"|>&*!%@`#-]|\s$/.test(meta.description)) throw new Error(`agents.json: ${role} description cannot contain a newline, ": " or " #", or start or end with a YAML indicator or space (it is written as a plain YAML scalar)`);
+  if (/\n|["\\]/.test(meta.codexDescription)) throw new Error(`agents.json: ${role} codexDescription cannot contain a newline, a double quote or a backslash (it is written unescaped into a TOML string)`);
+  if (/['"\\]/.test(meta.regex)) throw new Error(`agents.json: ${role} regex cannot contain quotes or backslashes (it sits in a YAML hook command)`);
+}
+
+/** The parts that change per provider only in how the output file is spelled and whether a Stop hook exists. */
+function parts(role, meta, shared, { path, hookNote }) {
+  const vars = { path, file: meta.file, mustPrint: meta.mustPrint ?? meta.tokens, hookNote };
+  return {
+    role,
+    description: meta.description, codexDescription: meta.codexDescription, tools: meta.tools, model: meta.model,
+    tokens: meta.tokens, inputs: meta.inputs, file: meta.file, path,
+    rules: meta.rules.join('\n'),
+    'data-rule': shared['data-rule'],
+    language: shared.language,
+    finish: fill(shared.finish, vars, `agent-shared.md finish (${role})`),
+  };
+}
+
+/** .claude/agents/eminzo-<role>.md: frontmatter (with the Stop hooks) and the thin wrapper that points to the role. */
+export function repoClaudeAgent(role, meta, { claude, shared }) {
+  check(role, meta);
+  const folder = meta.scope === 'job' ? '<job folder>' : '<round folder>';
+  const hook = (cmd) => `        - type: command\n          command: ${cmd}`;
+  const hooks = [];
+  if (meta.nudge) hooks.push(hook(`'"$CLAUDE_PROJECT_DIR"/factory/bin/nudge'`));
+  hooks.push(hook(`"\\"$CLAUDE_PROJECT_DIR\\"/factory/bin/ensure-output '{${meta.scope}}/${meta.file}' '${meta.regex}'"`));
+  const vars = { ...parts(role, meta, shared, { path: `${folder}/${meta.file}`, hookNote: ' A stop hook checks this and will not let you finish otherwise.' }), hooks: hooks.join('\n') };
+  return fill(claude, vars, `agent-claude.md (${role})`);
+}
+
+/** .codex/agents/eminzo-<role>.toml: the profile that reads the role, with the same rules and protocol. */
+export function repoCodexAgent(role, meta, { codex, shared }) {
+  check(role, meta);
+  const dir = meta.scope === 'job' ? 'factory/jobs/<id>' : 'factory/jobs/<id>/round-N';
+  const vars = parts(role, meta, shared, { path: `${dir}/${meta.file}`, hookNote: '' });
+  const text = fill(codex, vars, `agent-codex.toml (${role})`);
+  if (text.split("'''").length !== 3) throw new Error(`${role}: the generated profile must hold exactly one \'\'\' literal string`);
+  return text;
+}
+
+/**
+ * All repository adapters as { 'relative/path': text }.
+ * @param {{ meta: object, claude: string, codex: string, shared: string }} source  parsed agents.json and the three template texts
+ */
+export function repoAgents({ meta, claude: claudeRaw, codex: codexRaw, shared }) {
+  const claude = claudeRaw.replace(/\r\n/g, '\n');
+  const codex = codexRaw.replace(/\r\n/g, '\n');
+  const fragments = sharedFragments(shared);
+  const out = {};
+  for (const role of Object.keys(meta).sort()) {
+    out[`.claude/agents/eminzo-${role}.md`] = repoClaudeAgent(role, meta[role], { claude, shared: fragments });
+    out[`.codex/agents/eminzo-${role}.toml`] = repoCodexAgent(role, meta[role], { codex, shared: fragments });
+  }
+  return out;
 }
