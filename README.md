@@ -510,6 +510,7 @@ open http://localhost:8000/dashboard.html?demo    # sample data
 | `.worktrees/<id>/` | The job's git worktree on branch `factory/<id>`, from `origin/main`. Job IDs use the GitHub issue number; ports are allocated locally from the next available job sequence. |
 
 `board.json`, `jobs/`, and `.worktrees/` are local runtime state and are gitignored.
+`round-N/checks.log` and `merge-checks.log` hold the full output of the checks (the last 5000 lines or 5 MB). They stay in the job folder, are gitignored, are never served by the dashboard and are never attached to a PR.
 
 ## Rules the loop keeps
 
