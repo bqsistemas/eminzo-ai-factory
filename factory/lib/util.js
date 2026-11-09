@@ -270,3 +270,25 @@ export function runCli(main) {
     }
   }
 }
+
+/**
+ * The engine's version: EMINZO_VERSION (set by the CLI entry point), else the version the CLI build
+ * recorded next to the installed engine (EMINZO_ENGINE/../build.json), else cli/package.json of the
+ * repo that commits the engine. null when none can be read.
+ */
+export function engineVersion(env = process.env) {
+  const fromEnv = String(env.EMINZO_VERSION ?? '').trim();
+  if (fromEnv) return fromEnv;
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    ...(env.EMINZO_ENGINE ? [join(resolve(env.EMINZO_ENGINE), '..', 'build.json')] : []),
+    join(here, '..', '..', 'cli', 'package.json'),
+  ];
+  for (const path of candidates) {
+    try {
+      const version = JSON.parse(readFileSync(path, 'utf8')).version;
+      if (typeof version === 'string' && version.trim()) return version.trim();
+    } catch { /* try the next place */ }
+  }
+  return null;
+}
