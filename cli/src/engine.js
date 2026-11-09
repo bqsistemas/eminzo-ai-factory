@@ -11,10 +11,12 @@ import { CliError, PARTIAL, engineFolder, hasCommittedEngine, homeDir, readInsta
 import { parseRange, satisfies } from './semver.js';
 
 /** Engine commands run by node from lib/<name>.js. */
-const NODE_COMMANDS = ['job', 'gate', 'approve', 'route', 'visual', 'nudge', 'ensure-output', 'dashboard', 'init'];
+const NODE_COMMANDS = ['job', 'gate', 'approve', 'route', 'visual', 'nudge', 'ensure-output', 'protect-tests', 'dashboard', 'init'];
 /** Engine commands that are shell scripts in bin/. */
 const SHELL_COMMANDS = ['setup', 'setup-spec-review'];
-export const ENGINE_COMMANDS = [...NODE_COMMANDS, ...SHELL_COMMANDS];
+/** Commands that are a `job` subcommand: `eminzo selfcheck <id>` runs `eminzo job <id> selfcheck`. */
+export const JOB_ALIASES = Object.freeze({ selfcheck: (args) => [args[0], 'selfcheck', ...args.slice(1)] });
+export const ENGINE_COMMANDS = [...NODE_COMMANDS, ...SHELL_COMMANDS, ...Object.keys(JOB_ALIASES)];
 
 /** Signals passed on to the engine, so a hook timeout or kill that reaches eminzo also stops the engine. */
 const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'];
@@ -49,6 +51,10 @@ export function checkEngineRange(config, version) {
 
 /** @returns {Promise<number>} the engine's exit status */
 export async function runEngine(command, args, { dist, version, env = process.env, cwd = process.cwd() }) {
+  if (Object.hasOwn(JOB_ALIASES, command)) {
+    if (!args.length) throw new CliError(`usage: eminzo ${command} <job-id>`, 2);
+    return runEngine('job', JOB_ALIASES[command](args), { dist, version, env, cwd });
+  }
   const root = repoRoot(cwd, env);
   if (!root) throw new CliError('not inside a git repository');
   const configFile = join(root, 'factory', 'config.json');
@@ -70,7 +76,8 @@ export async function runEngine(command, args, { dist, version, env = process.en
   }
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new CliError('factory/config.json must be a JSON object');
   const warning = checkEngineRange(config, version);
-  if (warning) process.stderr.write(`${warning}\n`);
+  // The protect-tests hook's stderr is the reason Claude shows when it denies an edit: keep it clean.
+  if (warning && command !== 'protect-tests') process.stderr.write(`${warning}\n`);
 
   const installed = readInstallManifest(homeDir(env));
   if (installed && installed.version === PARTIAL) {

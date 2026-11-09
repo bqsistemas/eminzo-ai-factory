@@ -14,6 +14,7 @@
 //   job <id> prompt                    the worker prompt contract, with Base, Base branch and Language
 //   job <id> lane                      "xs" or "normal: <reason>", from intake.md (a read, nothing is written)
 //   job <id> provider <name>           rebind to another provider (not while merging or finished); re-routes agents/models
+//   job <id> selfcheck                 the builder's check before READY: AC tests, protected tests, Module map, no uncommitted changes (exit 1 lists each problem; "selfcheck: ok")
 //   job <id> promote                   xs lane only: lane becomes normal, stage spec, the XS round counts as round 1
 //   job <id> approve-spec              at spec-review: records the gh user's approval of the posted spec.md (its SHA-256);
 //                                      the stage does not change: run `job <id> to build` next
@@ -41,6 +42,7 @@ import { KNOWN_SURFACES, parseIntake } from './intake.js';
 import { overlapReport, overlaps } from './overlap.js';
 import { claimIssue } from './claim.js';
 import { runMode } from './run-mode.js';
+import { selfcheckFindings } from './selfcheck.js';
 import { lifecycleEvent, notify } from './notifications.js';
 import { sectionLines } from './section.js';
 import { DEFAULT_PROVIDER, decideLane, laneRule, providerConfig, route, stageModels } from './route.js';
@@ -1642,11 +1644,20 @@ function configLines(c, key) {
   return line(key);
 }
 
-const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator]';
+const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator]';
+
+/** `job <id> selfcheck`: warnings, then one line per problem, or `selfcheck: ok`. Exit 1 on any problem. */
+function selfcheck(c, id) {
+  const { job } = loadJob(c, id);
+  const { problems, warnings } = selfcheckFindings(c.root, job, c.config);
+  const lines = [...warnings.map((w) => `selfcheck: warning: ${w}`), ...(problems.length ? problems.map((p) => `selfcheck: ${p}`) : ['selfcheck: ok'])];
+  return { out: lines.join('\n'), code: problems.length ? 1 : 0 };
+}
 
 function main(args) {
   const [first, second, third, ...rest] = args;
   let out;
+  let code = 0;
   if (first === 'new' && (args.length === 2 || args.length === 4)) {
     if (!/^[1-9]\d*$/.test(second ?? '')) throw new Usage(USAGE);
     if (args.length === 4 && third !== '--provider') throw new Usage(USAGE);
@@ -1665,6 +1676,8 @@ function main(args) {
     out = workerPrompt(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'lane' && args.length === 2) {
     out = laneOf(context(), first);
+  } else if (JOB_ID.test(first ?? '') && second === 'selfcheck' && args.length === 2) {
+    ({ out, code } = selfcheck(context(), first));
   } else if (JOB_ID.test(first ?? '') && second === 'promote' && args.length === 2) {
     out = promote(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'approve-spec' && args.length === 2) {
@@ -1687,6 +1700,7 @@ function main(args) {
     throw new Usage(USAGE);
   }
   process.stdout.write(`${out}\n`);
+  return code;
 }
 
 if (isMain(import.meta.url)) runCli(main);

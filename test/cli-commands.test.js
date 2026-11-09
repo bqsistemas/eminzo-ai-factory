@@ -294,3 +294,40 @@ test('eminzo nudge passes --full through to the engine: focused by hand, full wi
   assert.equal(full.status, 0, full.stderr);
   assert.equal(readFileSync(out, 'utf8'), 'focused\nfull\n');
 });
+
+test('eminzo selfcheck <id> is `job <id> selfcheck`; eminzo protect-tests is the builder hook', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir, { engine: null });
+  const git = (cwd, ...a) => execFileSync('git', a, { cwd, env: { ...process.env, ...GIT_ENV, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' }, encoding: 'utf8' });
+  const cfg = JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8'));
+  writeFileSync(join(root, 'factory/config.json'), JSON.stringify({ ...cfg, protected_tests: ['test/guarded.test.js'] }));
+  mkdirSync(join(root, 'test'));
+  writeFileSync(join(root, 'test/guarded.test.js'), '// guarded\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'init');
+  git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const worktree = join(t.dir, 'wt');
+  git(root, 'worktree', 'add', '-q', worktree, '-b', 'factory/007-x', 'HEAD');
+  const jobDir = join(root, 'factory/jobs/007-x');
+  mkdirSync(jobDir, { recursive: true });
+  writeFileSync(join(jobDir, 'job.json'), JSON.stringify({ id: '007-x', worktree }));
+  writeFileSync(join(jobDir, 'spec.md'), '# Spec: x\n- AC-1: a thing\n');
+  const missing = t.run(['selfcheck', '007-x'], { cwd: root });
+  assert.equal(missing.status, 1, missing.stderr);
+  assert.match(missing.stdout, /AC-1 has no test/);
+  writeFileSync(join(worktree, 'x.test.js'), "test('AC-1: a thing', () => {});\n");
+  git(worktree, 'add', '.');
+  git(worktree, 'commit', '-q', '-m', 'test');
+  const ok = t.run(['selfcheck', '007-x'], { cwd: root });
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.equal(ok.stdout.trim(), 'selfcheck: ok');
+  assert.equal(t.run(['job', '007-x', 'selfcheck'], { cwd: root }).stdout.trim(), 'selfcheck: ok');
+  assert.equal(t.run(['selfcheck'], { cwd: root }).status, 2);
+  assert.match(t.run(['help']).stdout, /eminzo selfcheck <job-id>/);
+
+  const hook = (file_path) => spawnSync(process.execPath, [bin, 'protect-tests'], { cwd: root, env: { ...t.env }, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path }, cwd: worktree }), encoding: 'utf8' });
+  const denied = hook(join(worktree, 'test/guarded.test.js'));
+  assert.equal(denied.status, 2);
+  assert.equal(denied.stderr, 'protected test; the gate fails the round\n', 'no engine-range warning before the reason');
+  assert.equal(hook(join(worktree, 'src/a.js')).status, 0);
+});

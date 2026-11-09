@@ -10,6 +10,11 @@ hooks:
           command: '"$CLAUDE_PROJECT_DIR"/factory/bin/nudge'
         - type: command
           command: "\"$CLAUDE_PROJECT_DIR\"/factory/bin/ensure-output '{job}/build.md' '^STATUS: (READY|BLOCKED)( |$)'"
+  PreToolUse:
+    - matcher: Edit|Write|MultiEdit|NotebookEdit
+      hooks:
+        - type: command
+          command: '"$CLAUDE_PROJECT_DIR"/factory/bin/protect-tests'
 ---
 Read `factory/roles/builder.md` and follow it exactly: it is your full role. The hooks above are the only Claude-specific part.
 Work only in the job's worktree; never edit `job.json` or `board.json`, never merge, never push the base branch, never force-push.

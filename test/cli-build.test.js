@@ -79,6 +79,8 @@ test('every Claude agent is generated, embeds its role and runs its hooks throug
     assert.ok(text.includes(`eminzo ${version}`), `${role} is stamped`);
   }
   assert.match(read('adapters/claude/agents/eminzo-builder.md'), /command: 'eminzo nudge'/);
+  assert.match(read('adapters/claude/agents/eminzo-builder.md'), /PreToolUse:\n    - matcher: Edit\|Write\|MultiEdit\|NotebookEdit\n      hooks:\n        - type: command\n          command: 'eminzo protect-tests'/);
+  for (const role of ROLES.filter((r) => r !== 'builder')) assert.doesNotMatch(read(`adapters/claude/agents/eminzo-${role}.md`), /PreToolUse/, role);
 });
 
 test('every Codex agent is generated, embeds its role and keeps a valid literal string', () => {
