@@ -70,11 +70,14 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    the gate flags a map that does not mention them.
 6. Self-check. With everything committed, run `factory/bin/selfcheck <job-id>`. It exits 0 and
    prints `selfcheck: ok` when every `AC-n` is named in a test that your diff adds or changes, no
-   protected test changed, the `Module map` mentions your new modules and nothing is uncommitted.
-   Otherwise it exits 1 and names each problem: fix them, commit and run it again. Write
-   `STATUS: READY` only when it exits 0. It is a quick check of your own work; the gate stays the
-   judge. (Claude also denies an edit of a protected test while you work; Codex has no such hook,
-   so keep away from them yourself.)
+   protected test changed and nothing is uncommitted. Otherwise it exits 1 and names each problem:
+   fix them, commit and run it again. A `warning:` line (the `Module map` does not mention your
+   new modules, as the gate also reports) does not fail it, but fix it too. Write `STATUS: READY`
+   only when it exits 0. It is a quick check of your own work; the gate stays the judge.
+   Claude also denies, while you work, an Edit, Write, MultiEdit or NotebookEdit of a protected
+   test and of any file in the main checkout except this job's `build.md` and `plan.md`. A Bash
+   command is not covered, so do not write those files that way either; Codex has no such
+   hook at all, so keep away from them yourself.
 7. Push and open the PR.
    - Round 1: `git push -u origin factory/<job-id>`, then
      `gh pr create --draft --base <base-branch> --head factory/<job-id> --title "<title>" --body "Closes #<issue>"`,

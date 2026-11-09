@@ -328,6 +328,6 @@ test('eminzo selfcheck <id> is `job <id> selfcheck`; eminzo protect-tests is the
   const hook = (file_path) => spawnSync(process.execPath, [bin, 'protect-tests'], { cwd: root, env: { ...t.env }, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path }, cwd: worktree }), encoding: 'utf8' });
   const denied = hook(join(worktree, 'test/guarded.test.js'));
   assert.equal(denied.status, 2);
-  assert.match(denied.stderr, /protected test; the gate fails the round\n$/);
+  assert.equal(denied.stderr, 'protected test; the gate fails the round\n', 'no engine-range warning before the reason');
   assert.equal(hook(join(worktree, 'src/a.js')).status, 0);
 });

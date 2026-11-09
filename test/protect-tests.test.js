@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,12 +22,12 @@ function setup() {
   mkdirSync(join(root, 'factory'), { recursive: true });
   mkdirSync(join(root, 'test'), { recursive: true });
   git(root, 'init', '-q', '-b', 'main');
-  writeFileSync(join(root, 'factory/config.json'), JSON.stringify({ base: 'origin/main', protected_tests: ['test/guarded.test.js', './test/other.test.js'] }));
+  writeFileSync(join(root, 'factory/config.json'), JSON.stringify({ base: 'origin/main', protected_tests: ['test/guarded.test.js', './test/other.test.js', 'newdir/sub/new.test.js', 'nb/analysis.ipynb'] }));
   writeFileSync(join(root, 'test/guarded.test.js'), '// guarded\n');
   git(root, 'add', '.');
   git(root, 'commit', '-q', '-m', 'init');
-  const worktree = join(root, '.worktrees', 'wt');
-  git(root, 'worktree', 'add', '-q', worktree, '-b', 'factory/wt', 'HEAD');
+  const worktree = join(root, '.worktrees', '001-wt');
+  git(root, 'worktree', 'add', '-q', worktree, '-b', 'factory/001-wt', 'HEAD');
   const call = (input, cwd = worktree) => spawnSync('sh', [hook], { cwd, input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, ...GIT_ENV, FACTORY_ROOT: undefined } });
   return { dir, root, worktree, call };
 }
@@ -77,4 +77,63 @@ test('only the Claude builder declares the hook; Codex profiles have none and th
     assert.doesNotMatch(readFileSync(join(repo, '.claude/agents', f), 'utf8'), /protect-tests/, f);
   }
   for (const f of readdirSync(join(repo, '.codex/agents'))) assert.doesNotMatch(readFileSync(join(repo, '.codex/agents', f), 'utf8'), /protect-tests|PreToolUse/, f);
+});
+
+test('a case variant of a protected path is denied (case-insensitive file systems); the gate needs no such care because git reports the index spelling', () => {
+  const t = setup();
+  for (const p of ['Test/Guarded.test.js', 'TEST/GUARDED.TEST.JS']) {
+    assert.equal(t.call({ tool_name: 'Edit', tool_input: { file_path: join(t.worktree, p) } }).status, 2, p);
+  }
+});
+
+test('a symlink to a protected file is denied through its leaf, and ".." is applied after symlinks', () => {
+  const t = setup();
+  mkdirSync(join(t.worktree, 'src/deep'), { recursive: true });
+  mkdirSync(join(t.worktree, 'test'), { recursive: true });
+  writeFileSync(join(t.worktree, 'test/guarded.test.js'), '// guarded\n');
+  symlinkSync('../test/guarded.test.js', join(t.worktree, 'src/x.js'));
+  symlinkSync('src/deep', join(t.worktree, 'l'));
+  assert.equal(t.call({ tool_name: 'Edit', tool_input: { file_path: join(t.worktree, 'src/x.js') } }).status, 2, 'leaf symlink');
+  assert.equal(t.call({ tool_name: 'Write', tool_input: { file_path: 'l/../../test/guarded.test.js' }, cwd: t.worktree }).status, 2, 'l/../.. goes through the link');
+  assert.equal(t.call({ tool_name: 'Write', tool_input: { file_path: 'l/../ok.js' }, cwd: t.worktree }).status, 0);
+});
+
+test('a protected file that does not exist yet, in a directory that does not exist, is denied (also a notebook_path)', () => {
+  const t = setup();
+  assert.equal(t.call({ tool_name: 'Write', tool_input: { file_path: join(t.worktree, 'newdir/sub/new.test.js') } }).status, 2);
+  assert.equal(t.call({ tool_name: 'NotebookEdit', tool_input: { notebook_path: join(t.worktree, 'nb/analysis.ipynb') } }).status, 2);
+  assert.equal(t.call({ tool_name: 'NotebookEdit', tool_input: { notebook_path: join(t.worktree, 'nb/other.ipynb') } }).status, 0);
+});
+
+test('the main checkout is read-only except this job\'s build.md and plan.md', () => {
+  const t = setup();
+  const edit = (file_path, cwd = t.worktree) => t.call({ tool_name: 'Edit', tool_input: { file_path }, cwd });
+  for (const f of ['factory/config.json', 'factory/lib/job.js', 'factory/bin/gate', 'factory/checks.sh', 'src/app.js', 'factory/jobs/001-wt/job.json']) {
+    const res = edit(join(t.root, f));
+    assert.equal(res.status, 2, f);
+    assert.match(res.stderr, /main checkout is read-only/);
+  }
+  for (const f of ['build.md', 'plan.md']) assert.equal(edit(join(t.root, 'factory/jobs/001-wt', f)).status, 0, f);
+  assert.equal(edit(join(t.root, 'factory/jobs/002-other/build.md')).status, 2, 'another job\'s file');
+  assert.equal(edit(join(t.worktree, 'factory/config.json')).status, 0, 'the same file in the worktree is the builder\'s to change');
+});
+
+test('when the job cannot be told from the hook cwd, any job\'s build.md and plan.md are allowed and nothing else in the main checkout', () => {
+  const t = setup();
+  const edit = (file_path) => t.call({ tool_name: 'Write', tool_input: { file_path }, cwd: t.root }, t.root);
+  assert.equal(edit(join(t.root, 'factory/jobs/002-other/plan.md')).status, 0);
+  assert.equal(edit(join(t.root, 'factory/jobs/002-other/job.json')).status, 2);
+  assert.equal(edit(join(t.root, 'factory/config.json')).status, 2);
+});
+
+test('every fail-open path says why on stderr', () => {
+  const t = setup();
+  const bad = spawnSync('sh', [hook], { cwd: t.worktree, input: 'not json', encoding: 'utf8' });
+  assert.equal(bad.status, 0);
+  assert.match(bad.stderr, /protect-tests: not enforced: .*not JSON/);
+  const bare = mkdtempSync(join(tmpdir(), 'factory-protect-noconfig-'));
+  git(bare, 'init', '-q', '-b', 'main');
+  const res = t.call({ tool_name: 'Edit', tool_input: { file_path: join(bare, 'a.js') } }, bare);
+  assert.equal(res.status, 0);
+  assert.match(res.stderr, /protect-tests: not enforced: no readable factory\/config\.json/);
 });

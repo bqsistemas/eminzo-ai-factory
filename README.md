@@ -138,6 +138,7 @@ Before merging, check two files:
     `false` to merge every pull request yourself.
   - `concurrency` (3 jobs at a time), `max_rounds` (3 build rounds per job), `checks.max_runs_per_round` (6 check runs per round; an invalid value falls back to 6), `selfcheck.ac_pattern` (regex that finds an `AC-n` in the test lines a branch adds; default `AC-\d+`, Python `(?:AC-|test_ac_)\d+`; `job <id> selfcheck` uses it), `spec_review` (off) and the
     models per risk level can stay as they are to start.
+  - Before `STATUS: READY` the builder runs `selfcheck`: it fails when an `AC-n` has no test, a protected test changed or something is uncommitted (a Module map that misses new modules is only a warning, as in the gate). The Claude builder also has a `PreToolUse` hook (`protect-tests`) that denies Edit/Write/MultiEdit/NotebookEdit on protected tests and on the main checkout (except the job's `build.md`/`plan.md`). Bash is out of scope and the gate is the backstop. With the installed CLI, a stale or partial install makes `eminzo` exit 1, which Claude treats as non-blocking: that protection is off until you run `eminzo install`.
 
 Merge the pull request, then `git pull` on your default branch.
 

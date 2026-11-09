@@ -95,15 +95,15 @@ test('AC-3: selfcheck exits 1 when a protected test was modified, and names it',
   assert.match(res.stdout, /protected/i);
 });
 
-test('the Module map must mention a new module', () => {
+test('a Module map that misses a new module is a warning, like the gate: it never changes the exit code', () => {
   const t = setup();
   t.commit({ 'lib/newmod.js': 'export {};\n', 'test/theme.test.js': BOTH });
   const res = t.selfcheck();
-  assert.equal(res.status, 1);
-  assert.match(res.stdout, /Module map/);
-  assert.match(res.stdout, /lib\/newmod\.js/);
+  assert.equal(res.status, 0, res.stdout);
+  assert.match(res.stdout, /^selfcheck: warning: Module map in factory\/project\.md does not mention: lib\/newmod\.js/m);
+  assert.match(res.stdout, /selfcheck: ok$/m);
   t.commit({ 'factory/project.md': MAP.replace('- `src/`: the app', '- `src/`: the app\n- `lib/`: helpers') }, 'docs: map');
-  assert.equal(t.selfcheck().status, 0);
+  assert.equal(t.selfcheck().stdout.trim(), 'selfcheck: ok');
 });
 
 test('uncommitted changes in the worktree fail selfcheck', () => {
@@ -141,4 +141,43 @@ test('an invalid selfcheck.ac_pattern is reported, not a crash', () => {
   const res = t.selfcheck();
   assert.equal(res.status, 1);
   assert.match(res.stdout, /ac_pattern/);
+});
+
+test('one spec line can define several ACs (AC-1, AC-2 and AC-1..AC-3) and one test line can cover several', () => {
+  const t = setup({ spec: '# Spec: x\n\n- AC-1, AC-2: the pair\n- AC-3..AC-5: the range\n- `AC-7`: later\n' });
+  t.commit({ 'test/a.test.js': "test('AC-1 and AC-2: pair', () => {});\ntest('AC-3..AC-4: range', () => {});\n" });
+  const res = t.selfcheck();
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /AC-5 has no test/);
+  assert.match(res.stdout, /AC-7 has no test/);
+  assert.doesNotMatch(res.stdout, /AC-[1-4] has no test/);
+  t.commit({ 'test/b.test.js': "test('AC-5, AC-7', () => {});\n" });
+  assert.equal(t.selfcheck().status, 0);
+});
+
+test('an added line that looks like a diff header, and a test path with spaces, are read as content', () => {
+  const t = setup();
+  t.commit({ 'test/my theme.test.js': "// AC-1\n++ AC-2\n" });
+  const res = t.selfcheck();
+  assert.equal(res.status, 0, res.stdout);
+  assert.equal(res.stdout.trim(), 'selfcheck: ok');
+});
+
+test('selfcheck.ac_pattern must be a non-empty string: otherwise the default is used', () => {
+  for (const bad of ['', 5, null]) {
+    const t = setup({ config: { selfcheck: { ac_pattern: bad } } });
+    t.commit({ 'test/theme.test.js': "test('AC-1: toggles', () => {});\n" });
+    const res = t.selfcheck();
+    assert.equal(res.status, 1);
+    assert.match(res.stdout, /AC-2 has no test/);
+    assert.match(res.stdout, /selfcheck: warning: factory\/config\.json selfcheck\.ac_pattern must be a non-empty string/);
+  }
+});
+
+test('a very long test line is cut before the pattern runs, so a reference past the cap is not seen', () => {
+  const t = setup();
+  t.commit({ 'test/theme.test.js': `${'x'.repeat(2500)} AC-1 AC-2\n` });
+  const res = t.selfcheck();
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /AC-1 has no test/);
 });

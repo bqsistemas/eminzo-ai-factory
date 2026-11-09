@@ -76,7 +76,8 @@ export async function runEngine(command, args, { dist, version, env = process.en
   }
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new CliError('factory/config.json must be a JSON object');
   const warning = checkEngineRange(config, version);
-  if (warning) process.stderr.write(`${warning}\n`);
+  // The protect-tests hook's stderr is the reason Claude shows when it denies an edit: keep it clean.
+  if (warning && command !== 'protect-tests') process.stderr.write(`${warning}\n`);
 
   const installed = readInstallManifest(homeDir(env));
   if (installed && installed.version === PARTIAL) {

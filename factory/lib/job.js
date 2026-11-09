@@ -42,7 +42,7 @@ import { KNOWN_SURFACES, parseIntake } from './intake.js';
 import { overlapReport, overlaps } from './overlap.js';
 import { claimIssue } from './claim.js';
 import { runMode } from './run-mode.js';
-import { selfcheckProblems } from './selfcheck.js';
+import { selfcheckFindings } from './selfcheck.js';
 import { lifecycleEvent, notify } from './notifications.js';
 import { sectionLines } from './section.js';
 import { DEFAULT_PROVIDER, decideLane, laneRule, providerConfig, route, stageModels } from './route.js';
@@ -1646,11 +1646,12 @@ function configLines(c, key) {
 
 const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator]';
 
-/** `job <id> selfcheck`: the problems of the job's branch, one per line, or `selfcheck: ok`. Exit 1 on any problem. */
+/** `job <id> selfcheck`: warnings, then one line per problem, or `selfcheck: ok`. Exit 1 on any problem. */
 function selfcheck(c, id) {
   const { job } = loadJob(c, id);
-  const problems = selfcheckProblems(c.root, job, c.config);
-  return { out: problems.length ? problems.map((p) => `selfcheck: ${p}`).join('\n') : 'selfcheck: ok', code: problems.length ? 1 : 0 };
+  const { problems, warnings } = selfcheckFindings(c.root, job, c.config);
+  const lines = [...warnings.map((w) => `selfcheck: warning: ${w}`), ...(problems.length ? problems.map((p) => `selfcheck: ${p}`) : ['selfcheck: ok'])];
+  return { out: lines.join('\n'), code: problems.length ? 1 : 0 };
 }
 
 function main(args) {
