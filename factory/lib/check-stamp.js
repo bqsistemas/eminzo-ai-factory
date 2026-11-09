@@ -88,3 +88,28 @@ export function testedBy(text) {
   const inputs = (text ?? '').match(/^Checks inputs: (\S+)$/m)?.[1] ?? null;
   return { head: SHA.test(head ?? '') ? head : null, inputs: INPUTS.test(inputs ?? '') ? inputs : null };
 }
+
+/** The commit the worktree's branch left `base` at (their merge-base), or null. */
+export function mergeBase(worktree, base) {
+  const mb = run('git', ['merge-base', base, 'HEAD'], { cwd: worktree });
+  const sha = mb.status === 0 ? mb.stdout.trim() : '';
+  return SHA.test(sha) ? sha : null;
+}
+
+/**
+ * The paths a worktree changed against `base`: committed, staged, unstaged and untracked (not
+ * ignored), compared with the merge-base of `base` and HEAD. Renames count as the old path and the
+ * new one, deletions as the deleted path. Sorted, without duplicates.
+ * @returns {{files: string[], base: string}|{reason: string}} `reason` when git cannot tell, or when
+ *   a path holds a newline or carriage return (it cannot be written one per line): run everything then.
+ */
+export function changedFiles(worktree, base) {
+  const from = mergeBase(worktree, base);
+  const tree = worktreeTree(worktree);
+  if (!from || !tree) return { reason: `cannot compare with ${base}` };
+  const diff = run('git', ['diff', '--name-only', '--no-renames', '-z', from, tree], { cwd: worktree });
+  if (diff.status !== 0) return { reason: 'git diff failed' };
+  const files = [...new Set(diff.stdout.split('\0').filter(Boolean))].sort();
+  if (files.some((f) => /[\n\r\uFFFD]/.test(f))) return { reason: 'a changed path contains a newline or is not valid UTF-8' };
+  return { files, base: from };
+}

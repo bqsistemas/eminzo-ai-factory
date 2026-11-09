@@ -14,6 +14,7 @@
 //   job <id> prompt                    the worker prompt contract, with Base, Base branch and Language
 //   job <id> lane                      "xs" or "normal: <reason>", from intake.md (a read, nothing is written)
 //   job <id> provider <name>           rebind to another provider (not while merging or finished); re-routes agents/models
+//   job <id> selfcheck                 the builder's check before READY: AC tests, protected tests, Module map, no uncommitted changes (exit 1 lists each problem; "selfcheck: ok")
 //   job <id> promote                   xs lane only: lane becomes normal, stage spec, the XS round counts as round 1
 //   job <id> approve-spec              at spec-review: records the gh user's approval of the posted spec.md (its SHA-256);
 //                                      the stage does not change: run `job <id> to build` next
@@ -24,6 +25,11 @@
 //   job <id> overlap                   "wait: <id> (<files>)" per job ahead that shares a file, else "none" (a read)
 //   job graph                          the pipeline as JSON (the content of factory/pipeline.json); read-only, touches no job
 //   job summary [--orchestrator]       one line per job, then a total (and the orchestrator sessions)
+//   job lessons [--last N]             the `## Lessons` of the last N decision.md (default 20), deduplicated, become project.md
+//                                      `## Things the builder gets wrong` (15 lines at most) on a branch; opens a PR for a human to merge
+//   job metrics [--last N] [--json]    GATE: PASS rate in round 1, rounds per job (median), CHANGES rate per lens, minutes per kind
+//                                      (job.json time_by_kind) and repeated lessons, over the last N jobs (default 20); a read.
+//                                      board.json also carries the same object as `metrics` for the dashboard
 //
 // Issue and comment text is attacker-controlled. It reaches agents only as
 // "> "-quoted data in issue.md, and gh gets every text through --body-file.
@@ -38,9 +44,12 @@ import { checksInputs, testedBy } from './check-stamp.js';
 import { gate as runGate } from './gate.js';
 import { diffEntries, globRegex, isTestFile, scopeTokens, xsLimitProblems } from './diff.js';
 import { KNOWN_SURFACES, parseIntake } from './intake.js';
+import { hasLessonsSection, lessonsCommand, parseLast } from './lessons.js';
+import { computeMetrics, metricsText } from './metrics.js';
 import { overlapReport, overlaps } from './overlap.js';
 import { claimIssue } from './claim.js';
 import { runMode } from './run-mode.js';
+import { selfcheckFindings } from './selfcheck.js';
 import { lifecycleEvent, notify } from './notifications.js';
 import { sectionLines } from './section.js';
 import { DEFAULT_PROVIDER, decideLane, laneRule, providerConfig, route, stageModels } from './route.js';
@@ -91,7 +100,9 @@ function allJobs(root) {
 }
 
 function writeBoard(c) {
-  const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, config_overrides: c.overrides ?? [], jobs: allJobs(c.root) };
+  let metrics = null;
+  try { metrics = computeMetrics(c.root); } catch (err) { metrics = { error: String(err?.message ?? err) }; } // the dashboard shows nothing for an error
+  const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, config_overrides: c.overrides ?? [], jobs: allJobs(c.root), metrics };
   writeAtomic(join(c.root, 'factory/board.json'), `${JSON.stringify(board, null, 2)}\n`);
 }
 
@@ -1304,6 +1315,10 @@ export const TRANSITIONS = {
     if (!/^APPROVE\b/.test(text ?? '')) {
       throw new Refused(`decision.md does not start with APPROVE${job.lane === 'xs' ? `; an inconclusive script promotes the job: ${engineCommand('job')} ${job.id} promote` : ''}`);
     }
+    // Opt-in: with config lessons.required the decision must carry the approver's `## Lessons` (lines or `None`).
+    if (c.config.lessons?.required === true && !hasLessonsSection(text)) {
+      throw new Refused('decision.md has no `## Lessons` section, and config lessons.required is true; the approver adds it: one line per lesson a future builder should avoid, or `None`');
+    }
     // Every lane: the merge is bound to the head the reviewers saw (re-read from git, not from a file).
     const head = branchHead(c, job);
     const reviewed = job.round_heads?.[job.round];
@@ -1631,6 +1646,7 @@ function workerPrompt(c, id) {
     `Language: ${c.lang}`,
     ...(job.round >= 2 ? previousHeadLine(job) : []),
     ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length ? reviewLines(c, job) : []),
+    ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length && existsSync(join(c.root, 'factory/review.md')) ? ['Review policy: factory/review.md (main checkout)'] : []),
   ].join('\n');
 }
 
@@ -1642,11 +1658,20 @@ function configLines(c, key) {
   return line(key);
 }
 
-const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator]';
+const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator] | job lessons [--last N] | job metrics [--last N] [--json]';
+
+/** `job <id> selfcheck`: warnings, then one line per problem, or `selfcheck: ok`. Exit 1 on any problem. */
+function selfcheck(c, id) {
+  const { job } = loadJob(c, id);
+  const { problems, warnings } = selfcheckFindings(c.root, job, c.config);
+  const lines = [...warnings.map((w) => `selfcheck: warning: ${w}`), ...(problems.length ? problems.map((p) => `selfcheck: ${p}`) : ['selfcheck: ok'])];
+  return { out: lines.join('\n'), code: problems.length ? 1 : 0 };
+}
 
 function main(args) {
   const [first, second, third, ...rest] = args;
   let out;
+  let code = 0;
   if (first === 'new' && (args.length === 2 || args.length === 4)) {
     if (!/^[1-9]\d*$/.test(second ?? '')) throw new Usage(USAGE);
     if (args.length === 4 && third !== '--provider') throw new Usage(USAGE);
@@ -1659,12 +1684,20 @@ function main(args) {
     out = JSON.stringify(buildGraph(), null, 2);
   } else if (first === 'summary' && (args.length === 1 || (args.length === 2 && second === '--orchestrator'))) {
     out = summary(context(), args.length === 2);
+  } else if (first === 'metrics') {
+    const json = args.includes('--json');
+    const m = computeMetrics(factoryRoot(), parseLast(args.slice(1).filter((a) => a !== '--json'), USAGE));
+    out = json ? JSON.stringify(m, null, 2) : metricsText(m);
+  } else if (first === 'lessons') {
+    out = lessonsCommand(context(), parseLast(args.slice(1), USAGE));
   } else if (JOB_ID.test(first ?? '') && second === 'sync' && args.length === 2) {
     out = sync(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'prompt' && args.length === 2) {
     out = workerPrompt(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'lane' && args.length === 2) {
     out = laneOf(context(), first);
+  } else if (JOB_ID.test(first ?? '') && second === 'selfcheck' && args.length === 2) {
+    ({ out, code } = selfcheck(context(), first));
   } else if (JOB_ID.test(first ?? '') && second === 'promote' && args.length === 2) {
     out = promote(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'approve-spec' && args.length === 2) {
@@ -1687,6 +1720,7 @@ function main(args) {
     throw new Usage(USAGE);
   }
   process.stdout.write(`${out}\n`);
+  return code;
 }
 
 if (isMain(import.meta.url)) runCli(main);

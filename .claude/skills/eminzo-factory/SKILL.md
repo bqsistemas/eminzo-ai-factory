@@ -78,15 +78,15 @@ factory/
   bin/gate <id>         runs checks.sh in the worktree, guards protected tests → round-N/checks.md
   bin/route <id>        prints the agent set for intake.md (job does this at intake → spec)
   bin/approve <id>      the deterministic approver: approve | escalate: <reason> | inconclusive: <reasons>
-  bin/nudge             the builder's Stop hook: runs checks.sh before it finishes
-  bin/init              writes a first factory/project.md from the repo when it is missing
+  bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
+  bin/init [review]     writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
   bin/setup             creates the GitHub labels (`/eminzo-factory setup` runs it)
   bin/setup-spec-review creates the factory:spec-review label (`/eminzo-factory setup` runs it after bin/setup)
   roles/<role>.md       the role bodies, shared by Claude and Codex
   templates/project.md  the project.md template (required sections)
   board.json            all job.json files; the dashboard polls it
-  jobs/<id>/            job.json issue.md intake.md spec.md spec-review-notes.md build.md decision.md merge-checks.md
+  jobs/<id>/            job.json issue.md intake.md spec.md spec-review-notes.md plan.md build.md decision.md merge-checks.md
                         round-N/checks.md round-N/review-<lens>.md round-N/review-human.md
 <repo>/.worktrees/<id>/ the job's worktree on branch factory/<id>
 ```
@@ -127,6 +127,7 @@ developer's spec review).
   repo-specific guidance already in the file, remove stale claims/TODOs when evidence resolves
   them, update the analysis date, and add the exact marker `<!-- eminzo:setup-complete -->` only
   after completing the analysis. Do not include secrets or environment-specific credentials.
+- `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
 - Report labels and the sections refreshed. No job, issue or agent is started by setup.
 - `/eminzo-factory run`: continue every unfinished local job, `concurrency` jobs at a time.
   It takes new issues from the queue (every open `factory` issue) only when `run_mode` in
@@ -372,8 +373,8 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     also checks the xs limits in the branch diff (at most 2 non-test files, none added or
     deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
   - Then `job <id> to gate`. It needs the open PR. The
-    builder's Stop hook (`factory/bin/nudge`) already ran `factory/checks.sh` in the
-    worktree and blocked its stop on a failure, so a READY build has passing checks
+    builder's Stop hook (`factory/bin/nudge`, always the full checks) already ran `factory/checks.sh` in the
+    worktree and blocked its stop on a failure (the builder's own `factory/bin/nudge <id>` is focused), so a READY build has passing checks
     and the gate rarely fails; the gate stays the authority.
 - **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes.
   <!-- rule: round-context -->

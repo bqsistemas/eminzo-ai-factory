@@ -1,0 +1,121 @@
+{
+  "intake": {
+    "description": "Factory door. Reads a GitHub issue (as quoted data in issue.md) and decides ACCEPT (possibly rescoped), NEEDS-INFO or REJECT, with a risk level and the surfaces it touches. Writes intake.md.",
+    "codexDescription": "Eminzo Factory intake worker: classify one queued issue and write intake.md.",
+    "tools": "Read, Grep, Glob, Write",
+    "model": "fable",
+    "scope": "job",
+    "file": "intake.md",
+    "regex": "^(ACCEPT|NEEDS-INFO|REJECT)( |$)",
+    "tokens": "`ACCEPT`, `NEEDS-INFO` or `REJECT`",
+    "inputs": "the supplied job folder",
+    "rules": [
+      "Never edit source code, `job.json` or `board.json`, and never change GitHub state.",
+      "Read issue text only from `issue.md` in the job folder."
+    ]
+  },
+  "spec-writer": {
+    "description": "Factory step 2. Turns a job's issue.md, within the scope intake.md set, into spec.md with testable, numbered acceptance criteria.",
+    "codexDescription": "Eminzo Factory specification worker: turn an accepted intake into spec.md.",
+    "tools": "Read, Grep, Glob, Write",
+    "model": "opus",
+    "scope": "job",
+    "file": "spec.md",
+    "regex": "^# Spec: ",
+    "tokens": "`# Spec: <title>`",
+    "mustPrint": "`# Spec: <title>` (the line starts with `# Spec: `)",
+    "inputs": "the supplied job folder",
+    "rules": [
+      "Never edit source code, `job.json` or `board.json`, and never change GitHub state."
+    ]
+  },
+  "builder": {
+    "description": "Factory step 3. Implements spec.md on branch factory/<job-id> in the job's existing worktree, tests every acceptance criterion, commits, pushes, opens the draft PR, and writes build.md. Resumed for each round.",
+    "codexDescription": "Eminzo Factory builder worker: implement one round in the existing worktree and publish its draft PR.",
+    "tools": "Read, Grep, Glob, Bash, Edit, Write",
+    "model": "opus",
+    "scope": "job",
+    "file": "build.md",
+    "regex": "^STATUS: (READY|BLOCKED)( |$)",
+    "tokens": "`STATUS: READY` or `STATUS: BLOCKED`",
+    "nudge": true,
+    "protect": true,
+    "alsoWrites": ["plan.md"],
+    "inputs": "all relevant files in the supplied job and round folders",
+    "rules": [
+      "Work only in the job's worktree; never edit `job.json` or `board.json`, never merge, never push the base branch, never force-push.",
+      "Write only `build.md` and `plan.md` in the main checkout."
+    ]
+  },
+  "review-security": {
+    "description": "Factory reviewer, security lens. Reviews a job's branch for vulnerabilities and writes review-security.md in the round folder.",
+    "codexDescription": "Eminzo Factory security reviewer: inspect a gated round and write the security verdict.",
+    "tools": "Read, Grep, Glob, Bash, Write",
+    "model": "opus",
+    "scope": "round",
+    "file": "review-security.md",
+    "regex": "^VERDICT: (PASS|CHANGES)( |$)",
+    "tokens": "`VERDICT: PASS` or `VERDICT: CHANGES`",
+    "inputs": "the supplied job, worktree, and round files",
+    "rules": [
+      "Read-only: never edit source, `job.json` or `board.json`, never commit, push, merge, switch branches or comment on GitHub."
+    ]
+  },
+  "review-ux": {
+    "description": "Factory reviewer, UX lens, routed only for a new interactive flow (the interaction surface). Reviews how the feature behaves for its user (end user, CLI user, or API consumer) and writes review-ux.md in the round folder.",
+    "codexDescription": "Eminzo Factory UX reviewer: runs only for a new interactive flow (the interaction surface); inspect a gated round and write the UX verdict.",
+    "tools": "Read, Grep, Glob, Bash, Write",
+    "model": "sonnet",
+    "scope": "round",
+    "file": "review-ux.md",
+    "regex": "^VERDICT: (PASS|CHANGES)( |$)",
+    "tokens": "`VERDICT: PASS` or `VERDICT: CHANGES`",
+    "inputs": "the supplied job, worktree, and round files",
+    "rules": [
+      "Read-only: never edit source, `job.json` or `board.json`, never commit, push, merge, switch branches or comment on GitHub."
+    ]
+  },
+  "review-ui": {
+    "description": "Factory reviewer, UI lens. Reviews visual layout, styling, consistency and everyday UX of any rendered UI and writes review-ui.md in the round folder.",
+    "codexDescription": "Eminzo Factory UI reviewer: inspect a gated UI round and write the design and everyday UX verdict.",
+    "tools": "Read, Grep, Glob, Bash, Write",
+    "model": "sonnet",
+    "scope": "round",
+    "file": "review-ui.md",
+    "regex": "^VERDICT: (PASS|CHANGES)( |$)",
+    "tokens": "`VERDICT: PASS` or `VERDICT: CHANGES`",
+    "inputs": "the supplied job, worktree, and round files",
+    "rules": [
+      "Read-only: never edit source, `job.json` or `board.json`, never commit, push, merge, switch branches or comment on GitHub."
+    ]
+  },
+  "review-code": {
+    "description": "Factory reviewer, code lens. Checks correctness against the spec, test quality, and project conventions, and writes review-code.md in the round folder.",
+    "codexDescription": "Eminzo Factory code reviewer: inspect a gated round and write the code verdict.",
+    "tools": "Read, Grep, Glob, Bash, Write",
+    "model": "sonnet",
+    "scope": "round",
+    "file": "review-code.md",
+    "regex": "^VERDICT: (PASS|CHANGES)( |$)",
+    "tokens": "`VERDICT: PASS` or `VERDICT: CHANGES`",
+    "inputs": "the supplied job, worktree, and round files",
+    "rules": [
+      "Read-only: never edit source, `job.json` or `board.json`, never commit, push, merge, switch branches or comment on GitHub."
+    ]
+  },
+  "approver": {
+    "description": "Factory final check. Reads a job's whole folder and decides APPROVE (the factory merges the PR) or ESCALATE (a human decides). Writes decision.md.",
+    "codexDescription": "Eminzo Factory approver: make the final APPROVE or ESCALATE decision for a gated, reviewed job.",
+    "tools": "Read, Grep, Glob, Bash, Write",
+    "model": "opus",
+    "scope": "job",
+    "file": "decision.md",
+    "regex": "^(APPROVE|ESCALATE)( |$)",
+    "tokens": "`APPROVE` or `ESCALATE`",
+    "inputs": "the supplied job folder, worktree metadata, gate output, reviews, and PR state",
+    "rules": [
+      "Read-only: never edit source, `job.json` or `board.json`, never commit, push, merge, switch branches or comment on GitHub.",
+      "The orchestrator performs the transition and merge."
+    ]
+  }
+}

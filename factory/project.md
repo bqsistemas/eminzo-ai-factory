@@ -87,12 +87,12 @@ Portable factory engine:
 - `factory/config.local.json` (gitignored, optional): per-developer override of `concurrency`,
   `default_provider`, `language`, `max_rounds` (lower only), `auto_merge` (false only) and
   `spec_review` (either way; `specReviewFor()` in `util.js` resolves it).
-- `factory/bin/`: shell entrypoints for job, gate, route, nudge, approve, visual,
+- `factory/bin/`: shell entrypoints for job, gate, route, nudge, selfcheck, protect-tests, approve, visual,
   setup, setup-spec-review, init, ensure-output and dashboard; implementation lives in `factory/lib/`.
 - `factory/lib/notifications.js`, `factory/lib/connectors/discord.js`: optional best-effort
   lifecycle dispatcher and secret-safe Discord webhook adapter (no new dependencies).
 - `factory/lib/`: `job.js` state/transitions/GitHub; `route.js`/`intake.js` classification;
-  `gate.js`/`nudge.js`/`check-stamp.js` checks and fingerprinted reuse;
+  `gate.js`/`nudge.js`/`check-stamp.js` checks and fingerprinted reuse; `selfcheck.js` the builder's pre-READY check; `protect-tests.js` the builder's PreToolUse hook;
   `approve.js` deterministic approval; `diff.js` scope/XS limits; `overlap.js` shared
   file scheduling; `round-context.js` review handoffs; `cost.js` provider accounting;
   `visual*.js` browser checks; `project-map.js` context freshness; `run-mode.js`
@@ -125,6 +125,7 @@ Dashboard and office (plain browser ESM, no build):
 
 - `factory/dashboard.html`, `factory/dashboard.css`, `factory/dashboard.js`: shell,
   theme/i18n data, polling board and drawer rendering.
+- `factory/metrics-table.js`: rows and DOM-free table renderer for `board.metrics` (`job metrics`).
 - `factory/pipeline-canvas.js`, `factory/activity.js`, `factory/avatars.js`: stage
   inspector/job links, agent/card projections and constant-built octopus SVGs.
 - `factory/office*.js`: pure board-to-room projection, 768x500 geometry, canvas,

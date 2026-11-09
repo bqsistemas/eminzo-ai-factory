@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { wrapperLineCap } from './helpers/wrapper-lines.js';
+
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const read = (path) => readFileSync(join(repo, path), 'utf8');
 const list = (dir, ext) => readdirSync(join(repo, dir)).filter((f) => f.endsWith(ext)).sort();
@@ -23,7 +25,8 @@ test('the eight role bodies live in factory/roles/ without frontmatter', () => {
   for (const role of ROLES) {
     const text = read(`factory/roles/${role}.md`);
     assert.ok(!text.startsWith('---'), `${role} body must not carry frontmatter`);
-    assert.match(text, /\*\*Before you finish\*\*/, `${role} keeps its Before you finish section`);
+    assert.doesNotMatch(text, /\*\*Before you finish\*\*/, `${role}: the finish block comes from the template`);
+    assert.match(read(`.claude/agents/eminzo-${role}.md`), /\*\*Before you finish\*\*/, `${role} wrapper has the Before you finish section`);
   }
 });
 
@@ -36,7 +39,7 @@ test('every Claude wrapper keeps the frontmatter and only points to the neutral 
     }
     assert.match(front, new RegExp(`^name: eminzo-${role}$`, 'm'));
     assert.ok(body(text).includes(`factory/roles/${role}.md`), `${role} wrapper must point to its role body`);
-    assert.ok(body(text).trim().split('\n').length <= 8, `${role} wrapper must stay thin`);
+    assert.ok(body(text).trim().split('\n').length <= wrapperLineCap(role), `${role} wrapper must stay thin: template plus its rules`);
   }
 });
 
@@ -96,10 +99,11 @@ test('both skills pass Base and Base branch in the worker prompt and preflight o
   }
 });
 
-test('Codex builder runs the checks before READY; both skills run them before to gate', () => {
-  const profile = read('.codex/agents/eminzo-builder.toml');
-  assert.match(profile, /factory\/checks\.sh/);
-  assert.match(profile, /only (write|when).*STATUS: READY.*exit(s)? 0|STATUS: READY.*only.*exit(s)? 0/s);
+test('Codex builder reads a role that runs the checks before READY; both skills run them before to gate', () => {
+  const role = read('factory/roles/builder.md');
+  assert.match(read('.codex/agents/eminzo-builder.toml'), /factory\/roles\/builder\.md/);
+  assert.match(role, /factory\/checks\.sh/);
+  assert.match(role, /only (write|when).*STATUS: READY.*exit(s)? 0|STATUS: READY.*only.*exit(s)? 0/s);
   const codex = read('.agents/skills/eminzo-factory/SKILL.md');
   const claude = read('.claude/skills/eminzo-factory/SKILL.md');
   for (const text of [codex, claude]) assert.match(text, /<!-- rule: checks-before-gate -->/);

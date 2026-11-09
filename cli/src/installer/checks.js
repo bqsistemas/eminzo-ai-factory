@@ -21,6 +21,55 @@ function pythonHasTests(files, read) {
   return ['pyproject.toml', 'setup.cfg', 'requirements.txt', 'requirements-dev.txt'].some((f) => has(files, f) && /pytest/i.test(read(f) ?? ''));
 }
 
+// The body of the checks.sh written when no stack is detected. It is also factory/templates/checks.sh (a test keeps
+// the two equal): it documents the variables the factory passes and shows the focused/full pattern once per stack.
+const NO_STACK_BODY = [
+  '# No test command was detected in this repo, so this gate checks nothing yet.',
+  '# Replace the example below with your test, lint and typecheck commands.',
+  '#',
+  '# Scoped checks (optional). The factory sets two variables:',
+  '#   FACTORY_CHECK_MODE     "focused" while a builder iterates (factory/bin/nudge <job-id>);',
+  '#                          "full" for the Stop hook, \'nudge --full\', the gate and the merge.',
+  '#   FACTORY_CHANGED_FILES  with focused: the path of a file that lists what the branch changed',
+  '#                          against its base, ONE repo-relative path per line (so a path may hold',
+  '#                          spaces), sorted, deleted files included, a rename as old and new path.',
+  '#                          Not set in full mode.',
+  "# Limits of the list: a submodule bump shows only as the submodule's path, files in ignored",
+  '# directories are never listed, and if a path holds a newline the factory runs full instead.',
+  '# A checks.sh that ignores both variables runs everything, which is always safe. The gate always',
+  '# runs full, so a focused pass is a shortcut for the builder and the full run is the backstop.',
+  'MODE="${FACTORY_CHECK_MODE:-full}"',
+  'CHANGED="${FACTORY_CHANGED_FILES:-}"',
+  '',
+  'if [ "$MODE" = focused ] && [ -n "$CHANGED" ] && [ -s "$CHANGED" ]; then',
+  '  # A diff with only docs may skip the tests; say so in the log. Only docs/ and a top-level',
+  '  # README.md or CHANGELOG.md count here: widen or narrow this pattern for the docs your tests read',
+  '  # (roles, snapshots, golden files). Any grep error (status 2) falls through and runs everything.',
+  '  rc=0',
+  '  grep -qvE \'^(docs/|README\\.md$|CHANGELOG\\.md$)\' "$CHANGED" || rc=$?',
+  '  if [ "$rc" -eq 1 ]; then',
+  '    echo "factory/checks.sh: only docs changed; skipping the tests (focused mode)"',
+  '    exit 0',
+  '  fi',
+  '  # The changed paths that still exist (a deleted path cannot be a test target), one per line, each',
+  '  # prefixed with ./ so a name starting with - is never read as an option. It always returns 0.',
+  '  existing() { while IFS= read -r f; do [ -e "$f" ] && printf \'%s\\n\' "./$f"; done < "$CHANGED"; return 0; }',
+  '  # Run only what the change touches. One example per stack, uncomment the one that fits. Each one',
+  '  # guards the empty selection: if nothing is selected it falls through to the full run below, so a',
+  '  # focused run is never a green with no tests run. (tr/xargs -0 keeps paths with spaces whole.)',
+  '  #   Node:    sel=$(existing)',
+  '  #            if [ -n "$sel" ]; then printf \'%s\\n\' "$sel" | tr \'\\n\' \'\\0\' | xargs -0 -r npx jest --findRelatedTests; exit $?; fi',
+  '  #   Go:      sel=$(existing | grep \'\\.go$\' | while IFS= read -r f; do dirname "$f"; done | sort -u || true)',
+  '  #            if [ -n "$sel" ]; then printf \'%s\\n\' "$sel" | tr \'\\n\' \'\\0\' | xargs -0 -r go test; exit $?; fi',
+  "  #   Python:  sel=$(existing | grep -E '(^|/)test_.*\\.py$' || true)",
+  '  #            if [ -n "$sel" ]; then printf \'%s\\n\' "$sel" | tr \'\\n\' \'\\0\' | xargs -0 -r python -m pytest; exit $?; fi',
+  'fi',
+  '',
+  '# Full mode, and any focused change you did not narrow above: run everything.',
+  'echo "factory/checks.sh: TODO add this repo\'s test command" >&2',
+  'exit 0',
+].join('\n');
+
 function withBody(body) {
   return `${HEADER}\n${body}\n`;
 }
@@ -39,11 +88,5 @@ export function detectChecks({ files, packageJson, read }) {
   if (pythonHasTests(files, read)) return { stack: 'python', script: withBody('python -m pytest') };
   if (has(files, 'pom.xml')) return { stack: 'maven', script: withBody('mvn -B -q test') };
   if (has(files, 'gradlew')) return { stack: 'gradle', script: withBody('./gradlew test') };
-  return {
-    stack: 'none',
-    script: withBody(`# No test command was detected in this repo, so this gate checks nothing yet.
-# Replace the next lines with your test, lint and typecheck commands, for example: npm test
-echo "factory/checks.sh: TODO add this repo's test command" >&2
-exit 0`),
-  };
+  return { stack: 'none', script: withBody(NO_STACK_BODY) };
 }

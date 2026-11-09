@@ -179,7 +179,7 @@ test('Claude and Codex builders both run their checks through the nudge, so both
   const role = readFileSync(join(repo, 'factory/roles/builder.md'), 'utf8');
   const codex = readFileSync(join(repo, '.codex/agents/eminzo-builder.toml'), 'utf8');
   assert.match(role, /Run the repo's checks with `factory\/bin\/nudge <job-id>`/);
-  assert.match(codex, /factory\/bin\/nudge <id>/);
+  assert.match(codex, /factory\/roles\/builder\.md/); // the profile reads the role that names the nudge
   assert.doesNotMatch(codex, /Run `factory\/checks\.sh` in the worktree/);
 });
 
@@ -207,7 +207,7 @@ describe('check reuse', { concurrency: true }, () => {
   test('nudge skips the checks for a tree that already passed, manual (Codex) or hook (Claude)', async () => {
     const t = setup();
     const { id, worktree } = await building(t);
-    ok(await t.bin('nudge', [id]));
+    ok(await t.bin('nudge', [id, '--full'])); // a focused pass is not reusable by the hook (test/check-mode.test.js)
     assert.equal(t.runs(), 1);
     const again = await t.bin('nudge', [id]);
     assert.equal(again.status, 0);
@@ -302,6 +302,16 @@ describe('check reuse', { concurrency: true }, () => {
     assert.equal(ok(await t.job(id, 'to', 'merging')), `${id} merged`);
     assert.equal(t.runs(), before + 1);
     assert.doesNotMatch(t.read(id, 'merge-checks.md'), /Reused/);
+  });
+
+  test('the merge-checks run full with a polluted environment: checks.sh sees mode full and no list', async () => {
+    const t = setup();
+    const { id } = await approvedWithRealGate(t);
+    const seen = join(t.dir, 'seen');
+    writeFileSync(join(t.root, 'factory/checks.sh'), `#!/bin/sh\necho "$FACTORY_CHECK_MODE|\${FACTORY_CHANGED_FILES:-none}" >> "${seen}"\n`, { mode: 0o755 });
+    Object.assign(t.env, { FACTORY_CHECK_MODE: 'focused', FACTORY_CHANGED_FILES: '/x' });
+    assert.equal(ok(await t.job(id, 'to', 'merging')), `${id} merged`);
+    assert.equal(readFileSync(seen, 'utf8'), 'full|none\n');
   });
 
   test('the merge runs the gate again when checks.sh changed since the round gate', async () => {

@@ -6,10 +6,27 @@
 // for its own checks). Exit 2 means the checks failed; 64 means the call itself was
 // wrong (bad id, unknown job, no worktree).
 //
-// A pass is remembered in the job folder (nudge.json: the worktree's tree and the hash
+// Modes: by hand, `nudge <job-id>` runs the checks focused (FACTORY_CHECK_MODE=focused and
+// FACTORY_CHANGED_FILES, the file listing the paths changed against the base, for a checks.sh
+// that uses them), `nudge <job-id> --full` and the Stop hook run everything. A checks.sh that
+// ignores the variables runs everything either way. When the changed files cannot be computed
+// the nudge runs full.
+//
+// A pass is remembered in the job folder (nudge.json: the worktree's tree, the mode, and the hash
 // of checks.sh + config.json), so the next nudge on exactly the same files does not run
-// the checks again. A failure forgets it and keeps the full log in nudge.log. The gate
+// the checks again. A focused pass never satisfies a full nudge (nor the hook); a full pass
+// satisfies both. A failure forgets it and keeps the full log in nudge.log. The gate
 // never reads nudge.json: it always runs the checks itself.
+//
+// Cap per round: nudge.json also counts the real runs of checks.sh in the job's current round
+// (`runs: { round, count }`, reset when the round changes). Past `checks.max_runs_per_round`
+// (default 6) a nudge does not run the checks. By hand it exits 2 with `cap reached: write
+// build.md with what is still failing`. As the Stop hook the first cap hit of a round also exits 2
+// (the builder sees the message, and it is appended to nudge.log) and is recorded as
+// `runs.notified`; every later hook call of that round logs the message and exits 0, so the builder
+// can stop and is never trapped. The gate still runs the full checks, so nothing is weakened.
+// A corrupt nudge.json resets the count (accepted: the builder cannot write the job folder). A reused pass and a nudge refused by the
+// lock are not runs and do not count.
 //
 // One nudge per job at a time: while the checks run, nudge.lock in the job folder records the
 // nudge (PID and start time) and nudge.lock.child the PID of the checks it started. A second
@@ -17,12 +34,13 @@
 // as the Stop hook (so the builder keeps waiting). A lock is stale, and taken over, when neither
 // process is alive or it is older than MAX_LOCK_AGE (a recycled PID never blocks forever). The
 // builder runs the nudge in the foreground and waits for it, so there is never a reason to start another.
-import { existsSync, linkSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { checksInputs, worktreeTree } from './check-stamp.js';
+import { changedFiles, checksInputs, mergeBase, worktreeTree } from './check-stamp.js';
 import { runChecks } from './gate.js';
-import { JOB_ID, factoryRoot, isMain, readText, runCli, tail, writeAtomic } from './util.js';
+import { JOB_ID, baseRef, factoryRoot, isMain, loadConfig, readText, runCli, tail, writeAtomic } from './util.js';
 
 // Exit codes: 0 checks pass (or nothing to check), 1 another nudge of the job is running,
 // 2 checks failed, 64 bad usage or unknown job.
@@ -30,6 +48,8 @@ const EXIT_BUSY = 1;
 const EXIT_FAIL = 2;
 const EXIT_USAGE = 64;
 const LOCK = 'nudge.lock';
+export const DEFAULT_MAX_RUNS = 6;
+const CAP_MSG = 'cap reached: write build.md with what is still failing';
 const MAX_LOCK_AGE = 3 * 60 * 60 * 1000;
 const JOB_PATH = /factory\/jobs\/(\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*)\//;
 
@@ -47,9 +67,11 @@ function jobIdFromHook() {
 }
 
 function main(args = []) {
-  const manual = args[0];
-  if (manual !== undefined && !JOB_ID.test(manual)) {
-    process.stderr.write('usage: nudge [<job-id>]\n');
+  const full = args.includes('--full');
+  const rest = args.filter((a) => a !== '--full');
+  const manual = rest[0];
+  if ((manual !== undefined && !JOB_ID.test(manual)) || rest.length > 1 || (full && manual === undefined)) {
+    process.stderr.write('usage: nudge [<job-id> [--full]]\n');
     return EXIT_USAGE;
   }
   const id = manual ?? jobIdFromHook();
@@ -81,7 +103,20 @@ function main(args = []) {
   const inputs = checksInputs(root);
   const tree = worktreeTree(job.worktree);
   const last = readStamp(stampFile);
-  if (tree && last?.tree === tree && last.inputs === inputs) {
+  // The hook (no job id) and --full need a full pass; only a by-hand nudge may settle for a focused one.
+  const wantFull = full || !manual;
+  // A focused pass also needs the base it was made against: after the base moves the diff is another one.
+  const focusedOk = () => {
+    try {
+      return typeof last.base === 'string' && last.base === mergeBase(job.worktree, baseRef(loadConfig(root)).base);
+    } catch {
+      return false;
+    }
+  };
+  // Full callers accept only a full pass (no mode = recorded before modes existed); anything else re-runs.
+  const fullPass = last?.mode === undefined || last.mode === 'full';
+  const passed = fullPass || (!wantFull && last.mode === 'focused' && focusedOk());
+  if (tree && last?.tree === tree && last.inputs === inputs && passed) {
     process.stderr.write(`factory nudge: the checks already passed for this tree (${tree.slice(0, 12)}); not running them again.\n`);
     return 0;
   }
@@ -99,21 +134,76 @@ function main(args = []) {
     return EXIT_BUSY;
   }
   try {
-    return runAndReport({ root, job, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
+    const runs = countRun(stampFile, job.round, maxRuns(root));
+    if (runs.capped) {
+      process.stderr.write(`factory nudge: ${CAP_MSG}\n`);
+      if (runs.first) bestEffort(() => appendFileSync(logFile, `cap reached: ${CAP_MSG.slice('cap reached: '.length)}\n`));
+      return manual || runs.first ? EXIT_FAIL : 0;
+    }
+    return runAndReport({ root, job, runs: runs.value, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
     if (!lock.unlocked) releaseLock(lockFile);
   }
 }
 
-function runAndReport({ root, job, stampFile, logFile, tree, inputs, childFile }) {
-  const { code, output } = runChecks(root, job.worktree, childFile ? { pidFile: childFile } : {});
+const CHANGED_PREFIX = 'factory-changed-';
+const STALE_CHANGED = 24 * 60 * 60 * 1000;
+
+/**
+ * Removes the changed-files folders a killed nudge left in the temp dir (SIGTERM and SIGINT skip the
+ * `finally` while the checks run, and a signal handler cannot run while this process waits on them).
+ */
+function sweepStaleChangedFolders() {
+  try {
+    for (const name of readdirSync(tmpdir())) {
+      if (!name.startsWith(CHANGED_PREFIX)) continue;
+      const dir = join(tmpdir(), name);
+      if (Date.now() - statSync(dir).mtimeMs > STALE_CHANGED) rmSync(dir, { recursive: true, force: true });
+    }
+  } catch { /* best effort */ }
+}
+
+/** The focused run's options: the changed-files list in a throwaway folder (`cleanup` removes it), or {} (full) when it cannot be made. */
+function focusedOptions(root, job) {
+  const none = { options: {}, cleanup() {} };
+  sweepStaleChangedFolders();
+  try {
+    const found = changedFiles(job.worktree, baseRef(loadConfig(root)).base);
+    if (found.reason) {
+      process.stderr.write(`factory nudge: ${found.reason}; running the full checks.\n`);
+      return none;
+    }
+    const tmp = mkdtempSync(join(tmpdir(), CHANGED_PREFIX));
+    const file = join(tmp, 'changed-files.txt');
+    try {
+      writeFileSync(file, found.files.map((f) => `${f}\n`).join(''));
+    } catch (err) {
+      rmSync(tmp, { recursive: true, force: true });
+      throw err;
+    }
+    return { options: { mode: 'focused', changedFiles: file }, base: found.base, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
+  } catch {
+    return none;
+  }
+}
+
+function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inputs, childFile }) {
+  const focus = wantFull ? { options: {}, cleanup() {} } : focusedOptions(root, job);
+  const mode = focus.options.mode ?? 'full';
+  let result;
+  try {
+    result = runChecks(root, job.worktree, { ...focus.options, ...(childFile ? { pidFile: childFile } : {}) });
+  } finally {
+    focus.cleanup();
+  }
+  const { code, output } = result;
   if (code === 0) {
     bestEffort(() => (tree
-      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, at: new Date().toISOString() })}\n`)
-      : rmSync(stampFile, { force: true })));
+      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, ...(mode === 'focused' ? { base: focus.base } : {}), at: new Date().toISOString(), runs })}\n`)
+      : writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`)));
     return 0;
   }
-  bestEffort(() => rmSync(stampFile, { force: true }));
+  bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`));
   const logged = bestEffort(() => writeAtomic(logFile, output));
   process.stderr.write(
     `factory nudge: factory/checks.sh failed (exit ${code}) in ${job.worktree}.\n`
@@ -211,6 +301,37 @@ function releaseLock(file) {
   if (readRecord(file)?.pid !== process.pid) return;
   bestEffort(() => rmSync(`${file}.child`, { force: true }));
   bestEffort(() => rmSync(file, { force: true }));
+}
+
+/** `checks.max_runs_per_round`: a positive integer, else the default. */
+function maxRuns(root) {
+  let value;
+  try { value = loadConfig(root)?.checks?.max_runs_per_round; } catch { /* no readable config: the default */ }
+  return Number.isInteger(value) && value >= 1 ? value : DEFAULT_MAX_RUNS;
+}
+
+/**
+ * Counts one real run of the checks in this round and saves it before they start (a killed nudge
+ * still counts). Returns { capped: true, first } when the round already used its runs (`first`: the
+ * hook has not been told yet, which is recorded as runs.notified), else { value }.
+ * A corrupt nudge.json (not a JSON object) resets the count: accepted, since the builder cannot write
+ * the job folder from its worktree. In the `lock.unlocked` fallback two nudges may overlap, so the
+ * count is approximate there.
+ */
+function countRun(stampFile, round, max) {
+  let raw = {};
+  try { raw = JSON.parse(readText(stampFile) ?? '{}'); } catch { /* unreadable: start over */ }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) raw = {};
+  const runs = raw.runs && typeof raw.runs === 'object' && raw.runs.round === round ? raw.runs : null;
+  const used = Number.isInteger(runs?.count) ? runs.count : 0;
+  if (used >= max) {
+    const first = runs?.notified !== true;
+    if (first) bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ ...raw, runs: { ...runs, notified: true } })}\n`));
+    return { capped: true, first };
+  }
+  const value = { round, count: used + 1 };
+  bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ ...raw, runs: value })}\n`));
+  return { value };
 }
 
 /** The stamp and the log only save time; failing to write them never changes the checks' result. */

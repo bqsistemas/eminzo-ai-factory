@@ -79,15 +79,15 @@ const NO_BACKGROUND = /run_in_background|pgrep|\bsleep\b/;
 
 test('AC-3: the builder role runs the nudge in the foreground and never says to background or poll it', () => {
   const role = readFileSync(join(repo, 'factory/roles/builder.md'), 'utf8');
-  const step = role.slice(role.indexOf('3. Run the repo\'s checks'), role.indexOf('4. Visual check'));
+  const step = role.slice(role.indexOf('4. Run the repo\'s checks'), role.indexOf('5. Visual check'));
   assert.match(step, /in the foreground/);
   assert.match(step, /refused: nudge running/);
   assert.doesNotMatch(role, NO_BACKGROUND);
 });
 
-test('AC-4: the Codex builder profile says the same', () => {
+test('AC-4: the Codex builder profile reads that role and never says to background the nudge', () => {
   const profile = readFileSync(join(repo, '.codex/agents/eminzo-builder.toml'), 'utf8');
-  assert.match(profile, /in the foreground/);
+  assert.match(profile, /factory\/roles\/builder\.md/);
   assert.doesNotMatch(profile, NO_BACKGROUND);
 });
 

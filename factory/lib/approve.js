@@ -120,7 +120,7 @@ export function inspect(root, id) {
 }
 
 function decisionText(first, reason, checks) {
-  return [first, reason, '', `Decided by: ${engineCommand('approve')}`, '', '## Checks', ...checks, ''].join('\n');
+  return [first, reason, '', `Decided by: ${engineCommand('approve')}`, '', '## Checks', ...checks, '', '## Lessons', 'None', ''].join('\n');
 }
 
 function main(args) {
