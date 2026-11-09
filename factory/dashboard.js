@@ -4,6 +4,7 @@ import {
   roundsOf, splitMerged,
 } from './activity.js';
 import { costStatParts, formatCost, headerStats } from './office.js';
+import { hasMetrics, renderMetricsTable } from './metrics-table.js';
 import { createOffice } from './office-renderer.js';
 import { CANVAS_STAGES, artifactFiles, bindPipelineControls, branchLink, derivePipeline, githubLinks, isSafeJobId, jobsNewestFirst, laneChip, pickJobId, stageCardsHtml, stageDetails, taskDuration, taskHeaderHtml } from './pipeline-canvas.js';
 
@@ -73,8 +74,19 @@ function card(job) {
   </article>`;
 }
 
+// The metrics table: values come from board.metrics (numbers and lesson text); metrics-table.js sets text only.
+function renderMetrics() {
+  const m = board.metrics;
+  const box = $('metrics');
+  box.hidden = !hasMetrics(m);
+  if (box.hidden) return;
+  $('metrics-title').textContent = T.metricsTitle.replace('{n}', () => m.last);
+  renderMetricsTable(document, $('metrics-table'), m, T);
+}
+
 function render() {
   setLanguage();
+  renderMetrics();
   const jobs = board.jobs || [];
   selectedJobId = pickJobId(jobs, selectedJobId);
   renderPipeline();

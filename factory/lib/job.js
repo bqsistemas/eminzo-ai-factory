@@ -27,6 +27,9 @@
 //   job summary [--orchestrator]       one line per job, then a total (and the orchestrator sessions)
 //   job lessons [--last N]             the `## Lessons` of the last N decision.md (default 20), deduplicated, become project.md
 //                                      `## Things the builder gets wrong` (15 lines at most) on a branch; opens a PR for a human to merge
+//   job metrics [--last N] [--json]    GATE: PASS rate in round 1, rounds per job (median), CHANGES rate per lens, minutes per kind
+//                                      (job.json time_by_kind) and repeated lessons, over the last N jobs (default 20); a read.
+//                                      board.json also carries the same object as `metrics` for the dashboard
 //
 // Issue and comment text is attacker-controlled. It reaches agents only as
 // "> "-quoted data in issue.md, and gh gets every text through --body-file.
@@ -42,6 +45,7 @@ import { gate as runGate } from './gate.js';
 import { diffEntries, globRegex, isTestFile, scopeTokens, xsLimitProblems } from './diff.js';
 import { KNOWN_SURFACES, parseIntake } from './intake.js';
 import { hasLessonsSection, lessonsCommand, parseLast } from './lessons.js';
+import { computeMetrics, metricsText } from './metrics.js';
 import { overlapReport, overlaps } from './overlap.js';
 import { claimIssue } from './claim.js';
 import { runMode } from './run-mode.js';
@@ -96,7 +100,9 @@ function allJobs(root) {
 }
 
 function writeBoard(c) {
-  const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, config_overrides: c.overrides ?? [], jobs: allJobs(c.root) };
+  let metrics = null;
+  try { metrics = computeMetrics(c.root); } catch (err) { metrics = { error: String(err?.message ?? err) }; } // the dashboard shows nothing for an error
+  const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, config_overrides: c.overrides ?? [], jobs: allJobs(c.root), metrics };
   writeAtomic(join(c.root, 'factory/board.json'), `${JSON.stringify(board, null, 2)}\n`);
 }
 
@@ -1652,7 +1658,7 @@ function configLines(c, key) {
   return line(key);
 }
 
-const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator] | job lessons [--last N]';
+const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> prompt | job <id> amend | job <id> overlap | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator] | job lessons [--last N] | job metrics [--last N] [--json]';
 
 /** `job <id> selfcheck`: warnings, then one line per problem, or `selfcheck: ok`. Exit 1 on any problem. */
 function selfcheck(c, id) {
@@ -1678,6 +1684,10 @@ function main(args) {
     out = JSON.stringify(buildGraph(), null, 2);
   } else if (first === 'summary' && (args.length === 1 || (args.length === 2 && second === '--orchestrator'))) {
     out = summary(context(), args.length === 2);
+  } else if (first === 'metrics') {
+    const json = args.includes('--json');
+    const m = computeMetrics(factoryRoot(), parseLast(args.slice(1).filter((a) => a !== '--json'), USAGE));
+    out = json ? JSON.stringify(m, null, 2) : metricsText(m);
   } else if (first === 'lessons') {
     out = lessonsCommand(context(), parseLast(args.slice(1), USAGE));
   } else if (JOB_ID.test(first ?? '') && second === 'sync' && args.length === 2) {

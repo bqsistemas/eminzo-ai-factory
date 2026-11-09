@@ -125,6 +125,7 @@ Dashboard and office (plain browser ESM, no build):
 
 - `factory/dashboard.html`, `factory/dashboard.css`, `factory/dashboard.js`: shell,
   theme/i18n data, polling board and drawer rendering.
+- `factory/metrics-table.js`: rows and DOM-free table renderer for `board.metrics` (`job metrics`).
 - `factory/pipeline-canvas.js`, `factory/activity.js`, `factory/avatars.js`: stage
   inspector/job links, agent/card projections and constant-built octopus SVGs.
 - `factory/office*.js`: pure board-to-room projection, 768x500 geometry, canvas,
