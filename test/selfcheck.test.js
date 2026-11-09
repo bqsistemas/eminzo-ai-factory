@@ -182,6 +182,7 @@ test('a very long test line is cut before the pattern runs, so a reference past 
   const res = t.selfcheck();
   assert.equal(res.status, 1);
   assert.match(res.stdout, /AC-1 has no test/);
+});
 
 test('P2 AC-1: selfcheck exits 1 without plan.md', () => {
   const t = setup({ plan: null });
@@ -198,4 +199,21 @@ test('P2: selfcheck exits 1 and names each of the four headings plan.md lacks', 
   assert.equal(res.status, 1);
   assert.match(res.stdout, /plan\.md lacks the headings: ## Order of work, ## Risks/);
   assert.doesNotMatch(res.stdout, /Files that change|Proof/);
+});
+
+test('P2: a plan.md over 30 lines is a warning, not a failure', () => {
+  const t = setup({ plan: `${PLAN}${'- more\n'.repeat(30)}` });
+  t.commit({ 'test/theme.test.js': BOTH });
+  const res = t.selfcheck();
+  assert.equal(res.status, 0, res.stdout);
+  assert.match(res.stdout, /^selfcheck: warning: plan\.md has 43 lines \(the limit is 30\)/m);
+  assert.match(res.stdout, /selfcheck: ok$/m);
+});
+
+test('P2: a heading inside a code fence does not count as a plan.md heading', () => {
+  const t = setup({ plan: '## Files that change\n## Order of work\n## Risks\n```\n## Proof\n```\n' });
+  t.commit({ 'test/theme.test.js': BOTH });
+  const res = t.selfcheck();
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /plan\.md lacks the heading: ## Proof/);
 });
