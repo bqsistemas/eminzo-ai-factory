@@ -261,6 +261,7 @@ reach the builder.
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
 | `eminzo job lessons [--last N]` | collects the `## Lessons` of the last N job decisions (default 20), drops duplicates (case and punctuation ignored), writes the 15 most repeated into `## Things the builder gets wrong` of `factory/project.md` on a branch and opens a PR for a human to merge; the PR touches only `project.md` |
+| `eminzo job metrics [--last N] [--json]` | over the last N jobs (default 20): the `GATE: PASS` rate in round 1, rounds per job (median), the `CHANGES` rate per lens, minutes per kind of work (from `time_by_kind` when a job has it) and repeated lessons; `--json` prints the same as JSON. The dashboard shows it as a collapsible table (`board.json` carries it as `metrics`) |
 | `eminzo job config [<key>]` | the effective configuration, and whether each key comes from `config.json` or `config.local.json` |
 | `eminzo show roles/<role>.md` | prints a role the agents follow (`intake`, `spec-writer`, `builder`, `review-code`, `review-ui`, `review-ux`, `review-security`, `approver`) |
 | `eminzo --version`, `eminzo help` | the version, and every command |

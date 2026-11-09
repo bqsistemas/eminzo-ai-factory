@@ -73,8 +73,37 @@ function card(job) {
   </article>`;
 }
 
+// The metrics table: values come from board.metrics (numbers and lesson text); everything is set with textContent.
+function renderMetrics() {
+  const m = board.metrics;
+  const box = $('metrics');
+  box.hidden = !m || !m.jobs;
+  if (box.hidden) return;
+  const pct = r => (typeof r === 'number' ? `${Math.round(r * 1000) / 10}%` : T.metricsNA);
+  $('metrics-title').textContent = T.metricsTitle.replace('{n}', m.last);
+  const rows = [
+    [T.metricsGate, `${m.gate_pass_round1.passed}/${m.gate_pass_round1.total} (${pct(m.gate_pass_round1.rate)})`],
+    [T.metricsRounds, m.rounds_per_job.median ?? T.metricsNA],
+    ...Object.entries(m.changes_by_lens).map(([lens, v]) => [T.metricsChanges.replace('{lens}', lens), `${v.changes}/${v.total} (${pct(v.rate)})`]),
+    ...Object.entries(m.minutes_by_kind).map(([kind, v]) => [T.metricsMinutes.replace('{kind}', kind), `${v.total} (${T.metricsJobsShort.replace('{n}', v.jobs)})`]),
+    [T.metricsLessons, m.repeated_lessons.length ? m.repeated_lessons.map(l => `${l.count}× ${l.text}`).join(' · ') : T.metricsNoLessons],
+  ];
+  const table = $('metrics-table');
+  table.replaceChildren();
+  const head = table.createTHead().insertRow();
+  for (const label of [T.metricsMetric, T.metricsValue]) { const th = document.createElement('th'); th.textContent = label; head.append(th); }
+  const body = table.createTBody();
+  for (const [label, value] of rows) {
+    const tr = body.insertRow();
+    const th = document.createElement('th'); th.scope = 'row'; th.textContent = label;
+    const td = tr.insertCell(); td.textContent = String(value);
+    tr.prepend(th);
+  }
+}
+
 function render() {
   setLanguage();
+  renderMetrics();
   const jobs = board.jobs || [];
   selectedJobId = pickJobId(jobs, selectedJobId);
   renderPipeline();
