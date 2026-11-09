@@ -2,9 +2,10 @@
 // file is missing, and never overwrites an existing one. Deterministic: no network, no
 // LLM. It fills what the repo states (manifest, scripts, top-level layout) and leaves
 // the rest for a person to complete.
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { DEFAULT_AC_PATTERN, acPattern, checksFor, commands, stacksIn } from './stacks.js';
 import { Usage, engineCommand, factoryRoot, isMain, run, runCli, writeAtomic } from './util.js';
 
 const readJson = (file) => {
@@ -31,14 +32,23 @@ function stackLines(root) {
   return lines.length ? lines : ['- TODO: language, runtime and dependencies.'];
 }
 
+/** What the stack detection reads: the root entries, package.json, and any file's text. */
+function repoOf(root) {
+  return {
+    files: readdirSync(root),
+    packageJson: readJson(join(root, 'package.json')),
+    read: (f) => { try { return readFileSync(join(root, f), 'utf8'); } catch { return ''; } },
+  };
+}
+
 function commandLines(root) {
-  const scripts = readJson(join(root, 'package.json'))?.scripts ?? {};
-  const out = [];
-  for (const [label, name] of [['Run', 'start'], ['Test', 'test'], ['Build', 'build']]) {
-    if (Object.hasOwn(scripts, name)) out.push(`- ${label}: \`npm ${name === 'start' || name === 'test' ? name : `run ${name}`}\``);
-    else out.push(`- ${label}: TODO`);
-  }
-  for (const name of Object.keys(scripts)) if (!['start', 'test', 'build'].includes(name)) out.push(`- \`npm run ${name}\`: TODO what it does`);
+  const repo = repoOf(root);
+  const stack = stacksIn(repo.files)[0];
+  if (!stack) return ['- Run: none detected (no manifest found)', '- Test: none detected', '- Build: none detected'];
+  const c = commands(stack, repo);
+  const out = [`- Run: ${c.run}`, `- Test: ${c.test}`, `- Build: ${c.build}`];
+  const scripts = stack === 'node' ? repo.packageJson?.scripts ?? {} : {};
+  for (const [name, body] of Object.entries(scripts)) if (!['start', 'test', 'build'].includes(name)) out.push(`- \`npm run ${name}\`: runs \`${body}\``);
   return out;
 }
 
@@ -107,11 +117,44 @@ export function initProject(root, today) {
   return { created: true, path };
 }
 
+/** Writes factory/checks.sh for the detected stack unless it exists. @returns {{created: boolean, path: string, stack?: string}} */
+export function initChecks(root) {
+  const path = join(root, 'factory/checks.sh');
+  if (existsSync(path)) return { created: false, path };
+  const { stack, script } = checksFor(repoOf(root));
+  writeAtomic(path, script);
+  chmodSync(path, 0o755);
+  return { created: true, path, stack };
+}
+
+/**
+ * Sets selfcheck.ac_pattern in factory/config.json to the stack's default, only while it still has the
+ * generic default (a value somebody chose stays). Edits the one line, so the file keeps its layout.
+ * @returns {{changed: boolean, pattern?: string}}
+ */
+export function initAcPattern(root, stack) {
+  const path = join(root, 'factory/config.json');
+  const pattern = acPattern(stack);
+  if (!existsSync(path) || pattern === DEFAULT_AC_PATTERN) return { changed: false };
+  const text = readFileSync(path, 'utf8');
+  const current = JSON.stringify(DEFAULT_AC_PATTERN);
+  const re = new RegExp(`("ac_pattern"\\s*:\\s*)${current.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`);
+  if (!re.test(text)) return { changed: false };
+  writeFileSync(path, text.replace(re, (_, head) => `${head}${JSON.stringify(pattern)}`));
+  return { changed: true, pattern };
+}
+
 function main(args) {
   if (args.length) throw new Usage('init');
   const today = process.env.FACTORY_TODAY || new Date().toISOString().slice(0, 10);
-  const { created, path } = initProject(factoryRoot(), today);
+  const root = factoryRoot();
+  const { created, path } = initProject(root, today);
   process.stdout.write(created ? `wrote ${path}; review it and fill every TODO\n` : `${path} already exists; left untouched\n`);
+  const checks = initChecks(root);
+  process.stdout.write(checks.created ? `wrote ${checks.path} for the ${checks.stack} stack; review it\n` : `${checks.path} already exists; left untouched\n`);
+  const stack = checks.stack ?? checksFor(repoOf(root)).stack;
+  const ac = initAcPattern(root, stack);
+  if (ac.changed) process.stdout.write(`set selfcheck.ac_pattern to ${ac.pattern} in factory/config.json\n`);
 }
 
 if (isMain(import.meta.url)) runCli(main);
