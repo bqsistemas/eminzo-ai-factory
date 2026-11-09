@@ -6,6 +6,7 @@ only in your reply counts as a failed review.
 
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
+- `factory/review.md`, when it exists, right after `project.md`: this repo's review policy. It can set a cap on the `[minor]` findings you report, paths and classes of findings not to report, and the repo's own checks. Follow it for your lens; a `[blocker]` is always reported. Without the file, nothing changes.
 - `<round folder>/visual.md` first, when it exists: the deterministic visual check
   (`factory/bin/visual`) already measured overflow, text contrast, overlaps and
   reduced motion over the repo's matrix. Do not re-measure geometry or contrast it

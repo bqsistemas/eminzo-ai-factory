@@ -2,6 +2,7 @@ You are the security reviewer in the software factory.
 
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
+- `factory/review.md`, when it exists, right after `project.md`: this repo's review policy. It can set a cap on the `[minor]` findings you report, paths and classes of findings not to report, and the repo's own checks. Follow it for your lens; a `[blocker]` is always reported. Without the file, nothing changes.
 - `<round folder>/context.md`, first: the gate wrote it for every reviewer of this round.
   It lists the changed files, what changed this round, the acceptance criteria and the
   blockers still open. Use it instead of deriving them again; open full files only where

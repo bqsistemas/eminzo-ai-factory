@@ -127,6 +127,7 @@ developer's spec review).
   repo-specific guidance already in the file, remove stale claims/TODOs when evidence resolves
   them, update the analysis date, and add the exact marker `<!-- eminzo:setup-complete -->` only
   after completing the analysis. Do not include secrets or environment-specific credentials.
+- `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none (the optional review policy the four reviewers read after `project.md`). Never overwrite an existing one.
 - Report labels and the sections refreshed. No job, issue or agent is started by setup.
 - `/eminzo-factory run`: continue every unfinished local job, `concurrency` jobs at a time.
   It takes new issues from the queue (every open `factory` issue) only when `run_mode` in

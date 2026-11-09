@@ -1633,6 +1633,7 @@ function workerPrompt(c, id) {
     `Language: ${c.lang}`,
     ...(job.round >= 2 ? previousHeadLine(job) : []),
     ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length ? reviewLines(c, job) : []),
+    ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length && existsSync(join(c.root, 'factory/review.md')) ? ['Review policy: factory/review.md'] : []),
   ].join('\n');
 }
 
