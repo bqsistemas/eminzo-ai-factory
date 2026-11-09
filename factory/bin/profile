@@ -1,0 +1,3 @@
+#!/bin/sh
+# factory/bin/profile <job-id>: the builder's time by kind of command (see `job <id> profile`).
+exec node "$(dirname "$0")/../lib/job.js" "$1" profile

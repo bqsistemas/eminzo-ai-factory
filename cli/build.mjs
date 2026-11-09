@@ -13,7 +13,7 @@ const CLI = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(CLI, '..');
 
 /** Top-level entries of factory/ that belong to this repo, never to the engine. */
-export const ENGINE_EXCLUDE = new Set(['jobs', 'board.json', 'config.json', 'config.local.json', 'checks.sh', 'project.md']);
+export const ENGINE_EXCLUDE = new Set(['jobs', 'board.json', 'config.json', 'config.local.json', 'checks.sh', 'project.md', 'review.md']);
 
 const write = (file, text) => {
   mkdirSync(dirname(file), { recursive: true });

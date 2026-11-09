@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 
 import { preflight } from './installer/preflight.js';
 import { normalizeGithubRemote } from './installer/remote.js';
-import { detectChecks } from './installer/checks.js';
+import { acPattern, detectChecks } from './installer/checks.js';
 import { gitignoreText } from './installer/plan.js';
 import { CliError, engineFolder, hasCommittedEngine } from './paths.js';
 import { minorRange } from './semver.js';
@@ -43,9 +43,11 @@ export function settingsText(current) {
 }
 
 /** factory/config.json from the engine's template: `engine` first, then the template with repo and base filled. */
-export function configText(template, { repoUrl, defaultBranch, version }) {
+export function configText(template, { repoUrl, defaultBranch, version, stack }) {
   const filled = template.split('__REPO__').join(repoUrl).split('__BASE__').join(`origin/${defaultBranch}`);
-  return `${JSON.stringify({ engine: minorRange(version), ...JSON.parse(filled) }, null, 2)}\n`;
+  const config = { engine: minorRange(version), ...JSON.parse(filled) };
+  if (stack && config.selfcheck) config.selfcheck = { ...config.selfcheck, ac_pattern: acPattern(stack) };
+  return `${JSON.stringify(config, null, 2)}\n`;
 }
 
 function prBody({ version, stack, files, kept }) {
@@ -156,7 +158,7 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     read: (f) => showBase(f) ?? '',
   });
   const engine = engineFolder(dist);
-  const config = configText(readFileSync(join(engine, 'templates', 'config.json'), 'utf8'), { repoUrl, defaultBranch, version });
+  const config = configText(readFileSync(join(engine, 'templates', 'config.json'), 'utf8'), { repoUrl, defaultBranch, version, stack: checks.stack });
   const gitignoreBefore = showBase('.gitignore');
   const settingsBefore = showBase('.claude/settings.json');
   const gitignoreAdd = gitignoreText(gitignoreBefore);

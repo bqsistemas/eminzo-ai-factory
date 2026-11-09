@@ -195,10 +195,14 @@ describe('P0-6 and P1-1: roles and skills state the lane and the script approver
     assert.match(text('factory/roles/approver.md'), /factory\/bin\/approve/);
   });
 
-  test('the Codex profiles mention lane xs where the role does', () => {
-    for (const role of ['builder', 'review-code']) assert.match(text(`.codex/agents/eminzo-${role}.toml`), /Lane: xs/);
-    assert.match(text('.codex/agents/eminzo-spec-writer.toml'), /Promoted from: xs/);
-    assert.match(text('.codex/agents/eminzo-intake.toml'), /SIZE: xs\|s\|m\|l/);
+  // The Codex profiles no longer restate these rules: they read the role (generated, see sync-agents.test.js).
+  test('the roles the Codex profiles read carry the lane xs rules', () => {
+    for (const role of ['builder', 'review-code']) {
+      assert.match(text(`factory/roles/${role}.md`), /Lane: xs/);
+      assert.match(text(`.codex/agents/eminzo-${role}.toml`), new RegExp(`factory/roles/${role}\\.md`));
+    }
+    assert.match(text('factory/roles/spec-writer.md'), /Promoted from: xs/);
+    assert.match(text('factory/roles/intake.md'), /Line 5 is `xs`, `s`, `m` or `l`/);
   });
 });
 

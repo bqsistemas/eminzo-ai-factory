@@ -4,6 +4,7 @@ import {
   roundsOf, splitMerged,
 } from './activity.js';
 import { costStatParts, formatCost, headerStats } from './office.js';
+import { hasMetrics, renderMetricsTable } from './metrics-table.js';
 import { createOffice } from './office-renderer.js';
 import { CANVAS_STAGES, artifactFiles, bindPipelineControls, branchLink, derivePipeline, githubLinks, isSafeJobId, jobsNewestFirst, laneChip, pickJobId, stageCardsHtml, stageDetails, taskDuration, taskHeaderHtml } from './pipeline-canvas.js';
 
@@ -73,8 +74,19 @@ function card(job) {
   </article>`;
 }
 
+// The metrics table: values come from board.metrics (numbers and lesson text); metrics-table.js sets text only.
+function renderMetrics() {
+  const m = board.metrics;
+  const box = $('metrics');
+  box.hidden = !hasMetrics(m);
+  if (box.hidden) return;
+  $('metrics-title').textContent = T.metricsTitle.replace('{n}', () => m.last);
+  renderMetricsTable(document, $('metrics-table'), m, T);
+}
+
 function render() {
   setLanguage();
+  renderMetrics();
   const jobs = board.jobs || [];
   selectedJobId = pickJobId(jobs, selectedJobId);
   renderPipeline();
@@ -137,7 +149,7 @@ async function poll() {
 // --- drawer -----------------------------------------------------------------
 
 function filesOf(job) {
-  // Allowlisted Markdown artifacts: issue.md, intake.md, spec.md, build.md, checks.md, reviews, decision.md, and merge-checks.md.
+  // Allowlisted Markdown artifacts: issue.md, intake.md, spec.md, plan.md, build.md, checks.md, reviews, decision.md, and merge-checks.md.
   return artifactFiles(job);
 }
 
@@ -179,7 +191,7 @@ function renderPipeline() {
   const stageValue = T[stageValueKey] || details.stage;
   taskHeader.innerHTML = taskHeaderHtml(selectedJob, { repo: board.repo, text: T });
   const fields = [[T.pipelineIssue, details.issue], [T.pipelineStage, stageValue], [T.pipelineStatus, localizedStatus], [T.pipelineProgress, localizedProgress],
-    [T.pipelineTitle, details.title], [T.pipelineProvider, details.provider], [T.pipelineDuration, taskDuration(selectedJob)], [T.pipelineCost, details.cost], ...(details.agentCost ? [[T.pipelineAgentCost, details.agentCost]] : []), [T.pipelineAgent, details.agent], [T.pipelineRound, details.round],
+    [T.pipelineTitle, details.title], [T.pipelineProvider, details.provider], [T.pipelineDuration, taskDuration(selectedJob)], [T.pipelineCost, details.cost], ...(details.agentCost ? [[T.pipelineAgentCost, details.agentCost]] : []), ...(details.builderTime ? [[T.pipelineBuilderTime, details.builderTime]] : []), [T.pipelineAgent, details.agent], [T.pipelineRound, details.round],
     [T.pipelineReviewers, details.reviewers], [T.pipelineBranch, details.branch], [T.pipelinePr, details.pr], [T.pipelineNote, details.note]]
     .map(([label, value]) => [label, value === 'Not available' ? T.pipelineUnavailable : value]);
   const links = githubLinks(selectedJob, board.repo);

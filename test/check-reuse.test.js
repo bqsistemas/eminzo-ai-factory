@@ -14,7 +14,7 @@ test('Claude and Codex builders both run their checks through the nudge, so both
   const role = readFileSync(join(repo, 'factory/roles/builder.md'), 'utf8');
   const codex = readFileSync(join(repo, '.codex/agents/eminzo-builder.toml'), 'utf8');
   assert.match(role, /Run the repo's checks with `factory\/bin\/nudge <job-id>`/);
-  assert.match(codex, /factory\/bin\/nudge <id>/);
+  assert.match(codex, /factory\/roles\/builder\.md/); // the profile reads the role that names the nudge
   assert.doesNotMatch(codex, /Run `factory\/checks\.sh` in the worktree/);
 });
 
@@ -42,7 +42,7 @@ describe('check reuse', { concurrency: true }, () => {
   test('nudge skips the checks for a tree that already passed, manual (Codex) or hook (Claude)', async () => {
     const t = setup();
     const { id, worktree } = await building(t);
-    ok(await t.bin('nudge', [id]));
+    ok(await t.bin('nudge', [id, '--full'])); // a focused pass is not reusable by the hook (test/check-mode.test.js)
     assert.equal(t.runs(), 1);
     const again = await t.bin('nudge', [id]);
     assert.equal(again.status, 0);

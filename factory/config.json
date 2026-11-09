@@ -3,6 +3,9 @@
   "base": "origin/main",
   "concurrency": 3,
   "max_rounds": 3,
+  "checks": { "max_runs_per_round": 6 },
+  "selfcheck": { "ac_pattern": "AC-\\d+" },
+  "lessons": { "required": false },
   "auto_merge": true,
   "spec_review": false,
   "notifications": {

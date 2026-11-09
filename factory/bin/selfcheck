@@ -1,0 +1,4 @@
+#!/bin/sh
+id="$1"
+shift
+exec node "$(dirname "$0")/../lib/job.js" "$id" selfcheck "$@"

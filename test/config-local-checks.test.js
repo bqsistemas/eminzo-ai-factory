@@ -23,11 +23,11 @@ describe('config.local.json', { concurrency: true }, () => {
 
   test('AC-6: the 8 roles read the language from the prompt Language: line, not from factory/config.json', () => {
     const sentence = 'Write prose in the configured language; keep technical terms and protocol tokens in English.';
-    const dir = join(repo, 'factory/roles');
-    const files = readdirSync(dir).filter((f) => f.endsWith('.md'));
-    assert.equal(files.length, 8);
+    // The language paragraph is generated into every agent (factory/templates/agent-shared.md), not written in the roles.
+    const files = readdirSync(join(repo, 'factory/roles')).filter((f) => f.endsWith('.md')).flatMap((f) => [`.claude/agents/eminzo-${f}`, `.codex/agents/eminzo-${f.replace(/\.md$/, '.toml')}`]);
+    assert.equal(files.length, 16);
     for (const f of files) {
-      const text = readFileSync(join(dir, f), 'utf8');
+      const text = readFileSync(join(repo, f), 'utf8');
       assert.ok(text.includes(sentence), `${f} keeps the sentence`);
       assert.match(text, /`Language:` line of your prompt/, `${f} names the prompt line`);
       assert.doesNotMatch(text, /Read `language` from `factory\/config\.json`/, `${f} no longer reads config.json for it`);

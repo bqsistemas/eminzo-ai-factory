@@ -103,3 +103,11 @@ test('reviewers and the approver read context.md first; both skills carry the ro
     assert.match(text.slice(at, at + 600), /context\.md/);
   }
 });
+
+test('round 2: an open blocker keeps its indented Proof: lines for the builder', () => {
+  const { main, worktree, id, jobDir } = fixture();
+  writeFileSync(join(jobDir, 'round-1/review-code.md'), 'VERDICT: CHANGES\n\n## Findings\n- [blocker] `a.js:3`: wrong → fix\n  Proof: a.js:3 drops the tail; run `node t.js`\n- [blocker] `b.js:1`: bare → fix\n- [minor] `c.js:1`: nit\n');
+  const text = roundContext(main, config, { id, round: 2, worktree, lane: 'normal', round_heads: {} });
+  assert.match(text, /- code: \[blocker\] `a\.js:3`: wrong → fix\n  Proof: a\.js:3 drops the tail; run `node t\.js`\n- code: \[blocker\] `b\.js:1`: bare → fix\n/);
+  assert.doesNotMatch(text, /nit/);
+});

@@ -75,6 +75,10 @@
     </div>
   </section>
 </div>
+<details class="metrics" id="metrics" hidden>
+  <summary id="metrics-title">Factory metrics</summary>
+  <table class="metrics-table" id="metrics-table"></table>
+</details>
 <main class="board" id="board"></main>
 
 <div class="scrim" id="scrim"></div>
@@ -198,6 +202,7 @@
 <script type="application/json" id="i18n">
 {
   "en": {
+    "metricsTitle": "Factory metrics (last {n} jobs)", "metricsMetric": "Metric", "metricsValue": "Value", "metricsGate": "GATE: PASS in round 1", "metricsRounds": "Rounds per job (median)", "metricsChanges": "CHANGES rate, {lens} lens", "metricsMinutes": "Minutes, {kind}", "metricsLessons": "Repeated lessons", "metricsNoLessons": "None", "metricsNA": "n/a", "metricsJobsShort": "{n} jobs",
     "costUnavailable": "Cost unavailable",
     "costUnavailableCount": "{n} unavailable",
     "costUnavailableShort": "{n} N/A",
@@ -214,7 +219,7 @@
     "pipelineActive": "Active", "pipelinePending": "Pending", "pipelineSkipped": "Skipped", "pipelineComplete": "Complete", "pipelineBlocked": "Blocked", "pipelineStagesSuffix": "stages",
     "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
     "pipelineStageNeedsHuman": "Needs human", "pipelineStageNeedsInfo": "Needs info", "pipelineStageAwaitingMerge": "Awaiting merge", "pipelineStageMerging": "Merging", "pipelineStageMerged": "Merged", "pipelineStageRejected": "Rejected",
-    "pipelineOpenGithub": "Open on GitHub", "pipelineJobDetails": "Job details", "pipelineTotalDuration": "Total duration", "pipelineTitle": "Task", "pipelineProvider": "Provider", "pipelineIssue": "Issue", "pipelineStatus": "Status", "pipelineProgress": "Progress", "pipelineDuration": "Duration", "pipelineCost": "Cost", "pipelineAgentCost": "Agent cost", "pipelineAgent": "Agent / model", "pipelineRound": "Round", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Note", "pipelineArtifacts": "Job artifacts", "pipelineGithubUnavailable": "GitHub links not available",
+    "pipelineOpenGithub": "Open on GitHub", "pipelineJobDetails": "Job details", "pipelineTotalDuration": "Total duration", "pipelineTitle": "Task", "pipelineProvider": "Provider", "pipelineIssue": "Issue", "pipelineStatus": "Status", "pipelineProgress": "Progress", "pipelineDuration": "Duration", "pipelineCost": "Cost", "pipelineAgentCost": "Agent cost", "pipelineBuilderTime": "Builder time", "timeCheck": "checks", "timeWait": "waits", "timeGit": "git", "timeOther": "other", "timeUnit": "min", "pipelineAgent": "Agent / model", "pipelineRound": "Round", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Note", "pipelineArtifacts": "Job artifacts", "pipelineGithubUnavailable": "GitHub links not available",
     "hintNeedsHumanPr": "merge the PR to approve, or rework it:",
     "hintNeedsHumanNoPr": "no PR yet: fix the cause, then resume it:",
     "hintAwaitingMerge": "waiting for a reviewer to merge the PR",
@@ -239,6 +244,7 @@
     "statCost": "Cost"
   },
   "es": {
+    "metricsTitle": "Métricas de la factory (últimos {n} jobs)", "metricsMetric": "Métrica", "metricsValue": "Valor", "metricsGate": "GATE: PASS en la ronda 1", "metricsRounds": "Rondas por job (mediana)", "metricsChanges": "Tasa de CHANGES, lente {lens}", "metricsMinutes": "Minutos, {kind}", "metricsLessons": "Lecciones repetidas", "metricsNoLessons": "Ninguna", "metricsNA": "n/d", "metricsJobsShort": "{n} jobs",
     "costUnavailable": "Costo no disponible",
     "costUnavailableCount": "{n} no disponibles",
     "costUnavailableShort": "{n} N/D",
@@ -255,7 +261,7 @@
     "pipelineActive": "Activa", "pipelinePending": "Pendiente", "pipelineSkipped": "Omitida", "pipelineComplete": "Completada", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
     "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
     "pipelineStageNeedsHuman": "Necesita intervención humana", "pipelineStageNeedsInfo": "Falta información", "pipelineStageAwaitingMerge": "Esperando merge", "pipelineStageMerging": "En proceso de merge", "pipelineStageMerged": "Integrado", "pipelineStageRejected": "Rechazado",
-    "pipelineOpenGithub": "Abrir en GitHub", "pipelineJobDetails": "Detalles del job", "pipelineTotalDuration": "Duración total", "pipelineTitle": "Tarea", "pipelineProvider": "Proveedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progreso", "pipelineDuration": "Duración", "pipelineCost": "Costo", "pipelineAgentCost": "Costo del agente", "pipelineAgent": "Agente / modelo", "pipelineRound": "Ronda", "pipelineReviewers": "Reviewers", "pipelineBranch": "Rama", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefactos del job", "pipelineGithubUnavailable": "Enlaces de GitHub no disponibles",
+    "pipelineOpenGithub": "Abrir en GitHub", "pipelineJobDetails": "Detalles del job", "pipelineTotalDuration": "Duración total", "pipelineTitle": "Tarea", "pipelineProvider": "Proveedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progreso", "pipelineDuration": "Duración", "pipelineCost": "Costo", "pipelineAgentCost": "Costo del agente", "pipelineBuilderTime": "Tiempo del builder", "timeCheck": "checks", "timeWait": "esperas", "timeGit": "git", "timeOther": "otros", "timeUnit": "min", "pipelineAgent": "Agente / modelo", "pipelineRound": "Ronda", "pipelineReviewers": "Reviewers", "pipelineBranch": "Rama", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefactos del job", "pipelineGithubUnavailable": "Enlaces de GitHub no disponibles",
     "hintNeedsHumanPr": "hacé merge del PR para aprobar, o pedí un rework:",
     "hintNeedsHumanNoPr": "todavía no hay PR: corregí la causa y reanudá el job:",
     "hintAwaitingMerge": "esperando que una persona haga merge del PR",
@@ -280,6 +286,7 @@
     "statCost": "Costo"
   },
   "pt": {
+    "metricsTitle": "Métricas da factory (últimos {n} jobs)", "metricsMetric": "Métrica", "metricsValue": "Valor", "metricsGate": "GATE: PASS na rodada 1", "metricsRounds": "Rodadas por job (mediana)", "metricsChanges": "Taxa de CHANGES, lente {lens}", "metricsMinutes": "Minutos, {kind}", "metricsLessons": "Lições repetidas", "metricsNoLessons": "Nenhuma", "metricsNA": "n/d", "metricsJobsShort": "{n} jobs",
     "costUnavailable": "Custo indisponível",
     "costUnavailableCount": "{n} indisponíveis",
     "costUnavailableShort": "{n} N/D",
@@ -296,7 +303,7 @@
     "pipelineActive": "Ativa", "pipelinePending": "Pendente", "pipelineSkipped": "Omitida", "pipelineComplete": "Concluída", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
     "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
     "pipelineStageNeedsHuman": "Precisa de intervenção humana", "pipelineStageNeedsInfo": "Falta informação", "pipelineStageAwaitingMerge": "Aguardando merge", "pipelineStageMerging": "Em processo de merge", "pipelineStageMerged": "Integrado", "pipelineStageRejected": "Rejeitado",
-    "pipelineOpenGithub": "Abrir no GitHub", "pipelineJobDetails": "Detalhes do job", "pipelineTotalDuration": "Duração total", "pipelineTitle": "Tarefa", "pipelineProvider": "Provedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progresso", "pipelineDuration": "Duração", "pipelineCost": "Custo", "pipelineAgentCost": "Custo do agente", "pipelineAgent": "Agente / modelo", "pipelineRound": "Rodada", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefatos do job", "pipelineGithubUnavailable": "Links do GitHub indisponíveis",
+    "pipelineOpenGithub": "Abrir no GitHub", "pipelineJobDetails": "Detalhes do job", "pipelineTotalDuration": "Duração total", "pipelineTitle": "Tarefa", "pipelineProvider": "Provedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progresso", "pipelineDuration": "Duração", "pipelineCost": "Custo", "pipelineAgentCost": "Custo do agente", "pipelineBuilderTime": "Tempo do builder", "timeCheck": "checks", "timeWait": "esperas", "timeGit": "git", "timeOther": "outros", "timeUnit": "min", "pipelineAgent": "Agente / modelo", "pipelineRound": "Rodada", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefatos do job", "pipelineGithubUnavailable": "Links do GitHub indisponíveis",
     "hintNeedsHumanPr": "faça o merge do PR para aprovar, ou peça um rework:",
     "hintNeedsHumanNoPr": "ainda não há PR: corrija a causa e retome o job:",
     "hintAwaitingMerge": "aguardando uma pessoa fazer o merge do PR",

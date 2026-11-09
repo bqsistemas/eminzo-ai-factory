@@ -132,9 +132,9 @@ test('the builder keeps nudge next to ensure-output', () => {
   assert.ok(commands.some((c) => c.includes('factory/bin/ensure-output')));
 });
 
-test('every Claude role body has the Before you finish section', () => {
+test('every Claude wrapper has the Before you finish section (generated from the template)', () => {
   for (const role of roles) {
-    const body = read(`factory/roles/${role}.md`);
+    const body = read(`.claude/agents/eminzo-${role}.md`);
     const section = /\*\*Before you finish\*\*([\s\S]*)$/.exec(body)?.[1];
     assert.ok(section, `${role} has no "Before you finish" section`);
     assert.match(section, /Write tool/, `${role}: step 1 must call the Write tool`);

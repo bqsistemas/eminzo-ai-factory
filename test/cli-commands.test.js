@@ -271,3 +271,87 @@ test('doctor --json gives each check an id and the state of the repository', () 
   assert.equal(notEnabled.repository.enabled, false);
   assert.equal(notEnabled.checks.find((c) => c.id === 'repository').level, 'warn');
 });
+
+test('eminzo profile <id> runs the engine\'s job <id> profile', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  const res = t.run(['profile', '042-none'], { cwd: root });
+  assert.equal(res.status, 1, 'the job does not exist: the engine refuses it, so the alias reached job.js');
+  assert.match(res.stderr, /042-none/);
+  const bare = t.run(['profile'], { cwd: root });
+  assert.equal(bare.status, 2);
+  assert.match(bare.stderr, /usage: eminzo profile <job-id>/);
+});
+
+test('in a repo whose committed engine has no factory/bin/profile, eminzo profile runs its job script', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  mkdirSync(join(root, 'factory/lib'), { recursive: true });
+  mkdirSync(join(root, 'factory/bin'), { recursive: true });
+  writeFileSync(join(root, 'factory/lib/job.js'), '// committed engine\n');
+  writeFileSync(join(root, 'factory/bin/job'), '#!/bin/sh\necho "repo job $*"\n', { mode: 0o755 });
+  const res = t.run(['profile', '042-x'], { cwd: root });
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout.trim(), 'repo job 042-x profile');
+});
+
+test('eminzo nudge passes --full through to the engine: focused by hand, full with the flag', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir, { engine: null });
+  const git = (cwd, ...a) => execFileSync('git', a, { cwd, env: { ...process.env, ...GIT_ENV, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' }, encoding: 'utf8' });
+  writeFileSync(join(root, 'factory/checks.sh'), '#!/bin/sh\necho "$FACTORY_CHECK_MODE" >> "$OUT"\n', { mode: 0o755 });
+  writeFileSync(join(root, 'a.txt'), 'a\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'init');
+  git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const worktree = join(t.dir, 'wt');
+  git(root, 'worktree', 'add', '-q', worktree, '-b', 'factory/007-x', 'HEAD');
+  const jobDir = join(root, 'factory/jobs/007-x');
+  mkdirSync(jobDir, { recursive: true });
+  writeFileSync(join(jobDir, 'job.json'), JSON.stringify({ id: '007-x', worktree }));
+  const out = join(t.dir, 'modes');
+  const extra = { OUT: out, FACTORY_CHECK_MODE: 'focused' };
+  assert.equal(t.run(['nudge', '007-x'], { cwd: root, extra }).status, 0);
+  writeFileSync(join(worktree, 'b.txt'), 'b\n'); // a new tree: nothing is reused
+  const full = t.run(['nudge', '007-x', '--full'], { cwd: root, extra });
+  assert.equal(full.status, 0, full.stderr);
+  assert.equal(readFileSync(out, 'utf8'), 'focused\nfull\n');
+});
+
+test('eminzo selfcheck <id> is `job <id> selfcheck`; eminzo protect-tests is the builder hook', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir, { engine: null });
+  const git = (cwd, ...a) => execFileSync('git', a, { cwd, env: { ...process.env, ...GIT_ENV, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' }, encoding: 'utf8' });
+  const cfg = JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8'));
+  writeFileSync(join(root, 'factory/config.json'), JSON.stringify({ ...cfg, protected_tests: ['test/guarded.test.js'] }));
+  mkdirSync(join(root, 'test'));
+  writeFileSync(join(root, 'test/guarded.test.js'), '// guarded\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'init');
+  git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const worktree = join(t.dir, 'wt');
+  git(root, 'worktree', 'add', '-q', worktree, '-b', 'factory/007-x', 'HEAD');
+  const jobDir = join(root, 'factory/jobs/007-x');
+  mkdirSync(jobDir, { recursive: true });
+  writeFileSync(join(jobDir, 'job.json'), JSON.stringify({ id: '007-x', worktree }));
+  writeFileSync(join(jobDir, 'spec.md'), '# Spec: x\n- AC-1: a thing\n');
+  writeFileSync(join(jobDir, 'plan.md'), '## Files that change\n## Order of work\n## Risks\n## Proof\n');
+  const missing = t.run(['selfcheck', '007-x'], { cwd: root });
+  assert.equal(missing.status, 1, missing.stderr);
+  assert.match(missing.stdout, /AC-1 has no test/);
+  writeFileSync(join(worktree, 'x.test.js'), "test('AC-1: a thing', () => {});\n");
+  git(worktree, 'add', '.');
+  git(worktree, 'commit', '-q', '-m', 'test');
+  const ok = t.run(['selfcheck', '007-x'], { cwd: root });
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.equal(ok.stdout.trim(), 'selfcheck: ok');
+  assert.equal(t.run(['job', '007-x', 'selfcheck'], { cwd: root }).stdout.trim(), 'selfcheck: ok');
+  assert.equal(t.run(['selfcheck'], { cwd: root }).status, 2);
+  assert.match(t.run(['help']).stdout, /eminzo selfcheck <job-id>/);
+
+  const hook = (file_path) => spawnSync(process.execPath, [bin, 'protect-tests'], { cwd: root, env: { ...t.env }, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path }, cwd: worktree }), encoding: 'utf8' });
+  const denied = hook(join(worktree, 'test/guarded.test.js'));
+  assert.equal(denied.status, 2);
+  assert.equal(denied.stderr, 'protected test; the gate fails the round\n', 'no engine-range warning before the reason');
+  assert.equal(hook(join(worktree, 'src/a.js')).status, 0);
+});

@@ -136,8 +136,10 @@ Before merging, check two files:
     Use `"en"` (or `"pt"`) if your team works in another language.
   - `auto_merge` is `true` by default: the factory merges a pull request it approved. Set it to
     `false` to merge every pull request yourself.
-  - `concurrency` (3 jobs at a time), `max_rounds` (3 build rounds per job), `spec_review` (off) and the
+  - `lessons.required` (`false`): when `true`, moving a job to `merging` is refused unless its `decision.md` has a `## Lessons` section (lines, or `None`). The default is `false` on purpose and is a pending human decision: turning it on by default means updating the protected job test fixtures, which write a `decision.md` without `## Lessons`.
+  - `concurrency` (3 jobs at a time), `max_rounds` (3 build rounds per job), `checks.max_runs_per_round` (6 check runs per round; an invalid value falls back to 6), `selfcheck.ac_pattern` (regex that finds an `AC-n` in the test lines a branch adds; default `AC-\d+`, Python `(?:AC-|test_ac_)\d+`; `job <id> selfcheck` uses it), `spec_review` (off) and the
     models per risk level can stay as they are to start.
+  - Before `STATUS: READY` the builder runs `selfcheck`: it fails when an `AC-n` has no test, a protected test changed or something is uncommitted (a Module map that misses new modules is only a warning, as in the gate). The Claude builder also has a `PreToolUse` hook (`protect-tests`) that denies Edit/Write/MultiEdit/NotebookEdit on protected tests and on the main checkout (except the job's `build.md`/`plan.md`). Bash is out of scope and the gate is the backstop. With the installed CLI, a stale or partial install makes `eminzo` exit 1, which Claude treats as non-blocking: that protection is off until you run `eminzo install`.
 
 Merge the pull request, then `git pull` on your default branch.
 
@@ -279,7 +281,10 @@ reach the builder.
 | `eminzo enable [--dry-run]` | the same as `/eminzo-factory enable`, from a terminal |
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
+| `eminzo job lessons [--last N]` | collects the `## Lessons` of the last N job decisions (default 20), drops duplicates (case and punctuation ignored), writes the 15 most repeated into `## Things the builder gets wrong` of `factory/project.md` on a branch and opens a PR for a human to merge; the PR touches only `project.md` |
+| `eminzo job metrics [--last N] [--json]` | over the last N jobs (default 20): the `GATE: PASS` rate in round 1 and rounds per job (median), both over finished jobs only (`merged` or `rejected`), the `CHANGES` rate per lens, minutes per kind of work (from `time_by_kind` when a job has it) and repeated lessons; `--json` prints the same as JSON. The dashboard shows it as a collapsible table (`board.json` carries it as `metrics`) |
 | `eminzo job config [<key>]` | the effective configuration, and whether each key comes from `config.json` or `config.local.json` |
+| `eminzo profile <job-id>` | where the builder's time went in a job (checks, waits, git, other) from its Claude transcripts; stored in `job.json` and shown on the dashboard's build stage. A repository adds its own check commands in `config.json` `profile.patterns` (`{ "check": ["run e2e"] }`) |
 | `eminzo show roles/<role>.md` | prints a role the agents follow (`intake`, `spec-writer`, `builder`, `review-code`, `review-ui`, `review-ux`, `review-security`, `approver`) |
 | `eminzo --version`, `eminzo help` | the version, and every command |
 
@@ -506,6 +511,7 @@ open http://localhost:8000/dashboard.html?demo    # sample data
 | `.worktrees/<id>/` | The job's git worktree on branch `factory/<id>`, from `origin/main`. Job IDs use the GitHub issue number; ports are allocated locally from the next available job sequence. |
 
 `board.json`, `jobs/`, and `.worktrees/` are local runtime state and are gitignored.
+`round-N/checks.log` and `merge-checks.log` hold the full output of the checks (the last 5000 lines or 5 MB). They stay in the job folder, are gitignored, are never served by the dashboard and are never attached to a PR.
 
 ## Rules the loop keeps
 

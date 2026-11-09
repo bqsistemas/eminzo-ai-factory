@@ -8,7 +8,7 @@ import { readText } from './util.js';
 
 const count = (n) => (Number.isFinite(n) && n > 0 ? n : 0);
 
-function entries(text) {
+export function entries(text) {
   const out = [];
   for (const line of String(text).split('\n')) {
     if (!line.trim()) continue;
@@ -21,7 +21,7 @@ function entries(text) {
   return out;
 }
 
-function promptText(content) {
+export function promptText(content) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content.map((block) => (typeof block?.text === 'string' ? block.text : '')).join('\n');
@@ -52,7 +52,7 @@ function roleFromFile(path) {
 }
 
 /** Agent role of one transcript: metadata, then the SubagentStart hook, then the file it wrote. */
-function transcriptRole(agentType, lines) {
+export function transcriptRole(agentType, lines) {
   if (typeof agentType === 'string' && ROLE.test(agentType)) return agentType;
   for (const e of lines) {
     const hook = e?.attachment?.hookName;
