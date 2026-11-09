@@ -101,7 +101,7 @@ function allJobs(root) {
 
 function writeBoard(c) {
   let metrics = null;
-  try { metrics = computeMetrics(c.root); } catch { /* the dashboard table is optional */ }
+  try { metrics = computeMetrics(c.root); } catch (err) { metrics = { error: String(err?.message ?? err) }; } // the dashboard shows nothing for an error
   const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, config_overrides: c.overrides ?? [], jobs: allJobs(c.root), metrics };
   writeAtomic(join(c.root, 'factory/board.json'), `${JSON.stringify(board, null, 2)}\n`);
 }

@@ -1,14 +1,31 @@
 // `job metrics [--last N]`: numbers about the last N jobs, read from their folders. Read-only.
-//   - the share of jobs whose round-1 checks.md starts `GATE: PASS`
-//   - rounds per job (median of job.json `round`)
+//   - the share of jobs whose round-1 checks.md starts `GATE: PASS`, and rounds per job (median of job.json `round`):
+//     both over jobs in a terminal stage (merged, rejected) only
 //   - the share of reviews that said `VERDICT: CHANGES`, per lens
 //   - minutes per kind of work, summed from job.json `time_by_kind` (jobs without it count for the rest)
 //   - lessons repeated in two or more decision.md files (see lessons.js)
-import { existsSync, readdirSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { DEFAULT_LAST, collectLessons } from './lessons.js';
-import { JOB_ID, firstLine, readText } from './util.js';
+import { DEFAULT_LAST, collectLessons, compareJobIds } from './lessons.js';
+import { JOB_ID, readText } from './util.js';
+
+const TERMINAL = new Set(['merged', 'rejected']);
+
+/** The first line of a file read from its first bytes only; null when the file is missing. */
+function headLine(file) {
+  let fd;
+  try {
+    fd = openSync(file, 'r');
+    const buf = Buffer.alloc(256);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    return buf.toString('utf8', 0, n).replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0];
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
 
 export const METRICS_SCHEMA_VERSION = 1;
 
@@ -22,19 +39,19 @@ export function median(values) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** The last `last` jobs (by id) that have a readable job.json. */
+/** The last `last` job ids (numeric order) that have a readable job.json; only those files are read. */
 function readJobs(root, last) {
   const dir = join(root, 'factory/jobs');
   if (!existsSync(dir)) return [];
   const jobs = [];
-  for (const name of readdirSync(dir).filter((n) => JOB_ID.test(n)).sort()) {
+  for (const name of readdirSync(dir).filter((n) => JOB_ID.test(n)).sort(compareJobIds).slice(-last)) {
     const text = readText(join(dir, name, 'job.json'));
     if (text === null) continue;
     try {
       jobs.push({ ...JSON.parse(text), id: name });
     } catch { /* a broken job.json is skipped */ }
   }
-  return jobs.slice(-last);
+  return jobs;
 }
 
 /** @returns the metrics object printed by `job metrics --json`. */
@@ -47,14 +64,17 @@ export function computeMetrics(root, last = DEFAULT_LAST) {
   const minutes = {};
   for (const job of jobs) {
     const folder = join(root, 'factory/jobs', job.id);
-    const gate = firstLine(join(folder, 'round-1/checks.md'))?.match(/^GATE: (PASS|FAIL)\b/)?.[1];
-    if (gate) { gated += 1; if (gate === 'PASS') passed += 1; }
-    if (Number.isInteger(job.round) && job.round >= 1) rounds.push(job.round);
+    // Round counts and the round-1 gate are only final for a finished job; a running one would skew both.
+    if (TERMINAL.has(job.stage)) {
+      const gate = headLine(join(folder, 'round-1/checks.md'))?.match(/^GATE: (PASS|FAIL)\b/)?.[1];
+      if (gate) { gated += 1; if (gate === 'PASS') passed += 1; }
+      if (Number.isInteger(job.round) && job.round >= 1) rounds.push(job.round);
+    }
     for (const entry of existsSync(folder) ? readdirSync(folder).filter((n) => /^round-\d+$/.test(n)) : []) {
       for (const f of readdirSync(join(folder, entry))) {
         const lens = f.match(/^review-([a-z][\w-]*)\.md$/)?.[1];
         if (!lens || lens === 'human') continue;
-        const verdict = firstLine(join(folder, entry, f))?.match(/^VERDICT: (PASS|CHANGES)\b/)?.[1];
+        const verdict = headLine(join(folder, entry, f))?.match(/^VERDICT: (PASS|CHANGES)\b/)?.[1];
         if (!verdict) continue;
         const l = (lenses[lens] ??= { changes: 0, total: 0 });
         l.total += 1;
