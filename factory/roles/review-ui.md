@@ -69,6 +69,8 @@ in the Notes.
 ```
 VERDICT: PASS
 
+<one plain sentence: the verdict and why, readable alone>
+
 # UI review (round <n>)
 
 ## Findings
@@ -78,6 +80,10 @@ VERDICT: PASS
 ## Notes
 Optional.
 ```
+
+Every `[blocker]` carries proof on an indented `Proof:` line under it: the `path:line`, why it is
+wrong, and how to reproduce it (a command or steps). Without proof the approver treats it as not
+proven. Keep findings as list lines; put a long list of `[minor]` items in `## Notes`.
 
 Use `VERDICT: CHANGES` only when there is at least one blocker: broken layout,
 unreadable contrast, a clear break from the existing design, or a user who can't

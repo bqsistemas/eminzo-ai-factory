@@ -31,6 +31,8 @@ design). Keep the AC ids that still apply. The first line is still `# Spec: ...`
 ```
 # Spec: <title>
 
+<one plain sentence: what this spec delivers, readable alone>
+
 ## Goal
 One or two sentences: who gets what.
 
@@ -42,9 +44,8 @@ One or two sentences: who gets what.
 Only if the request was ambiguous: the reading you chose.
 
 ## Design
-Files or modules to add or change, one list item (or table row) per file, each an exact repo-relative path in backticks with its line range (`path:start-end`) so
-the builder does not rediscover them, the public interface (function signatures,
-CLI flags, endpoints, UI states), and data shapes.
+Files or modules to add or change, one list item (or table row) per file, each an exact repo-relative path in backticks with its line range (`path:start-end`),
+the public interface (signatures, CLI flags, endpoints, UI states), and data shapes.
 
 ## Acceptance criteria
 - AC-1: Given ..., when ..., then ...
@@ -60,7 +61,9 @@ and `- Why: <one sentence>`. Omit the section otherwise.
 
 **Rules**
 - 3 to 8 acceptance criteria. Each one must be checkable by an automated test.
-- Write the smallest spec that delivers the request. Don't invent requirements.
+- Write the smallest spec that delivers the request. Don't invent requirements. Keep sections
+  short; the Design may be a table of files. Acceptance criteria stay `- AC-n:` lines (the
+  engine reads them), never table rows.
 - If the request is still ambiguous, pick the simplest reading and record it under
   Assumptions. Don't ask questions; intake already had that chance.
 - For a `ui` surface in a repo whose `factory/config.json` declares `visual`, include one

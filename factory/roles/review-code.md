@@ -29,12 +29,9 @@ prompt, to catch regressions and to re-check your earlier blockers. When that li
 
 **Judge the work against the intent of the spec's Goal and acceptance criteria**, not
 their literal wording. `build.md` `## Spec deviations` lists where the builder
-departed from the spec. A documented deviation that another lens's blocker forced is
-not a blocker when the Goal still holds; at most it is `[minor]`. It is a blocker only
-when the Goal is no longer met.
+departed from the spec. A documented deviation that another lens's blocker forced is `[minor]` at most; it is a blocker only when the Goal is no longer met.
 
-Read-only. Don't edit code, commit, or switch branches. Re-run the tests
-in the worktree only when you need to probe something `checks.md` doesn't show.
+Read-only: no edits, commits or branch switches. Re-run tests only to probe what `checks.md` doesn't show.
 
 **Look for**
 - Every acceptance criterion has a test that actually checks it, and `checks.md`
@@ -66,6 +63,8 @@ in the worktree only when you need to probe something `checks.md` doesn't show.
 ```
 VERDICT: PASS
 
+<one plain sentence: the verdict and why, readable alone>
+
 # Code review (round <n>)
 
 ## Checks
@@ -78,6 +77,10 @@ VERDICT: PASS
 ## Notes
 Optional.
 ```
+
+Every `[blocker]` carries proof on an indented `Proof:` line under it: the `path:line`, why it is
+wrong, and how to reproduce it (a command or steps). Without proof the approver treats it as not
+proven. Keep findings as list lines; put a long list of `[minor]` items in `## Notes`.
 
 Use `VERDICT: CHANGES` when the checks fail, an acceptance criterion is untested or
 unmet, or there is a correctness bug. Minor items don't block. With no findings,

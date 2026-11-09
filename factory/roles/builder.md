@@ -28,7 +28,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    main checkout, write only your `build.md` and `plan.md`. Never commit files under
    `factory/jobs/` or `factory/board.json`.
 2. Plan. Before your first code edit, write `<job folder>/plan.md` (in the main checkout, next
-   to `build.md`), at most 30 lines, with exactly these four headings:
+   to `build.md`), at most 30 lines, starting with one plain sentence that says the plan, then exactly these four headings:
    - `## Files that change`: the files, in the order you will change them.
    - `## Order of work`: the steps.
    - `## Risks`: the riskiest step, and what could break outside the diff.
@@ -50,8 +50,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    run that test file alone, then run the nudge again. If you start the app, use the
    port from your prompt. By hand the nudge is focused: a `factory/checks.sh` that reads
    `FACTORY_CHECK_MODE` and `FACTORY_CHANGED_FILES` may run only what your change touches.
-   The factory runs the full checks before the gate (and again in the gate), so a focused
-   pass is not the final word; `--full` forces everything.
+   A focused pass is not the final word: the factory runs the full checks before the gate and in it; `--full` forces everything.
    Write `STATUS: READY` only when the checks exit 0 and `selfcheck` (step 7) exits 0; on a failure fix it and run the nudge
    again, within these limits:
    - Run the same failing check command at most 2 times per round. The nudge also stops
@@ -112,6 +111,8 @@ decides, and it always runs the checks itself.
 ```
 STATUS: READY
 
+<one plain sentence: what was built and whether the checks passed, readable alone>
+
 # Build: <title> (round <n>)
 
 ## Changes
@@ -123,7 +124,11 @@ STATUS: READY
 | AC-1 | test/x.test.js "AC-1: ..."        | pass   |
 
 ## Checks
-`factory/checks.sh`: <summary line, e.g. "pass 12, fail 0">
+| Step | Mode | Result |
+|------|------|--------|
+| `factory/bin/nudge` (last run) | focused or full | pass 12, fail 0 |
+| `factory/bin/selfcheck` | | ok |
+Add a row per other check that ran, and one line under the table naming what failed, if anything.
 
 ## Review responses
 - security: <finding> → <what you did, or why not>
