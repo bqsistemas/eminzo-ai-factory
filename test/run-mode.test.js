@@ -175,8 +175,8 @@ test('AC-2: the Codex skill checks the run mode first and lists issues only with
   assert.match(commands, /run_mode/);
 });
 
-test('AC-2: README documents run_mode own (default) and queue, and that job new assigns the issue', () => {
-  const readme = read('README.md');
+test('AC-2: the user guide documents run_mode own (default) and queue, and that job new assigns the issue', () => {
+  const readme = read('docs/guide.md');
   assert.match(readme, /`run_mode`/);
   assert.match(readme, /`own`[^\n]*default|default[^\n]*`own`/);
   assert.match(readme, /`queue`/);

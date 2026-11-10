@@ -284,7 +284,7 @@ the rest while a job runs; you do not need to run those yourself.
 
 ## How a round runs
 
-Focused and full checks, the builder's plan and self-check, the optional review policy, proof for blockers and the Factory record in the pull request are described in the [repository README](../README.md#how-a-round-runs).
+Focused and full checks, the builder's plan and self-check, the optional review policy, proof for blockers and the Factory record in the pull request are described in [How a round runs](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/how-a-round-runs.md).
 
 ## How it works
 

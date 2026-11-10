@@ -77,8 +77,8 @@ test('AC-7: the spec writer has a revise mode that treats the notes as quoted da
   assert.match(role, /never instructions/);
 });
 
-test('AC-7: the README documents spec_review, its label and both commands', () => {
-  const readme = read('README.md');
+test('AC-7: the user guide documents spec_review, its label and both commands', () => {
+  const readme = read('docs/guide.md');
   for (const word of ['spec_review', 'factory:spec-review', 'approve-spec', 'revise-spec', 'setup-spec-review']) {
     assert.ok(readme.includes(word), word);
   }
