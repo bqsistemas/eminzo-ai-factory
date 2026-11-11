@@ -7,6 +7,10 @@ How the engine is organised and the rules the factory loop keeps. Read this befo
 - **Roles.** They live in `factory/roles/*.md`. The adapters in `.claude/agents/` and `.codex/agents/` are generated from them by `cli/src/adapters.js`, using `factory/templates/agents.json` and the `agent-*` templates. Run `npm run sync-agents` after changing those inputs; `node cli/scripts/sync-agents.mjs --check` fails when a committed adapter is out of date.
 - **Tests.** `npm test` runs every file in `test/` in parallel. Keep slow scenarios in separate files, so no single file sets the floor of the suite.
 
+## Releases
+
+Releases follow [docs/releasing.md](docs/releasing.md). The one rule to remember: the desktop app updates through `releases/latest`, so the CLI GitHub Release (tag `vX.Y.Z`) is always created with `--latest=false` (`npm run release:cli` does it), and the desktop release (tag `desktop-vX.Y.Z`) is always the one marked Latest.
+
 ## Where things live
 
 | Path | What it is |
