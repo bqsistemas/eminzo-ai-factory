@@ -31,11 +31,17 @@ test('docs/releasing.md carries the rules and every stable asset name', () => {
   for (const a of ASSETS) assert.ok(d.includes(a), a);
 });
 
-test('README download links use the stable names', () => {
+test('README links the released macOS downloads by stable name and marks Windows and Linux as coming soon', () => {
   const r = read('README.md');
-  for (const a of ASSETS.filter((n) => !n.endsWith('.zip'))) {
+  for (const a of ['Eminzo-mac-arm64.dmg', 'Eminzo-mac-x64.dmg']) {
     assert.ok(r.includes(`https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/${a}`), a);
   }
+  // No dead links: Windows and Linux are linked only once their builds are released.
+  for (const a of ASSETS.filter((n) => /-(win|linux)-/.test(n))) {
+    assert.ok(!r.includes(`/releases/latest/download/${a}`), `${a} is not released yet`);
+  }
+  assert.match(r, /\| Windows[^\n]*Coming soon/);
+  assert.match(r, /\| Linux[^\n]*Coming soon/);
 });
 
 test('CONTRIBUTING.md and CLAUDE.md state the Latest rule', () => {

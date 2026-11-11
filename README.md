@@ -230,11 +230,10 @@ A dashboard with the agents at work and a kanban board, the Pipeline of each job
 |---|---|
 | macOS, Apple silicon | [Eminzo-mac-arm64.dmg](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-mac-arm64.dmg) |
 | macOS, Intel | [Eminzo-mac-x64.dmg](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-mac-x64.dmg) |
-| Windows (64-bit) | [Eminzo-win-x64.exe](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-win-x64.exe) |
-| Linux, AppImage | [Eminzo-linux-x64.AppImage](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-linux-x64.AppImage) |
-| Linux, Debian and Ubuntu | [Eminzo-linux-x64.deb](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-linux-x64.deb) |
+| Windows (64-bit) | Coming soon |
+| Linux, AppImage and `.deb` | Coming soon |
 
-The macOS builds are signed and notarized. The macOS (`.dmg` and `.zip`), Windows and Linux AppImage builds update themselves when a new version is out; the `.deb` is updated by installing the new `.deb`.
+The macOS builds are signed and notarized, and they update themselves when a new version is out. When the Windows and Linux builds ship, the Windows and AppImage builds will update themselves too; the `.deb` is updated by installing the new `.deb`.
 
 **Requirements:** the Eminzo CLI (`npm i -g @eminzo/factory`, then `eminzo install`), Node.js 20 or newer, git and the GitHub CLI signed in. The app shows and runs the jobs of a repository that already has the factory enabled.
 
