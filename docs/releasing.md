@@ -83,11 +83,10 @@ Or run it locally with `GH_TOKEN` set and `GITHUB_REPOSITORY=bqsistemas/eminzo-a
 ## Verification
 
 ```sh
-# The desktop release is Latest, the CLI release is not
-gh release view desktop-vX.Y.Z --repo bqsistemas/eminzo-ai-factory --json isLatest,isDraft
-gh release view vX.Y.Z --repo bqsistemas/eminzo-ai-factory --json isLatest
+# The release is published and has every asset (macOS: 4 installers, 4 .blockmap files, latest-mac.yml)
+gh release view desktop-vX.Y.Z --repo bqsistemas/eminzo-ai-factory --json isDraft,assets --jq '{isDraft, assets: [.assets[].name]}'
 
-# What /releases/latest resolves to
+# What /releases/latest resolves to: it must be the desktop tag, never a CLI tag
 gh api repos/bqsistemas/eminzo-ai-factory/releases/latest --jq .tag_name
 
 # A download link answers (302 then 200)
@@ -95,4 +94,4 @@ curl -sIL -o /dev/null -w '%{http_code}\n' \
   https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-mac-arm64.dmg
 ```
 
-`isLatest` must be `true` for the desktop release and `false` for the CLI release, and `/releases/latest` must name a `desktop-v` tag.
+`/releases/latest` must name the newest `desktop-v` tag, never a CLI `v` tag. (`gh release view --json` has no "is latest" field, so check the endpoint above.) If an asset is missing from the release, upload it with `gh release upload desktop-vX.Y.Z <file>` before announcing the release.
