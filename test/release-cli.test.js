@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { planCliRelease } from '../scripts/release-cli.mjs';
+import { planCliRelease, parseArgs } from '../scripts/release-cli.mjs';
 
 const SHA = 'a'.repeat(40);
 const good = () => ({
@@ -11,7 +11,7 @@ const good = () => ({
   branch: 'main',
   clean: true,
   localTags: ['v0.2.1', 'v0.2.2'],
-  remoteTags: ['v0.2.1', 'v0.2.2'],
+  remoteTagSha: SHA,
   headSha: SHA,
   tagSha: SHA,
 });
@@ -52,7 +52,7 @@ test('a missing local tag explains how to create it', () => {
 });
 
 test('a tag missing on origin explains how to push it', () => {
-  const r = planCliRelease({ ...good(), remoteTags: ['v0.2.1'] });
+  const r = planCliRelease({ ...good(), remoteTagSha: null });
   assert.equal(r.ok, false);
   assert.match(r.errors.join('\n'), /git push origin v0\.2\.2/);
 });
@@ -63,17 +63,41 @@ test('a tag that does not point at HEAD is refused', () => {
   assert.match(r.errors.join('\n'), /HEAD/);
 });
 
-test('refuses desktop- tags and malformed versions', () => {
-  for (const version of ['desktop-v1.0.0', 'v0.2.2', '0.2', '', null, undefined]) {
+test('refuses desktop- and otherwise malformed versions', () => {
+  for (const version of ['desktop-v1.0.0', 'v0.2.2', '0.2', '1.0.0-', '', null, undefined]) {
     const r = planCliRelease({ ...good(), version });
     assert.equal(r.ok, false, String(version));
     assert.equal(r.command, null);
   }
-  const d = planCliRelease({ ...good(), version: 'desktop-v1.0.0' });
-  assert.match(d.errors.join('\n'), /desktop-/);
 });
 
-test('every successful plan carries --latest=false and --verify-tag, whatever the input', () => {
+test('a tag on origin that points elsewhere than HEAD is refused (peeled remote commit)', () => {
+  const r = planCliRelease({ ...good(), remoteTagSha: 'c'.repeat(40) });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('\n'), /origin/);
+});
+
+test('a prerelease version adds --prerelease and keeps --latest=false', () => {
+  const v = '0.3.0-rc.1';
+  const r = planCliRelease({ ...good(), version: v, localTags: [`v${v}`], tagSha: SHA });
+  assert.equal(r.ok, true);
+  assert.ok(r.command.includes('--prerelease'));
+  assert.ok(r.command.includes('--latest=false'));
+  assert.equal(r.command[3], `v${v}`);
+  assert.ok(!planCliRelease(good()).command.includes('--prerelease'));
+});
+
+test('parseArgs validates --notes-file', () => {
+  assert.deepEqual(parseArgs([]), { dryRun: false, notesFile: undefined, error: null });
+  assert.equal(parseArgs(['--dry-run', '--notes-file', 'n.md']).notesFile, 'n.md');
+  assert.equal(parseArgs(['--dry-run']).dryRun, true);
+  for (const argv of [['--notes-file'], ['--notes-file', '--dry-run'], ['--notes-file', '']]) {
+    assert.match(parseArgs(argv).error, /notes-file/, argv.join(' '));
+  }
+  assert.match(parseArgs(['--bogus']).error, /--bogus/);
+});
+
+test('a successful plan carries --latest=false and --verify-tag with or without a notes file', () => {
   for (const notesFile of [undefined, 'n.md']) {
     const r = planCliRelease({ ...good(), notesFile });
     assert.ok(r.command.includes('--latest=false'));
