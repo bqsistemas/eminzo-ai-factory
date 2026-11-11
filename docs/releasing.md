@@ -1,28 +1,30 @@
 # Releasing
 
-This repository publishes two products from one GitHub Releases page: the CLI (`@eminzo/factory`) and the Eminzo desktop app. Only the desktop app's built binaries live here; its source is in a private repository.
+This repository publishes two products from one GitHub Releases page: the CLI (`@eminzo/factory`) and the Eminzo desktop app. Only the desktop app's built binaries are published here.
 
 ## The rules
 
 | | CLI | Desktop app |
 |---|---|---|
 | Tag | `vX.Y.Z` | `desktop-vX.Y.Z` |
-| Published by | `npm run release:cli` (GitHub Release) and `npm publish` (npm) | electron-builder, from the desktop repo, as a **draft** |
+| Published by | `npm run release:cli` (GitHub Release) and `npm publish` (npm) | the desktop build (electron-builder), as a **draft** |
 | "Latest" | **Never.** Always `--latest=false` | **Always.** Mark it when you publish the draft |
 
 **Why.** The desktop app updates itself with electron-updater, which asks `https://github.com/bqsistemas/eminzo-ai-factory/releases/latest` and reads `latest-mac.yml`, `latest.yml` or `latest-linux.yml` from that release. If a CLI release becomes "Latest", installed apps stop seeing updates.
 
-The workflow `.github/workflows/keep-desktop-latest.yml` is the safety net: when any non-desktop release is published or edited, it restores "Latest" to the newest published desktop release. Do not rely on it; follow the rules.
+The workflow `.github/workflows/keep-desktop-latest.yml` is the safety net: when any non-desktop release is published or edited, it restores "Latest" to the newest published desktop release. Do not rely on it; follow the rules. Releases are cut from `main`, and the safety net only runs for tags whose commit already contains this workflow (GitHub runs the workflow as it exists at the tagged commit), so a release tagged before it landed is not covered.
 
 ## Asset names (contract)
 
-The desktop repo publishes exactly these names, so the download links stay stable:
+The desktop build publishes exactly these names, so the download links stay stable:
 
 | Platform | Assets |
 |---|---|
 | macOS | `Eminzo-mac-arm64.dmg`, `Eminzo-mac-x64.dmg`, `Eminzo-mac-arm64.zip`, `Eminzo-mac-x64.zip` |
 | Windows | `Eminzo-win-x64.exe` |
 | Linux | `Eminzo-linux-x64.AppImage`, `Eminzo-linux-x64.deb` |
+
+Auto-update also needs these files on the same release, uploaded by the desktop build: `latest-mac.yml`, `latest.yml`, `latest-linux.yml`, and the `*.blockmap` files next to the installers. Without them installed apps cannot update.
 
 Link form: `https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/<name>`. Changing a name breaks the README links.
 
@@ -49,8 +51,8 @@ Link form: `https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/down
 
 ## Flow 2: desktop only
 
-1. In the desktop repo, run its `npm run release:mac` (and the Windows and Linux equivalents). electron-builder uploads the assets to a **draft** release tagged `desktop-vX.Y.Z` in this repository.
-2. Check the draft: the seven asset names above and the `latest-*.yml` files are present.
+1. Run the desktop build's release step for each platform (macOS, Windows, Linux). It uploads the assets to a **draft** release tagged `desktop-vX.Y.Z` in this repository.
+2. Check the draft: the seven asset names above, the `latest-mac.yml`, `latest.yml` and `latest-linux.yml` files and the `*.blockmap` files are present.
 3. Publish it and mark it Latest in one step:
 
    ```sh

@@ -234,7 +234,7 @@ A dashboard with the agents at work and a kanban board, the Pipeline of each job
 | Linux, AppImage | [Eminzo-linux-x64.AppImage](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-linux-x64.AppImage) |
 | Linux, Debian and Ubuntu | [Eminzo-linux-x64.deb](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-linux-x64.deb) |
 
-macOS builds are signed and notarized, and the app updates itself when a new version is out.
+The macOS builds are signed and notarized. The macOS (`.dmg` and `.zip`), Windows and Linux AppImage builds update themselves when a new version is out; the `.deb` is updated by installing the new `.deb`.
 
 **Requirements:** the Eminzo CLI (`npm i -g @eminzo/factory`, then `eminzo install`), Node.js 20 or newer, git and the GitHub CLI signed in. The app shows and runs the jobs of a repository that already has the factory enabled.
 
