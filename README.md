@@ -218,7 +218,27 @@ Eminzo desktop shows and runs the same jobs. It uses the CLI, so you don't need 
   <img src=".github/assets/pipeline.webp" alt="Eminzo desktop: the pipeline of a job, with retries and the routed reviewers" width="880">
 </p>
 
-Dashboard with the agents at work and a kanban board, the Pipeline of each job with its retries, Tasks, Issues & PRs, and a terminal for Claude Code or Codex sessions. Without the desktop app, `eminzo dashboard` serves the same board in your browser.
+A dashboard with the agents at work and a kanban board, the Pipeline of each job with its retries, Tasks, Issues & PRs, and a terminal for Claude Code or Codex sessions, all for repositories that have the factory installed. Without the desktop app, `eminzo dashboard` serves the same board in your browser.
+
+<p align="center">
+  <img src=".github/assets/terminal.webp" alt="The terminal of Eminzo desktop running a job" width="880">
+</p>
+
+### Download
+
+| Platform | Download |
+|---|---|
+| macOS, Apple silicon | [Eminzo-mac-arm64.dmg](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-mac-arm64.dmg) |
+| macOS, Intel | [Eminzo-mac-x64.dmg](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-mac-x64.dmg) |
+| Windows (64-bit) | [Eminzo-win-x64.exe](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-win-x64.exe) |
+| Linux, AppImage | [Eminzo-linux-x64.AppImage](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-linux-x64.AppImage) |
+| Linux, Debian and Ubuntu | [Eminzo-linux-x64.deb](https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/download/Eminzo-linux-x64.deb) |
+
+macOS builds are signed and notarized, and the app updates itself when a new version is out.
+
+**Requirements:** the Eminzo CLI (`npm i -g @eminzo/factory`, then `eminzo install`), Node.js 20 or newer, git and the GitHub CLI signed in. The app shows and runs the jobs of a repository that already has the factory enabled.
+
+More at [eminzo.dev](https://eminzo.dev) and in the [user guide](docs/guide.md).
 
 ## Notifications
 
