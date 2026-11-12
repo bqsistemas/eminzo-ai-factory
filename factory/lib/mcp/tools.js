@@ -4,7 +4,9 @@
 // Local means factory/jobs on this machine (gitignored, never shared); GitHub means what `gh` returned.
 import { effectiveConfig } from '../util.js';
 import { diagnosis } from '../state/diagnosis.js';
+import { estimateWork } from '../state/estimate.js';
 import { factoryQueue } from '../state/github.js';
+import { historyRecords } from '../state/history.js';
 import { GROUPS, STAGE_NAMES } from '../state/jobs.js';
 import { changesSince, configView, jobByRef, listJobs, overview, periodSummary, waitingOnPeople } from '../state/queries.js';
 import { ToolError } from './protocol.js';
@@ -138,6 +140,47 @@ export function factoryTools({ root, now = Date.now, gh, runner }) {
       answer: (args, c) => {
         if (args.from !== undefined && args.to !== undefined && Date.parse(args.from) >= Date.parse(args.to)) throw new ToolError('from must be before to');
         return diagnosis(c.root, { ...args, now: c.now, config: effectiveConfig(c.root, { warn: () => {} }).config });
+      },
+    }, ctx),
+    tool({
+      name: 'estimate_work',
+      title: 'Estimate work',
+      description: 'How long and how much a list of proposed deliverables would take the factory, from the finished jobs most like each one (same size, risk and lane, then looser): time from start until ready for approval (pauses included), rounds, the wait for a person after approval, cost, and how often that risk waited for a decision. Give each deliverable the size and risk intake would give it. Every answer is a range (25th to 75th percentile) with the number of jobs behind it, or "too little history"; never a date. Set include_github to also learn from merged pull requests of other developers (their factory facts line). Use it for "how long would this take the team".',
+      source: 'github',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['deliverables'],
+        properties: {
+          deliverables: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            description: 'The proposed deliverables, in order.',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['size', 'risk'],
+              properties: {
+                title: { type: 'string', maxLength: 200, description: 'A short name for the deliverable.' },
+                size: { type: 'string', enum: ['xs', 's', 'm', 'l'], description: 'Size as intake would set it.' },
+                risk: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Risk as intake would set it.' },
+                lane: { type: 'string', enum: ['normal', 'xs'], description: 'xs only for a small change without a spec (default normal).' },
+              },
+            },
+          },
+          include_github: { type: 'boolean', description: 'Also read the facts line of merged pull requests with gh (default false).' },
+        },
+      },
+      answer: (args, c) => {
+        const history = historyRecords(c.root, { github: args.include_github === true, gh: c.gh, runner: c.runner });
+        const config = effectiveConfig(c.root, { warn: () => {} }).config;
+        const estimate = estimateWork(history.records, args.deliverables, { concurrency: Number.isInteger(config.concurrency) ? config.concurrency : null });
+        return {
+          ...estimate,
+          source: history.sources.github ? 'local+github' : 'local',
+          history: { ...estimate.history, sources: history.sources, github_error: history.github_error, truncated: history.truncated },
+        };
       },
     }, ctx),
     tool({

@@ -102,6 +102,17 @@ const QUESTIONS = [
     check: (d) => { assert.equal(d.jobs, 3); assert.equal(d.cost.known, 3.6); assert.ok(Array.isArray(d.proposals)); assert.match(d.note, /nothing was changed/); },
   },
   {
+    question: '¿Cuánto le tomaría al equipo una entrega pequeña de riesgo bajo?',
+    tool: 'estimate_work',
+    args: { deliverables: [{ title: 'Ver solo lo pendiente', size: 's', risk: 'low' }] },
+    check: (d) => {
+      const [one] = d.deliverables;
+      assert.equal(one.factory_minutes, null, 'two finished jobs are not enough history for a range');
+      assert.match(one.warnings[0], /^too little history: 1 finished job of size s, fewer than 5$/);
+      assert.deepEqual(d.history.sources, { local: 2, github: 0 });
+    },
+  },
+  {
     question: '¿Cómo está configurada la fábrica?',
     tool: 'factory_config',
     check: (d) => { assert.equal(d.config.concurrency, 2); assert.equal(d.config.auto_merge, false); assert.equal(Object.hasOwn(d.config, 'prices'), false); },
@@ -138,7 +149,7 @@ test('golden: a job from another machine is not invented', async () => {
 test('golden: tools/list offers exactly the read-only tools', async () => {
   const res = await client.call('tools/list', {});
   const tools = res.result.tools;
-  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'factory_config', 'factory_queue']);
+  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'factory_config', 'factory_queue']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true, `${t.name} is read-only`);
     assert.equal(t.annotations.destructiveHint, false);

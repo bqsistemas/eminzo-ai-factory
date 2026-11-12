@@ -1,5 +1,5 @@
 // The facts line of a pull request's Factory record: one hidden HTML comment with what the job's size, risk,
-// rounds, times and cost were. factory/jobs stays on the machine that ran the job; this line is how the rest of
+// rounds, times, cost and approval decision were. factory/jobs stays on the machine that ran the job; this line is how the rest of
 // the team (and Ask Eminzo's estimates) learn from it. Pure: job.js writes it, readers parse it from PR bodies.
 //
 // Only typed fields go in: ids, numbers, enums, ISO times. Never a title, note or other free text, so the
@@ -13,6 +13,7 @@ const LANES = new Set(['normal', 'xs']);
 const RISKS = new Set(['low', 'medium', 'high']);
 const SIZES = new Set(['xs', 's', 'm', 'l']);
 const SURFACES = new Set(['ui', 'security', 'interaction']);
+const DECISIONS = new Set(['APPROVE', 'ESCALATE']);
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isoOrNull = (v) => (typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(Date.parse(v)).toISOString() : null);
@@ -33,6 +34,7 @@ export function jobFacts(job) {
     started: isoOrNull(job.started),
     approve_entered: isoOrNull(job.approve_entered),
     cost_usd: knownCost(job) ? Math.round(job.cost_usd * 100) / 100 : null,
+    decision: DECISIONS.has(job.decision) ? job.decision : null,
   };
 }
 

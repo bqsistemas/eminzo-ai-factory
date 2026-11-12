@@ -19,7 +19,9 @@ const SCHEMA = checkSchema({
 
 test('checkSchema refuses what the validator would silently ignore', () => {
   assert.throws(() => checkSchema({ type: 'object', properties: {} }), /additionalProperties false/);
-  assert.throws(() => checkSchema({ type: 'object', additionalProperties: false, properties: { a: { type: 'array' } } }), /unsupported type/);
+  assert.throws(() => checkSchema({ type: 'object', additionalProperties: false, properties: { a: { type: 'number' } } }), /unsupported type/);
+  assert.throws(() => checkSchema({ type: 'object', additionalProperties: false, properties: { a: { type: 'array' } } }), /an array needs items/);
+  assert.throws(() => checkSchema({ type: 'object', additionalProperties: false, properties: { a: { type: 'array', items: { type: 'object', properties: {} } } } }), /a\[\]: an object must have additionalProperties false/);
   assert.throws(() => checkSchema({ type: 'object', additionalProperties: false, properties: { a: { type: 'string', minLength: 1 } } }), /unsupported keyword minLength/);
   assert.throws(() => checkSchema({ type: 'object', additionalProperties: false, properties: { a: { type: 'string', format: 'email' } } }), /unsupported format/);
   assert.throws(() => checkSchema({ type: 'object', additionalProperties: false, required: ['b'], properties: {} }), /required b/);
@@ -47,4 +49,24 @@ test('validateArgs names every problem in a stable order', () => {
 test('isDateTime accepts ISO dates and date-times only', () => {
   for (const ok of ['2026-11-12', '2026-11-12T15:00:00Z', '2026-11-12T15:00:00.123-05:00', '2026-11-12 15:00']) assert.ok(isDateTime(ok), ok);
   for (const bad of ['', 'today', '12/11/2026', '2026-13-45', '1731420000000']) assert.ok(!isDateTime(bad), bad);
+});
+
+test('validateArgs walks lists of objects and names each problem by its path', () => {
+  const schema = checkSchema({
+    type: 'object', additionalProperties: false, required: ['items'],
+    properties: {
+      items: { type: 'array', minItems: 1, maxItems: 2, items: { type: 'object', additionalProperties: false, required: ['size'],
+        properties: { size: { type: 'string', enum: ['s', 'm'] }, title: { type: 'string', maxLength: 5 } } } },
+    },
+  });
+  assert.deepEqual(validateArgs(schema, { items: [{ size: 's', title: 'ok' }] }), []);
+  assert.deepEqual(validateArgs(schema, { items: [] }), ['items must have at least 1 item']);
+  assert.deepEqual(validateArgs(schema, { items: [{}, {}, {}] }), ['items must have at most 2 items']);
+  assert.deepEqual(validateArgs(schema, { items: [{ size: 'x', title: 'too long', extra: 1 }, 'no'] }), [
+    'items[0].size must be one of s, m',
+    'items[0].title must be at most 5 characters',
+    'unknown argument items[0].extra',
+    'items[1] must be an object',
+  ]);
+  assert.deepEqual(validateArgs(schema, { items: 'x' }), ['items must be a list']);
 });

@@ -50,6 +50,7 @@ runs it as `factory/bin/mcp`.
 | `changes_since` | what finished, started waiting, started or moved since a moment | `since` (default: 24 hours ago) |
 | `period_summary` | jobs started, merged, rejected and escalated; total and extra rounds; known cost by lane | `from`, `to` (default: the last 7 days) |
 | `factory_diagnosis` | where the factory loses time and money over the jobs that finished in a period: extra rounds by cause, first-review changes by lens, cost by role and risk, escalations by risk, time by size, and proposals backed by those numbers (a proposal needs a minimum of evidence; nothing is changed) | `from`, `to` (default: the last 30 days) |
+| `estimate_work` | how long and how much a list of proposed deliverables would take, from the most similar finished jobs: time from start until ready for approval (pauses included), rounds, the wait after approval, cost, and how often that risk waited for a person's decision; a range with the number of jobs behind it, or "too little history" below 5 | `deliverables` (1-20, each with `size`, `risk`, optional `title` and `lane`), `include_github` (also read the facts line of merged PRs) |
 | `factory_config` | base, concurrency, rounds, auto-merge, spec review, providers, lanes, reviewers, local overrides (never prices) | none |
 | `factory_queue` | open `factory` issues no local job has taken, oldest first (GitHub, through `gh`) | none |
 
@@ -60,12 +61,31 @@ Every result has the same envelope, so an answer can say where its data came fro
   "summary": "2 jobs running, 4 jobs waiting for a person, 3 jobs finished (9 jobs on this machine).", "...": "..." }
 ```
 
-- `source` is `local` (`factory/jobs` on this machine) or `github`.
+- `source` is `local` (`factory/jobs` on this machine), `github`, or `local+github` (an estimate that also read merged pull requests).
 - Costs are `null` when unknown, never `0`.
 - Times are ISO 8601. Durations are in minutes, rounded to 0.1.
 
 A tool that cannot answer returns a result with `isError: true` and a sentence a person can act on.
 For example: "no job on this machine matches 999; jobs live only on the machine that ran them".
+
+## How the estimate works
+
+For each deliverable the estimate takes the finished (merged) jobs with the same size, risk and lane. When
+there are fewer than 5, it uses the same size and lane, then the same size. With fewer than 5 even then,
+it gives no range and says "too little history". Low, typical and high are the 25th, 50th and 75th
+percentiles (nearest rank).
+
+The time runs from the job's start until it was ready for approval. Pauses and waits in between count, so
+one job left overnight widens the range; that is the honest answer for "when will it be ready". The wait
+after approval (merge, a person's decision) is reported apart and not added. Totals add the deliverables one
+after another; independent ones can run in parallel up to `concurrency`.
+
+With `include_github`, merged pull requests add the jobs of other developers through their facts line;
+a job already on this machine is counted once. If `gh` fails, the local estimate is still returned, with
+`history.github_error`.
+
+The sizes and risks are the caller's: an agent sets them the way intake would. Nothing here depends on the
+repository's language or framework.
 
 ## What it can and cannot see
 
@@ -108,8 +128,10 @@ Only tools are offered. Batches are refused, and lines over 1 MiB are refused.
 | `factory/lib/state/queries.js` | overview, list, waiting, changes, period, config |
 | `factory/lib/state/diagnosis.js` | the factory diagnosis and its proposal thresholds |
 | `factory/lib/state/stats.js` | quantiles by nearest rank and the typical value with the middle half |
+| `factory/lib/state/history.js` | finished-job records for estimates: local merged jobs, plus the facts lines of merged PRs |
+| `factory/lib/state/estimate.js` | the estimate: matching levels, ranges, warnings and totals |
 | `factory/lib/state/github.js` | the queue, through `gh` |
 
-Tests: `test/mcp-protocol.test.js`, `test/mcp-schema.test.js`, `test/factory-state.test.js`, `test/factory-diagnosis.test.js` and
+Tests: `test/mcp-protocol.test.js`, `test/mcp-schema.test.js`, `test/factory-state.test.js`, `test/factory-diagnosis.test.js`, `test/factory-estimate.test.js` and
 `test/mcp-golden.test.js`. The golden test asks known-answer questions through the real process. Add a
 row there whenever Ask Eminzo learns a new kind of question.

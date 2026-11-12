@@ -51,7 +51,7 @@ The engine runs your `factory/checks.sh` with two variables:
   - the engine version.
 
   The section ends with one hidden line, `<!-- factory:facts {...} -->`, holding the job's facts as JSON:
-  lane, size, risk, surfaces, round, start time, time it entered approve and known cost. It carries no
+  lane, size, risk, surfaces, round, start time, time it entered approve, known cost and the approval decision. It carries no
   free text. `factory/jobs` stays on the machine that ran the job; this line is how the rest of the team,
   and Ask Eminzo's estimates, can learn from finished jobs (`factory/lib/record-facts.js` parses it).
 

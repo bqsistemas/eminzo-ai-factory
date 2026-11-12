@@ -25,7 +25,7 @@ Or pass it to one Claude Code session (claude --mcp-config <file>) with:
   {"mcpServers": {"eminzo": {"command": "eminzo", "args": ["mcp"]}}}
 
 Tools: factory_overview, list_jobs, job_detail, waiting_on_people, changes_since, period_summary, factory_diagnosis,
-factory_config, factory_queue. None of them writes anything.
+estimate_work, factory_config, factory_queue. None of them writes anything.
 `;
 
 /** The server for the repository at `root`. Exported for tests and for hosts that run it in-process. */
