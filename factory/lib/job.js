@@ -51,6 +51,7 @@ import { hasLessonsSection, lessonsCommand, parseLast } from './lessons.js';
 import { computeMetrics, metricsText } from './metrics.js';
 import { overlapReport, overlaps } from './overlap.js';
 import { claimIssue } from './claim.js';
+import { factsComment, jobFacts } from './record-facts.js';
 import { reusedReport } from './report.js';
 import { runMode } from './run-mode.js';
 import { acNumbers, selfcheckFindings } from './selfcheck.js';
@@ -376,7 +377,7 @@ const RECORD_TEXT = {
 const recordStart = (id) => `<!-- factory:record-start ${id} -->`;
 const recordEnd = (id) => `<!-- factory:record-end ${id} -->`;
 
-const prRecordBody = (lang) => ({ id, round, engine, intakeDecision, risk, acs, plan, gate, reviews, approval }) => {
+const prRecordBody = (lang) => ({ id, round, engine, intakeDecision, risk, acs, plan, gate, reviews, approval, facts }) => {
   const t = RECORD_TEXT[lang];
   const dash = '-';
   return [
@@ -391,6 +392,7 @@ const prRecordBody = (lang) => ({ id, round, engine, intakeDecision, risk, acs, 
     `| ${t.reviews} | ${reviews || t.pending} |`,
     `| ${t.decision} | ${approval || t.pending} |`,
     ...(engine ? ['', t.engine(engine)] : []),
+    ...(facts ? [factsComment(facts)] : []),
     recordEnd(id),
   ].join('\n');
 };
@@ -1583,6 +1585,7 @@ function recordFacts(c, job) {
     gate: job.gate ?? null,
     reviews: Object.entries(verdictsNow).map(([lens, v]) => `${lens}: ${v}`).join(', '),
     approval: decisionText,
+    facts: jobFacts(job),
   };
 }
 
