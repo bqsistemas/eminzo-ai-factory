@@ -134,7 +134,7 @@ export function jobByRef(root, ref, { now = Date.now() } = {}) {
   const job = findJob(readJobs(root), ref);
   if (!job) return null;
   const detail = jobDetail(root, job, now);
-  const where = detail.waiting ? `waits for a person to ${detail.waiting.kind}` : `is in ${detail.stage}`;
+  const where = detail.waiting ? `waits for a person to ${detail.waiting.kind}` : detail.group === 'terminal' ? `finished as ${detail.stage}` : `is in ${detail.stage}`;
   const issue = detail.issue === null ? '' : ` (issue #${detail.issue})`;
   return { summary: `Job ${detail.id}${issue} ${where}, round ${detail.round}${detail.max_rounds ? ` of ${detail.max_rounds}` : ''}.`, job: detail };
 }

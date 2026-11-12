@@ -70,6 +70,8 @@ test('jobByRef: a round without files falls back to job.json, and the reasons ch
   ]);
   assert.deepEqual(job.rounds[1].reviews, { human: { verdict: 'CHANGES', blockers: 0 } });
   assert.equal(jobByRef(root, '999', { now: NOW }), null);
+  assert.equal(jobByRef(root, '150', { now: NOW }).summary, 'Job 150-old-merged (issue #150) finished as merged, round 1 of 3.');
+  assert.equal(jobByRef(root, '162', { now: NOW }).summary, 'Job 162-building (issue #162) is in build, round 3 of 3.');
 });
 
 test('overview: running, waiting and finished counts and the last job that finished', () => {
