@@ -2,7 +2,13 @@
 // Every result is wrapped the same way, so an answer can always say where its data came from and when:
 //   { source: "local" | "github", read_at, repo, summary, ...data }
 // Local means factory/jobs on this machine (gitignored, never shared); GitHub means what `gh` returned.
-import { effectiveConfig } from '../util.js';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
+
+import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
+import { fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../brief.js';
+import { discoveryMethods } from '../discovery.js';
+import { configLanguage, effectiveConfig } from '../util.js';
 import { diagnosis } from '../state/diagnosis.js';
 import { estimateWork } from '../state/estimate.js';
 import { factoryQueue } from '../state/github.js';
@@ -17,6 +23,43 @@ const READ_ONLY_GITHUB = Object.freeze({ readOnlyHint: true, destructiveHint: fa
 
 const NO_ARGS = Object.freeze({ type: 'object', properties: {}, additionalProperties: false });
 const dateTime = (description) => ({ type: 'string', format: 'date-time', description });
+
+const MAX_BRIEF = 200_000;
+const briefText = { type: 'string', maxLength: MAX_BRIEF, description: 'The brief, as markdown.' };
+
+/** The repository's language for briefs and reviews, 'en' when it cannot be read. */
+function languageOf(root) {
+  try {
+    return configLanguage(effectiveConfig(root, { warn: () => {} }).config);
+  } catch {
+    return 'en';
+  }
+}
+
+/** A markdown file inside the repository, by a relative path; null when it is outside, missing or too large. */
+function repoMarkdown(root, rel) {
+  if (isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return null;
+  const file = join(root, rel);
+  if (!existsSync(file)) return null;
+  const real = realpathSync(file);
+  const base = realpathSync(root);
+  const inside = relative(base, real);
+  if (!inside || inside.startsWith('..') || isAbsolute(inside)) return null;
+  if (!statSync(real).isFile() || statSync(real).size > 1024 * 1024) return null;
+  return readFileSync(real, 'utf8');
+}
+
+/** The brief's parts that other tools take as arguments: its deliverables in estimate_work's shape. */
+const briefSummary = (parsed, check) => ({
+  title: parsed.title,
+  language: parsed.language,
+  ok: check.ok,
+  problems: check.problems,
+  warnings: check.warnings,
+  criteria: parsed.criteria,
+  deliverables: parsed.deliverables,
+  estimate_input: parsed.deliverables.filter((d) => d.size && d.risk).map((d) => ({ title: d.title.slice(0, 200), size: d.size, risk: d.risk })),
+});
 
 /** The repository URL from the team config, or null when it cannot be read. */
 function repoOf(root) {
@@ -57,8 +100,8 @@ function tool({ name, title, description, inputSchema = NO_ARGS, source = 'local
  * The tool list for a repository.
  * @param {{ root: string, now?: () => number, gh?: string, runner?: Function }} ctx
  */
-export function factoryTools({ root, now = Date.now, gh, runner }) {
-  const ctx = { root, now, gh, runner };
+export function factoryTools({ root, now = Date.now, gh, runner, home, env = process.env }) {
+  const ctx = { root, now, gh, runner, home, env };
   return [
     tool({
       name: 'factory_overview',
@@ -182,6 +225,75 @@ export function factoryTools({ root, now = Date.now, gh, runner }) {
           history: { ...estimate.history, sources: history.sources, github_error: history.github_error, truncated: history.truncated },
         };
       },
+    }, ctx),
+    tool({
+      name: 'discovery_methods',
+      title: 'Discovery methods',
+      description: 'How a Product Lead explores an idea before a brief: the methods available (Eminzo basic, and Elephant-Goldfish when its plugin is installed), which one is configured for the team or by this person, and which one to use now. Use it at the start of the product stage.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: { provider: { type: 'string', enum: ['claude', 'codex'], description: 'The agent in use (default claude).' } } },
+      answer: (args, c) => discoveryMethods({ root: c.root, home: c.home, env: c.env, provider: args.provider ?? 'claude' }),
+    }, ctx),
+    tool({
+      name: 'check_brief',
+      title: 'Check a brief',
+      description: 'Checks a brief against the Eminzo brief contract (problem, for whom, expected value, how it works today, scope, out of scope, acceptance criteria BC-n, open questions, deliverables Dn with size, risk and covers) and returns the problems that block approval, warnings, and the deliverables ready for estimate_work. Never changes anything.',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: briefText } },
+      answer: (args) => {
+        const parsed = parseBrief(args.text);
+        const check = validateBrief(parsed);
+        const summary = check.ok
+          ? `The brief is complete: ${parsed.criteria.length} acceptance criteria and ${parsed.deliverables.length} deliverables${check.warnings.length ? `; ${check.warnings.length} warning${check.warnings.length === 1 ? '' : 's'}` : ''}.`
+          : `The brief cannot be approved yet: ${check.problems.length} problem${check.problems.length === 1 ? '' : 's'}.`;
+        return { summary, ...briefSummary(parsed, check) };
+      },
+    }, ctx),
+    tool({
+      name: 'brief_template',
+      title: 'Brief template',
+      description: 'An empty brief in the repository\'s language, with every section of the contract to fill in. Use it to start the Define step.',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 200, description: 'The brief title, in functional words.' } } },
+      answer: (args, c) => ({ summary: 'An empty brief to fill in.', markdown: renderBrief({ title: args.title, sections: {}, criteria: [], deliverables: [] }, languageOf(c.root)) }),
+    }, ctx),
+    tool({
+      name: 'import_egm_brief',
+      title: 'Import an Elephant-Goldfish brief',
+      description: 'Turns the concepts_brief.md written by Elephant-Goldfish (/egm-brainstorm) into an Eminzo brief draft, and lists the sections the Product Lead still has to write and the parts that were not mapped. Reads the file only.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', pattern: '^[A-Za-z0-9_./-]+\\.md$', maxLength: 300, description: 'Repository-relative path (default concepts_brief.md).' } } },
+      answer: (args, c) => {
+        const rel = args.path ?? 'concepts_brief.md';
+        const text = repoMarkdown(c.root, rel);
+        if (text === null) throw new ToolError(`${rel} was not found in this repository, or it is outside it or larger than 1 MiB`);
+        const { brief, missing, carried, labels } = fromEgmConcepts(text);
+        return {
+          summary: `Imported ${rel}: ${Object.keys(brief.sections).length} sections mapped; still to write: ${labels.join(', ') || 'nothing'}.`,
+          path: rel, markdown: renderBrief(brief, languageOf(c.root)), missing, carried,
+        };
+      },
+    }, ctx),
+    tool({
+      name: 'brief_review_prompts',
+      title: 'Brief review prompts',
+      description: 'The exact prompt for each context-free ("goldfish") reader of a brief, one per lens. The host starts each reader as a fresh session with no tools and no conversation; do not answer these prompts yourself.',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: briefText } },
+      answer: (args, c) => {
+        const language = languageOf(c.root);
+        return { summary: `${REVIEW_LENSES.length} readers, one per lens.`, language, readers: REVIEW_LENSES.map((l) => ({ lens: l.id, title: l.title, ...reviewPrompt(l.id, args.text, { language }) })) };
+      },
+    }, ctx),
+    tool({
+      name: 'merge_brief_review',
+      title: 'Merge brief review',
+      description: 'Turns the readers\' answers into one list of findings, blockers first, duplicates removed, each numbered (F1, F2, ...).',
+      inputSchema: {
+        type: 'object', additionalProperties: false, required: ['answers'],
+        properties: {
+          answers: {
+            type: 'array', minItems: 1, maxItems: 10,
+            items: { type: 'object', additionalProperties: false, required: ['lens', 'answer'], properties: { lens: { type: 'string', enum: REVIEW_LENSES.map((l) => l.id) }, answer: { type: 'string', maxLength: 20_000 } } },
+          },
+        },
+      },
+      answer: (args) => mergeFindings(args.answers),
     }, ctx),
     tool({
       name: 'factory_config',

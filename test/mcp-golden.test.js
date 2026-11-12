@@ -6,6 +6,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,8 @@ const ids = (list) => list.map((j) => j.id);
 
 /** A stdio MCP client for one server process: `call(method, params)` resolves the response. */
 function connect({ root, gh }) {
-  const child = spawn('sh', [join(repo, 'factory/bin/mcp')], { cwd: root, env: { ...process.env, FACTORY_ROOT: root, FACTORY_GH: gh }, stdio: ['pipe', 'pipe', 'pipe'] });
+  // HOME is the fixture: no plugin or config of the machine running the tests is seen.
+  const child = spawn('sh', [join(repo, 'factory/bin/mcp')], { cwd: root, env: { ...process.env, FACTORY_ROOT: root, FACTORY_GH: gh, HOME: root, CLAUDE_CONFIG_DIR: '', CODEX_HOME: '' }, stdio: ['pipe', 'pipe', 'pipe'] });
   const pending = new Map();
   const stray = [];
   let stderr = '';
@@ -39,9 +41,20 @@ function connect({ root, gh }) {
   return { call, close, stray, stderr: () => stderr };
 }
 
+const EGM_BRIEF = '# Filtro de sugerencias\n\n## Overview\n\nLos revisores pierden tiempo.\n\n## Goals vs. Non-Goals\n\n* **In-Scope Goals:**\n  - ver lo pendiente.\n* **Out-of-Scope Non-Goals:**\n  - correos.\n';
+const COMPLETE_BRIEF = [
+  '# Brief: Filtro de sugerencias',
+  '## Problema', 'Los revisores pierden tiempo.', '## Para quién', 'Revisores.', '## Valor esperado', 'Menos tiempo.',
+  '## Cómo funciona hoy', 'Todo junto.', '## Alcance', '- Filtro.', '## Fuera de alcance', '- Correos.',
+  '## Criterios de aceptación', '- BC-1: Un revisor ve solo lo pendiente.',
+  '## Entregas', '- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1',
+].join('\n');
+
 let client;
 before(async () => {
-  client = connect(stateFixture());
+  const fixture = stateFixture();
+  writeFileSync(join(fixture.root, 'concepts_brief.md'), EGM_BRIEF);
+  client = connect(fixture);
   const init = await client.call('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'golden', version: '1' } });
   assert.equal(init.result.protocolVersion, '2025-11-25');
   assert.equal(init.result.serverInfo.name, 'eminzo');
@@ -113,6 +126,28 @@ const QUESTIONS = [
     },
   },
   {
+    question: '¿Con qué método exploro la idea?',
+    tool: 'discovery_methods',
+    check: (d) => { assert.equal(d.selected, 'eminzo'); assert.equal(d.methods.find((m) => m.id === 'elephant-goldfish').available, false); },
+  },
+  {
+    question: '¿Está listo este brief para aprobarse?',
+    tool: 'check_brief',
+    args: { text: COMPLETE_BRIEF },
+    check: (d) => { assert.equal(d.ok, true, d.problems.join('; ')); assert.deepEqual(d.estimate_input, [{ title: 'Ver solo lo pendiente', size: 's', risk: 'low' }]); },
+  },
+  {
+    question: 'Trae el brief que armé con Elephant-Goldfish',
+    tool: 'import_egm_brief',
+    check: (d) => { assert.match(d.markdown, /^## Problema\n\nLos revisores pierden tiempo\.$/m); assert.deepEqual(d.missing, ['audience', 'value', 'today', 'acceptance', 'deliverables']); },
+  },
+  {
+    question: '(el desktop) prepara a los revisores sin contexto',
+    tool: 'brief_review_prompts',
+    args: { text: COMPLETE_BRIEF },
+    check: (d) => { assert.equal(d.readers.length, 4); assert.equal(d.language, 'es'); assert.match(d.readers[0].user, /<brief>/); },
+  },
+  {
     question: '¿Cómo está configurada la fábrica?',
     tool: 'factory_config',
     check: (d) => { assert.equal(d.config.concurrency, 2); assert.equal(d.config.auto_merge, false); assert.equal(Object.hasOwn(d.config, 'prices'), false); },
@@ -149,10 +184,16 @@ test('golden: a job from another machine is not invented', async () => {
 test('golden: tools/list offers exactly the read-only tools', async () => {
   const res = await client.call('tools/list', {});
   const tools = res.result.tools;
-  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'factory_config', 'factory_queue']);
+  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'factory_config', 'factory_queue']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true, `${t.name} is read-only`);
     assert.equal(t.annotations.destructiveHint, false);
     assert.equal(t.inputSchema.type, 'object');
   }
+});
+
+test('golden: a path outside the repository is never read', async () => {
+  const result = await ask('import_egm_brief', { path: '../../etc/passwd.md' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /not found in this repository, or it is outside it/);
 });

@@ -57,14 +57,14 @@ test('discoveryMethods: the team choice when it is available, a person\'s local 
   const basic = setup();
   const b = discoveryMethods({ root: basic.root, home: basic.home, env: basic.env });
   assert.equal(b.selected, 'eminzo');
-  assert.equal(b.source, 'default');
+  assert.equal(b.configured_in, 'default');
   assert.equal(b.fallback, null);
   assert.deepEqual(b.methods.map((m) => [m.id, m.available]), [['eminzo', true], ['elephant-goldfish', false]]);
 
   const team = setup({ team: { discovery: 'elephant-goldfish' }, claudePlugins: EGM_CLAUDE });
   const t = discoveryMethods({ root: team.root, home: team.home, env: team.env });
   assert.equal(t.selected, 'elephant-goldfish');
-  assert.equal(t.source, 'team');
+  assert.equal(t.configured_in, 'team');
   assert.equal(t.summary, 'Discovery method: Elephant-Goldfish (Google).');
 
   const missing = setup({ team: { discovery: 'elephant-goldfish' } });
@@ -75,6 +75,6 @@ test('discoveryMethods: the team choice when it is available, a person\'s local 
   const local = setup({ team: { discovery: 'elephant-goldfish' }, local: { discovery: 'eminzo' }, claudePlugins: EGM_CLAUDE });
   const l = discoveryMethods({ root: local.root, home: local.home, env: local.env });
   assert.equal(l.selected, 'eminzo');
-  assert.equal(l.source, 'local');
+  assert.equal(l.configured_in, 'local');
   assert.equal(l.summary, 'Discovery method: Eminzo basic (your local choice).');
 });

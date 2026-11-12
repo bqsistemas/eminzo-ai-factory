@@ -23,16 +23,17 @@ Or pass it to one Claude Code session (claude --mcp-config <file>) with:
   {"mcpServers": {"eminzo": {"command": "eminzo", "args": ["mcp"]}}}
 
 Tools: factory_overview, list_jobs, job_detail, waiting_on_people, changes_since, period_summary, factory_diagnosis,
-estimate_work, factory_config, factory_queue. None of them writes anything.
+estimate_work, discovery_methods, check_brief, brief_template, import_egm_brief, brief_review_prompts,
+merge_brief_review, factory_config, factory_queue. None of them writes anything.
 `;
 
 /** The server for the repository at `root`. Exported for tests and for hosts that run it in-process. */
-export function createFactoryServer({ root, now, gh, runner, log }) {
+export function createFactoryServer({ root, now, gh, runner, log, home, env }) {
   return createMcpServer({
     name: SERVER_NAME,
     version: engineVersion() ?? '0.0.0',
     instructions: INSTRUCTIONS,
-    tools: factoryTools({ root, now, gh, runner }),
+    tools: factoryTools({ root, now, gh, runner, home, env }),
     log,
   });
 }

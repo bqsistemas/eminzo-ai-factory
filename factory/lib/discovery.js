@@ -83,7 +83,7 @@ export function discoveryMethods({ root, home = homedir(), env = process.env, pr
   return {
     summary: fallback ?? `Discovery method: ${LABELS[selected]}${overrides.includes('discovery') ? ' (your local choice)' : ''}.`,
     configured,
-    source: overrides.includes('discovery') ? 'local' : Object.hasOwn(config, 'discovery') ? 'team' : 'default',
+    configured_in: overrides.includes('discovery') ? 'local' : Object.hasOwn(config, 'discovery') ? 'team' : 'default',
     selected,
     provider,
     fallback,
