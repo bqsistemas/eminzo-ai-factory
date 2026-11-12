@@ -172,7 +172,7 @@ git push                   # or open a pull request if your default branch is pr
 ### 10. Day to day
 
 Every command is listed in "Command reference" below. Personal settings that do not affect the team
-(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`)
+(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`, `discovery`)
 go in `factory/config.local.json`, which is gitignored.
 
 ### Other developers of the same repository
