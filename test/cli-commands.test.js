@@ -126,7 +126,7 @@ test('install writes the adapters under HOME, is idempotent, and records what it
   }
   const manifest = JSON.parse(readFileSync(join(t.home, '.eminzo/install.json'), 'utf8'));
   assert.equal(manifest.version, version);
-  assert.equal(manifest.files.length, 18);
+  assert.equal(manifest.files.length, 20);
 
   const again = t.run(['install']);
   assert.equal(again.status, 0, again.stderr);

@@ -7,7 +7,7 @@ import { chmodSync, cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSy
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { claudeAgent, claudeSkill, codexAgent, codexSkill } from './src/adapters.js';
+import { claudeAgent, claudeSkill, codexAgent, codexSkill, productSkill } from './src/adapters.js';
 
 const CLI = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(CLI, '..');
@@ -40,6 +40,8 @@ export function build({ repoRoot = REPO, out = join(CLI, 'dist'), version } = {}
   const src = (rel) => readFileSync(join(repoRoot, rel), 'utf8');
   emit('claude/skills/eminzo-factory/SKILL.md', claudeSkill(src('.claude/skills/eminzo-factory/SKILL.md'), { version }));
   emit('agents/skills/eminzo-factory/SKILL.md', codexSkill(src('.agents/skills/eminzo-factory/SKILL.md'), { version }));
+  emit('claude/skills/eminzo-product/SKILL.md', productSkill(src('.claude/skills/eminzo-product/SKILL.md'), { version, provider: 'claude' }));
+  emit('agents/skills/eminzo-product/SKILL.md', productSkill(src('.claude/skills/eminzo-product/SKILL.md'), { version, provider: 'codex' }));
   for (const file of readdirSync(join(repoRoot, '.claude/agents')).filter((f) => /^eminzo-.*\.md$/.test(f)).sort()) {
     const roleName = file.replace(/^eminzo-|\.md$/g, '');
     emit(`claude/agents/${file}`, claudeAgent(src(`.claude/agents/${file}`), { role: src(`factory/roles/${roleName}.md`), roleName, version }));

@@ -14,7 +14,7 @@ import { PARTIAL, installManifestPath, readInstallManifest, tilde } from './path
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 
 /** Folders install creates that uninstall may remove when they end up empty. */
-const OWN_DIRS = ['.claude/skills/eminzo-factory', '.agents/skills/eminzo-factory', '.eminzo'];
+const OWN_DIRS = ['.claude/skills/eminzo-factory', '.agents/skills/eminzo-factory', '.claude/skills/eminzo-product', '.agents/skills/eminzo-product', '.eminzo'];
 
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
@@ -64,8 +64,8 @@ export function planInstall({ dist, home, force = false }) {
 export function installHeader({ version, dryRun = false, mcp = true }) {
   return [
     `eminzo ${version} ${dryRun ? 'would install' : 'installs'} in your home folder:`,
-    '  - the eminzo-factory skill and its agents for Claude Code (~/.claude/skills, ~/.claude/agents)',
-    '  - the eminzo-factory skill and its agents for Codex (~/.agents/skills, ~/.codex/agents)',
+    '  - the eminzo-factory and eminzo-product skills and the factory agents for Claude Code (~/.claude/skills, ~/.claude/agents)',
+    '  - the eminzo-factory and eminzo-product skills and the factory agents for Codex (~/.agents/skills, ~/.codex/agents)',
     mcp
       ? '  - the "eminzo" MCP server (read-only factory tools) in Claude Code and Codex'
       : '  - not the "eminzo" MCP server (--no-mcp)',

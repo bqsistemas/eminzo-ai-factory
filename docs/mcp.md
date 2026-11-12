@@ -48,6 +48,12 @@ runs it as `factory/bin/mcp`.
 | `period_summary` | jobs started, merged, rejected and escalated; total and extra rounds; known cost by lane | `from`, `to` (default: the last 7 days) |
 | `factory_diagnosis` | where the factory loses time and money over the jobs that finished in a period: extra rounds by cause, first-review changes by lens, cost by role and risk, escalations by risk, time by size, and proposals backed by those numbers (a proposal needs a minimum of evidence; nothing is changed) | `from`, `to` (default: the last 30 days) |
 | `estimate_work` | how long and how much a list of proposed deliverables would take, from the most similar finished jobs: time from start until ready for approval (pauses included), rounds, the wait after approval, cost, and how often that risk waited for a person's decision; a range with the number of jobs behind it, or "too little history" below 5 | `deliverables` (1-20, each with `size`, `risk`, optional `title` and `lane`), `include_github` (also read the facts line of merged PRs) |
+| `discovery_methods` | the product stage's discovery methods (Eminzo basic, Elephant-Goldfish when installed), which one is configured and which one to use | `provider` (`claude`, `codex`) |
+| `check_brief` | a brief checked against the contract: what blocks approval, warnings, and its deliverables ready for `estimate_work` | `text` |
+| `brief_template` | an empty brief in the repository's language | `title` |
+| `import_egm_brief` | an Elephant-Goldfish `concepts_brief.md` turned into a brief draft, with what is still missing (reads a file inside the repository only) | `path` (default `concepts_brief.md`) |
+| `brief_review_prompts` | the prompt for each context-free reader of a brief; the host starts the readers | `text` |
+| `merge_brief_review` | the readers' answers as one list of findings, blockers first | `answers` |
 | `factory_config` | base, concurrency, rounds, auto-merge, spec review, providers, lanes, reviewers, local overrides (never prices) | none |
 | `factory_queue` | open `factory` issues no local job has taken, oldest first (GitHub, through `gh`) | none |
 

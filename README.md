@@ -111,7 +111,7 @@ Every role is a plain file you can read with `eminzo show roles/<role>.md`, and 
 
 ```sh
 npm i -g @eminzo/factory   # the eminzo command
-eminzo install             # the eminzo-factory skill, the eight agents and the eminzo MCP server, for Claude Code and Codex
+eminzo install             # the eminzo-factory and eminzo-product skills, the eight agents and the eminzo MCP server, for Claude Code and Codex
 eminzo doctor              # checks Node, git, gh, the PATH and the installed files
 ```
 
@@ -298,6 +298,7 @@ A failed gate sends the job back to the builder for another round. After `max_ro
 | [How a round runs](docs/how-a-round-runs.md) | Focused and full checks, the builder's plan, review policy and what each round leaves |
 | [Discord notifications](docs/notifications.md) | Events, message format, redaction and delivery rules |
 | [eminzo mcp](docs/mcp.md) | The factory's state as read-only MCP tools for Claude Code, Codex and Ask Eminzo |
+| [The product stage](docs/product-stage.md) | From an idea to an approved brief and estimated deliverables, before any issue (Ask Eminzo) |
 | [Codex](docs/codex.md) | How the Codex adapter works (in Spanish) |
 | [Contributing](CONTRIBUTING.md) | Where things live in the engine and the rules the loop keeps |
 

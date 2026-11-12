@@ -52,8 +52,10 @@ eminzo install --dry-run   # optional: lists what it would write and register
 eminzo install
 ```
 
-It writes the `eminzo-factory` skill and the eight factory agents for both tools:
-`~/.claude/skills/eminzo-factory/`, `~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`
+It writes the `eminzo-factory` skill, the `eminzo-product` skill (the product stage, see
+[The product stage](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/product-stage.md)) and the eight
+factory agents for both tools: `~/.claude/skills/eminzo-factory/`, `~/.claude/skills/eminzo-product/`,
+`~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`, `~/.agents/skills/eminzo-product/`
 and `~/.codex/agents/eminzo-*.toml`, and records them in `~/.eminzo/install.json`. It never
 overwrites a file it did not write or that you changed (it names each one; `--force` overwrites).
 

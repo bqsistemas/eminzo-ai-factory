@@ -41,7 +41,7 @@ test('the header says everything install puts on the machine before it does anyt
   const m = machine();
   run(m);
   assert.ok(m.out.text.startsWith(installHeader({ version })));
-  assert.match(m.out.text, /the eminzo-factory skill and its agents for Claude Code/);
+  assert.match(m.out.text, /the eminzo-factory and eminzo-product skills and the factory agents for Claude Code/);
   assert.match(m.out.text, /the "eminzo" MCP server \(read-only factory tools\) in Claude Code and Codex/);
   assert.match(m.out.text, /nothing else is changed/);
   assert.match(installHeader({ version, mcp: false, dryRun: true }), /would install[\s\S]*not the "eminzo" MCP server \(--no-mcp\)/);
