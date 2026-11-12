@@ -3,6 +3,7 @@
 //   { source: "local" | "github", read_at, repo, summary, ...data }
 // Local means factory/jobs on this machine (gitignored, never shared); GitHub means what `gh` returned.
 import { effectiveConfig } from '../util.js';
+import { diagnosis } from '../state/diagnosis.js';
 import { factoryQueue } from '../state/github.js';
 import { GROUPS, STAGE_NAMES } from '../state/jobs.js';
 import { changesSince, configView, jobByRef, listJobs, overview, periodSummary, waitingOnPeople } from '../state/queries.js';
@@ -123,6 +124,20 @@ export function factoryTools({ root, now = Date.now, gh, runner }) {
       answer: (args, c) => {
         if (args.from !== undefined && args.to !== undefined && Date.parse(args.from) >= Date.parse(args.to)) throw new ToolError('from must be before to');
         return periodSummary(c.root, { ...args, now: c.now });
+      },
+    }, ctx),
+    tool({
+      name: 'factory_diagnosis',
+      title: 'Factory diagnosis',
+      description: 'Where the factory loses time and money over the jobs that finished in a period (default: the last 30 days): extra rounds by cause, how often each review lens asks for changes on its first review, cost by agent role and by risk, escalations by risk, time by size, and proposals backed by those numbers. Proposals only describe a change. Use it for "where does my factory lose time".',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { from: dateTime('Start of the period (default: 30 days before `to`).'), to: dateTime('End of the period (default: now).') },
+      },
+      answer: (args, c) => {
+        if (args.from !== undefined && args.to !== undefined && Date.parse(args.from) >= Date.parse(args.to)) throw new ToolError('from must be before to');
+        return diagnosis(c.root, { ...args, now: c.now, config: effectiveConfig(c.root, { warn: () => {} }).config });
       },
     }, ctx),
     tool({

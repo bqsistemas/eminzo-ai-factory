@@ -138,15 +138,30 @@ function roundFiles(folder) {
   return { gate, gate_summary: reportSentence(checks), reviews };
 }
 
-/** Why round `n` (n >= 2) ran, from what round n-1 left behind. */
+/**
+ * Why round `n` (n >= 2) ran, as cause keys, from what round n-1 left behind: `gate` (the gate failed),
+ * `pr_comments` (changes requested on the pull request) and `review:<lens>` (a review asked for changes).
+ */
+export function roundCauses(previous) {
+  if (!previous) return [];
+  const causes = [];
+  if (previous.gate === 'FAIL') causes.push('gate');
+  const changes = Object.entries(previous.reviews ?? {}).filter(([, v]) => (isObject(v) ? v.verdict : v) === 'CHANGES').map(([lens]) => lens);
+  if (changes.includes('human')) causes.push('pr_comments');
+  for (const lens of changes) if (lens !== 'human') causes.push(`review:${lens}`);
+  return causes;
+}
+
+/** Why round `n` (n >= 2) ran, as one sentence fragment. */
 export function roundReason(previous) {
   if (!previous) return null;
-  const reasons = [];
-  if (previous.gate === 'FAIL') reasons.push('gate failed');
-  const changes = Object.entries(previous.reviews ?? {}).filter(([, v]) => (isObject(v) ? v.verdict : v) === 'CHANGES').map(([lens]) => lens);
-  if (changes.includes('human')) reasons.push('changes requested on the pull request');
-  const lenses = changes.filter((lens) => lens !== 'human');
-  if (lenses.length) reasons.push(`changes requested by review: ${lenses.join(', ')}`);
+  const causes = roundCauses(previous);
+  const lenses = causes.filter((c) => c.startsWith('review:')).map((c) => c.slice(7));
+  const reasons = [
+    ...(causes.includes('gate') ? ['gate failed'] : []),
+    ...(causes.includes('pr_comments') ? ['changes requested on the pull request'] : []),
+    ...(lenses.length ? [`changes requested by review: ${lenses.join(', ')}`] : []),
+  ];
   return reasons.length ? reasons.join('; ') : 'not recorded';
 }
 

@@ -6,7 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { factoryQueue } from '../factory/lib/state/github.js';
-import { STAGE_GROUPS, findJob, jobView, readJobs, roundReason } from '../factory/lib/state/jobs.js';
+import { STAGE_GROUPS, findJob, jobView, readJobs, roundCauses, roundReason } from '../factory/lib/state/jobs.js';
 import { changesSince, configView, jobByRef, listJobs, overview, periodSummary, waitingOnPeople } from '../factory/lib/state/queries.js';
 import { QUEUE_ISSUES, stateFixture } from './helpers/factory-state-fixture.js';
 
@@ -38,6 +38,12 @@ test('jobView: where a job is, what it waits for, its times and its cost', () =>
   assert.equal(jobView(findJob(jobs, '162'), NOW).waiting, null);
   assert.equal(findJob(jobs, '999'), null);
   assert.equal(findJob(jobs, '../etc'), null);
+});
+
+test('roundCauses names what made a round necessary as stable keys', () => {
+  assert.deepEqual(roundCauses(null), []);
+  assert.deepEqual(roundCauses({ gate: 'FAIL', reviews: { human: 'CHANGES', ui: { verdict: 'CHANGES' }, code: 'PASS' } }), ['gate', 'pr_comments', 'review:ui']);
+  assert.deepEqual(roundCauses({ gate: 'PASS', reviews: {} }), []);
 });
 
 test('roundReason says what made a round necessary', () => {

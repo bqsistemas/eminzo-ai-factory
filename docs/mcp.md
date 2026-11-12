@@ -49,6 +49,7 @@ runs it as `factory/bin/mcp`.
 | `waiting_on_people` | every job waiting for a person, oldest first, and what it needs: `decide`, `answer`, `approve-spec` or `merge` | none |
 | `changes_since` | what finished, started waiting, started or moved since a moment | `since` (default: 24 hours ago) |
 | `period_summary` | jobs started, merged, rejected and escalated; total and extra rounds; known cost by lane | `from`, `to` (default: the last 7 days) |
+| `factory_diagnosis` | where the factory loses time and money over the jobs that finished in a period: extra rounds by cause, first-review changes by lens, cost by role and risk, escalations by risk, time by size, and proposals backed by those numbers (a proposal needs a minimum of evidence; nothing is changed) | `from`, `to` (default: the last 30 days) |
 | `factory_config` | base, concurrency, rounds, auto-merge, spec review, providers, lanes, reviewers, local overrides (never prices) | none |
 | `factory_queue` | open `factory` issues no local job has taken, oldest first (GitHub, through `gh`) | none |
 
@@ -105,8 +106,10 @@ Only tools are offered. Batches are refused, and lines over 1 MiB are refused.
 | `factory/lib/mcp/tools.js` | the tool catalog and the result envelope |
 | `factory/lib/state/jobs.js` | job views and job detail, read from `factory/jobs` |
 | `factory/lib/state/queries.js` | overview, list, waiting, changes, period, config |
+| `factory/lib/state/diagnosis.js` | the factory diagnosis and its proposal thresholds |
+| `factory/lib/state/stats.js` | quantiles by nearest rank and the typical value with the middle half |
 | `factory/lib/state/github.js` | the queue, through `gh` |
 
-Tests: `test/mcp-protocol.test.js`, `test/mcp-schema.test.js`, `test/factory-state.test.js` and
+Tests: `test/mcp-protocol.test.js`, `test/mcp-schema.test.js`, `test/factory-state.test.js`, `test/factory-diagnosis.test.js` and
 `test/mcp-golden.test.js`. The golden test asks known-answer questions through the real process. Add a
 row there whenever Ask Eminzo learns a new kind of question.
