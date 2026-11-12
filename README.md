@@ -297,6 +297,7 @@ A failed gate sends the job back to the builder for another round. After `max_ro
 | [User guide](docs/guide.md) | Install, enable, every command, updating, removing and troubleshooting |
 | [How a round runs](docs/how-a-round-runs.md) | Focused and full checks, the builder's plan, review policy and what each round leaves |
 | [Discord notifications](docs/notifications.md) | Events, message format, redaction and delivery rules |
+| [eminzo mcp](docs/mcp.md) | The factory's state as read-only MCP tools for Claude Code, Codex and Ask Eminzo |
 | [Codex](docs/codex.md) | How the Codex adapter works (in Spanish) |
 | [Contributing](CONTRIBUTING.md) | Where things live in the engine and the rules the loop keeps |
 

@@ -11,7 +11,7 @@ import { CliError, PARTIAL, engineFolder, hasCommittedEngine, homeDir, readInsta
 import { parseRange, satisfies } from './semver.js';
 
 /** Engine commands run by node from lib/<name>.js. */
-const NODE_COMMANDS = ['job', 'gate', 'approve', 'route', 'visual', 'nudge', 'ensure-output', 'protect-tests', 'dashboard', 'init'];
+const NODE_COMMANDS = ['job', 'gate', 'approve', 'route', 'visual', 'nudge', 'ensure-output', 'protect-tests', 'dashboard', 'init', 'mcp'];
 /** Engine commands that are shell scripts in bin/. */
 const SHELL_COMMANDS = ['setup', 'setup-spec-review'];
 /** Commands that are a `job` subcommand: `eminzo selfcheck <id>` runs `eminzo job <id> selfcheck`, `eminzo profile <id>` runs `eminzo job <id> profile`. */

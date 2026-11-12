@@ -259,6 +259,7 @@ reach the builder.
 | `eminzo doctor` | checks Node, git, gh, the PATH, the installed files and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | the same as `/eminzo-factory enable`, from a terminal |
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
+| `eminzo mcp` | the factory's state (jobs, rounds, waits, cost, queue) as read-only tools for Claude Code, Codex and the desktop's Ask Eminzo, over stdin/stdout; see [eminzo mcp](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/mcp.md) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
 | `eminzo job lessons [--last N]` | collects the `## Lessons` of the last N job decisions (default 20), drops duplicates (case and punctuation ignored), writes the 15 most repeated into `## Things the builder gets wrong` of `factory/project.md` on a branch and opens a PR for a human to merge; the PR touches only `project.md` |
 | `eminzo job metrics [--last N] [--json]` | over the last N jobs (default 20): the `GATE: PASS` rate in round 1 and rounds per job (median), both over finished jobs only (`merged` or `rejected`), the `CHANGES` rate per lens, minutes per kind of work (from `time_by_kind` when a job has it) and repeated lessons; `--json` prints the same as JSON. The dashboard shows it as a collapsible table (`board.json` carries it as `metrics`) |
@@ -305,6 +306,7 @@ engine's source repository) keeps running that engine; `eminzo` hands the comman
 ```
 eminzo show roles/<role>.md | templates/<file>   print a role or template of the engine
 eminzo dashboard [port]                          the dashboard for the current repository
+eminzo mcp [--help]                              read-only factory tools for agents (MCP on stdin/stdout)
 eminzo --version | help
 ```
 

@@ -21,6 +21,9 @@ Engine commands (the skill and agents call these; they run on the repository of 
   eminzo job | gate | approve | route | visual | nudge | ensure-output | protect-tests | dashboard | init | setup | setup-spec-review | profile
   eminzo selfcheck <job-id>              the builder's check before READY (same as: eminzo job <job-id> selfcheck)
 
+Ask Eminzo (read-only tools for Claude Code, Codex and the desktop):
+  eminzo mcp [--help]                    the factory's state as an MCP server on stdin/stdout
+
 Other:
   eminzo show roles/<role>.md | templates/<file>   print a role or template that ships with the engine
   eminzo --version | help

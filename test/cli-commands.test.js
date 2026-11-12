@@ -355,3 +355,24 @@ test('eminzo selfcheck <id> is `job <id> selfcheck`; eminzo protect-tests is the
   assert.equal(denied.stderr, 'protected test; the gate fails the round\n', 'no engine-range warning before the reason');
   assert.equal(hook(join(worktree, 'src/a.js')).status, 0);
 });
+
+test('eminzo mcp serves the read-only factory tools on stdio and stops when stdin closes; --help says how to register it', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  const lines = [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } } },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'factory_overview', arguments: {} } },
+  ].map((m) => JSON.stringify(m)).join('\n');
+  const res = spawnSync(process.execPath, [bin, 'mcp'], { cwd: root, env: t.env, input: `${lines}\n`, encoding: 'utf8' });
+  assert.equal(res.status, 0, res.stderr);
+  const [init, call] = res.stdout.trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(init.result.serverInfo.name, 'eminzo');
+  assert.equal(init.result.serverInfo.version, version, 'the server reports the installed engine version');
+  assert.equal(call.result.isError, false);
+  assert.equal(call.result.structuredContent.summary, 'No jobs on this machine yet.');
+  const help = t.run(['mcp', '--help'], { cwd: root });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /claude mcp add --scope user eminzo -- eminzo mcp/);
+  assert.match(t.run(['help']).stdout, /eminzo mcp\b/);
+});
