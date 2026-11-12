@@ -7,10 +7,11 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { build } from '../cli/build.mjs';
+import { fakeAgentClis } from './helpers/fake-agent-clis.js';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const bin = join(repo, 'cli/bin/eminzo.js');
@@ -30,7 +31,10 @@ function sandbox() {
   const dir = mkdtempSync(join(tmpdir(), 'eminzo-cmd-'));
   const home = join(dir, 'home');
   mkdirSync(home);
-  const env = { ...process.env, ...GIT_ENV, HOME: home, EMINZO_DIST: dist };
+  // Fake claude and codex first on PATH: install registers its MCP server through them, never through a real one.
+  const env = { ...process.env, ...GIT_ENV, HOME: home, EMINZO_DIST: dist, PATH: `${fakeAgentClis(dir)}${delimiter}${process.env.PATH}` };
+  delete env.CLAUDE_CONFIG_DIR;
+  delete env.CODEX_HOME;
   delete env.EMINZO_ENGINE;
   delete env.FACTORY_ROOT;
   const run = (args, { cwd = dir, extra = {} } = {}) => spawnSync(process.execPath, [bin, ...args], { cwd, env: { ...env, ...extra }, encoding: 'utf8' });

@@ -15,12 +15,10 @@ export const SERVER_NAME = 'eminzo';
 
 const HELP = `eminzo mcp: the factory's read-only tools as an MCP server on stdin/stdout.
 
-Run from inside a repository with a factory. Register it once per machine:
+Run from inside a repository with a factory. eminzo install registers it in Claude Code and Codex;
+to do it by hand:
   Claude Code: claude mcp add --scope user eminzo -- eminzo mcp
-  Codex:       add to ~/.codex/config.toml
-                 [mcp_servers.eminzo]
-                 command = "eminzo"
-                 args = ["mcp"]
+  Codex:       codex mcp add eminzo -- eminzo mcp
 Or pass it to one Claude Code session (claude --mcp-config <file>) with:
   {"mcpServers": {"eminzo": {"command": "eminzo", "args": ["mcp"]}}}
 

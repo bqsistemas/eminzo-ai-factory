@@ -15,28 +15,25 @@ the session, talks to it over stdin/stdout (newline-delimited JSON-RPC 2.0), and
 It reads the repository of the directory it starts in; a worktree resolves to its main checkout, and
 `FACTORY_ROOT` wins as in every engine command. Logs go to stderr only.
 
-Register it once per machine:
+`eminzo install` registers it in Claude Code and Codex, through their own commands, and prints what it did:
 
 ```sh
-# Claude Code
 claude mcp add --scope user eminzo -- eminzo mcp
+codex mcp add eminzo -- eminzo mcp
 ```
 
-```toml
-# Codex: ~/.codex/config.toml
-[mcp_servers.eminzo]
-command = "eminzo"
-args = ["mcp"]
-```
+Only that `eminzo` entry is added; nothing else in `~/.claude.json` or `~/.codex/config.toml` changes. An `eminzo`
+entry that runs something else is yours and is kept. A tool that is not installed is skipped, with the command to
+run later. `eminzo install --no-mcp` skips the registration. `eminzo uninstall` removes only the entries install
+added (recorded in `~/.eminzo/install.json`) and that still run `eminzo mcp`.
 
-Or hand it to one Claude Code session with `claude --mcp-config <file>`:
+To hand it to one Claude Code session instead, use `claude --mcp-config <file>` (the desktop does this):
 
 ```json
 { "mcpServers": { "eminzo": { "command": "eminzo", "args": ["mcp"] } } }
 ```
 
-`eminzo install` does not register it: that would mean editing `~/.claude.json` and `~/.codex/config.toml`,
-which `install` does not own. A repository that commits its own engine (the desktop's vendored copy)
+A repository that commits its own engine (the desktop's vendored copy)
 runs it as `factory/bin/mcp`.
 
 ## Tools

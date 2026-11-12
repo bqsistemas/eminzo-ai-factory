@@ -45,7 +45,7 @@ install it under the Node version that terminal uses).
 ### 3. Install the skill and agents (once per machine)
 
 ```sh
-eminzo install --dry-run   # optional: lists what it would write
+eminzo install --dry-run   # optional: lists what it would write and register
 eminzo install
 ```
 
@@ -53,6 +53,14 @@ It writes the `eminzo-factory` skill and the eight factory agents for both tools
 `~/.claude/skills/eminzo-factory/`, `~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`
 and `~/.codex/agents/eminzo-*.toml`, and records them in `~/.eminzo/install.json`. It never
 overwrites a file it did not write or that you changed (it names each one; `--force` overwrites).
+
+It also registers the `eminzo` MCP server (the factory's read-only tools, see
+[eminzo mcp](mcp.md)) in both tools, with their own
+commands: `claude mcp add --scope user eminzo -- eminzo mcp` and `codex mcp add eminzo -- eminzo mcp`. Only that
+entry is added; the rest of `~/.claude.json` and `~/.codex/config.toml` is left as it was. An `eminzo` entry you set
+up yourself is kept, a tool that is not installed is skipped with the command to run later, and `--no-mcp` skips
+the registration. Before it changes anything, `install` lists what it puts on the machine, and every file and
+entry it adds is printed.
 
 Then close and reopen Claude Code (or Codex): a session loads its skills when it starts.
 
@@ -184,7 +192,7 @@ engine refuses with `engine 0.2.0 does not satisfy "0.1.x" in factory/config.jso
 
 ### Removing it
 
-`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept), and
+`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept) and the `eminzo` MCP entries it registered (one you added yourself is kept), and
 `npm rm -g @eminzo/factory` removes the command. To remove the factory from a repository, delete
 `factory/config.json`, `factory/checks.sh` and `factory/project.md`, the factory lines in
 `.gitignore` and `Bash(eminzo:*)` in `.claude/settings.json`.

@@ -1,11 +1,14 @@
-// `eminzo install` and `eminzo uninstall`: the Claude and Codex skills and agents at user level.
+// `eminzo install` and `eminzo uninstall`: the Claude and Codex skills and agents at user level, and the
+// "eminzo" MCP server entry in both tools.
 // dist/adapters/<x>/... goes to ~/.<x>/... (claude -> ~/.claude, agents -> ~/.agents, codex -> ~/.codex).
 // ~/.eminzo/install.json records each file written and its hash, so a later run updates only files
-// eminzo wrote and the user has not changed, and uninstall removes only those.
+// eminzo wrote and the user has not changed, and uninstall removes only those. It also records which MCP
+// entries eminzo registered (mcp-register.js), so uninstall removes those and never one the person added.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 
+import { planMcp, registerMcp, unregisterMcp } from './mcp-register.js';
 import { PARTIAL, installManifestPath, readInstallManifest, tilde } from './paths.js';
 
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
@@ -57,8 +60,23 @@ export function planInstall({ dist, home, force = false }) {
   return plan;
 }
 
+/** What install puts on this machine, shown before it does anything. */
+export function installHeader({ version, dryRun = false, mcp = true }) {
+  return [
+    `eminzo ${version} ${dryRun ? 'would install' : 'installs'} in your home folder:`,
+    '  - the eminzo-factory skill and its agents for Claude Code (~/.claude/skills, ~/.claude/agents)',
+    '  - the eminzo-factory skill and its agents for Codex (~/.agents/skills, ~/.codex/agents)',
+    mcp
+      ? '  - the "eminzo" MCP server (read-only factory tools) in Claude Code and Codex'
+      : '  - not the "eminzo" MCP server (--no-mcp)',
+    'Only eminzo\'s own files and its "eminzo" MCP entry are added or updated; nothing else is changed.',
+    '',
+  ].join('\n');
+}
+
 /** @returns {number} exit status: 1 when a file was skipped */
-export function install({ dist, version, home, dryRun = false, force = false, out = process.stdout }) {
+export function install({ dist, version, home, dryRun = false, force = false, mcp = true, env = process.env, out = process.stdout }) {
+  out.write(installHeader({ version, dryRun, mcp }));
   const plan = planInstall({ dist, home, force });
   for (const step of plan) {
     if (step.action === 'same') continue;
@@ -66,7 +84,10 @@ export function install({ dist, version, home, dryRun = false, force = false, ou
   }
   const skipped = plan.filter((s) => s.action === 'skip');
   const changed = plan.filter((s) => ['create', 'update', 'overwrite', 'remove'].includes(s.action));
+  const previous = readInstallManifest(home)?.mcp ?? {};
+  const mcpPlan = mcp ? planMcp({ home, env }) : [];
   if (dryRun) {
+    registerMcp(mcpPlan, { env, dryRun: true, previous, out });
     out.write(`dry run: ${changed.length} file(s) would change; nothing was written\n`);
     return 0;
   }
@@ -85,9 +106,11 @@ export function install({ dist, version, home, dryRun = false, force = false, ou
   const recorded = new Map((readInstallManifest(home)?.files ?? []).map((f) => [f.path, f.sha256]));
   const written = plan.filter((s) => ['create', 'update', 'overwrite', 'same'].includes(s.action));
   const held = plan.filter((s) => ['skip', 'keep'].includes(s.action) && recorded.has(s.path));
+  const owned = mcp ? registerMcp(mcpPlan, { env, previous, out }) : previous;
   const manifest = {
     version: skipped.length ? PARTIAL : version,
     files: [...written.map((s) => ({ path: s.path, sha256: sha256(s.content) })), ...held.map((s) => ({ path: s.path, sha256: recorded.get(s.path) }))],
+    mcp: { claude: owned.claude === true, codex: owned.codex === true },
   };
   mkdirSync(dirname(installManifestPath(home)), { recursive: true });
   writeFileSync(installManifestPath(home), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -97,12 +120,13 @@ export function install({ dist, version, home, dryRun = false, force = false, ou
 }
 
 /** @returns {number} exit status */
-export function uninstall({ home, dryRun = false, out = process.stdout }) {
+export function uninstall({ home, dryRun = false, env = process.env, out = process.stdout }) {
   const manifest = readInstallManifest(home);
   if (!manifest) {
     out.write('nothing to remove: eminzo has not installed anything here\n');
     return 0;
   }
+  unregisterMcp({ home, env, owned: manifest.mcp ?? {}, dryRun, out });
   for (const { path, sha256: hash } of manifest.files) {
     const current = readOrNull(join(home, path));
     if (current === null) continue;

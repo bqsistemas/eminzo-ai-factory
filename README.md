@@ -111,7 +111,7 @@ Every role is a plain file you can read with `eminzo show roles/<role>.md`, and 
 
 ```sh
 npm i -g @eminzo/factory   # the eminzo command
-eminzo install             # the eminzo-factory skill and the eight agents, for Claude Code and Codex
+eminzo install             # the eminzo-factory skill, the eight agents and the eminzo MCP server, for Claude Code and Codex
 eminzo doctor              # checks Node, git, gh, the PATH and the installed files
 ```
 
@@ -155,8 +155,8 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 
 | Command | What it does |
 |---|---|
-| `eminzo install [--dry-run] [--force]` | Installs the skill and agents for Claude Code and Codex in your home folder |
-| `eminzo uninstall [--dry-run]` | Removes what `install` wrote (files you changed are kept) |
+| `eminzo install [--dry-run] [--force] [--no-mcp]` | Installs the skill and agents for Claude Code and Codex in your home folder and registers the `eminzo` MCP server in both; it lists everything it adds |
+| `eminzo uninstall [--dry-run]` | Removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | Checks the machine and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | The same as `/eminzo-factory enable`, from a terminal |
 | `eminzo dashboard [port]` | Serves the dashboard of the current repository (port 8000 by default) |
