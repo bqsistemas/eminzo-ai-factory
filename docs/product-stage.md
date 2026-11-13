@@ -149,8 +149,8 @@ Hidden lines (HTML comments, found with a search on the issue body):
   as `#n` once they exist), the estimate shown when it was created (a range and how many similar finished jobs it
   rests on, or "too little history"), and `Part of #<brief issue>`. It is written in the brief's language and never
   mentions the factory label.
-- The brief contract refuses HTML comments, control and bidirectional characters, and `@login` mentions (GitHub would
-  notify people when the issues are created); the estimate in the marker is rounded to one decimal, or `none` when it
+- The brief contract refuses `<!--`, control, invisible and bidirectional characters, and `@login` mentions outside
+  backticks, fences and e-mail addresses (GitHub would notify people when the issues are created); the estimate in the marker is rounded to one decimal, or `none` when it
   does not fit.
 - `handoff_drafts` without `brief_issue` returns the brief issue draft. With `brief_issue` it returns one draft per
   deliverable in dependency order (`after` first), plus `estimate_input`. Pass `created` (`[{ id, issue }]`) so a
@@ -206,7 +206,14 @@ only the valid deliverable issues found are listed, with `progress.total` = how 
 **Pull requests.** gh's closing references decide which pull requests close a deliverable. On a `gh` without them, a
 search accepts only pull requests whose body has a closing keyword for that issue (`closes`, `fixes`, `resolves` and
 their forms), not a mere mention, and warns when it hits its 30 results cap. Facts lines are read only from pull requests
-whose head branch starts with `factory/`, from at most the first 256 KiB of the body.
+whose head branch starts with `factory/`, from at most the first 256 KiB of the body. A pull request from a fork
+(`isCrossRepository`, or an unknown origin) is never trusted, whatever its branch is called: it cannot make a
+deliverable `in-review` or `available` or give it an `actual_min`, and a warning names it. `available` uses the merged
+pull request of this repository only.
+
+**What the author check proves.** It proves who *created* an issue, not who last edited its body: a collaborator with
+write access can edit a deliverable issue's body, the marker included. Treat the initiative as read from a repository
+whose writers you trust; the checks stop strangers and lookalikes, not a colleague who edits an issue on purpose.
 
 - `actual_min` is the time from the job's start until it was ready for approval, from the LAST facts line of the pull
   request, measured as an estimate measures it (waiting for people not included).
@@ -268,8 +275,12 @@ These were chosen to keep moving and are pending the owner's confirmation:
   a creation date after the brief issue, the `Part of #<n>` line, a marker with the brief's approval hash and a known
   id. Anything else that carries our marker is a lookalike: a warning, never a status. The earliest valid issue wins a
   duplicate id.
-- A brief cannot contain HTML comments, control or bidirectional characters, or `@login` mentions (approval is
-  impossible until they are removed), and the draft builders refuse a text with an eminzo comment line of its own or an
+- A brief cannot contain `<!--` (a bare `-->` is prose and is fine), control, invisible (C1 controls, U+2028/2029,
+  soft hyphen, word joiner, zero-width characters, a byte order mark) or bidirectional characters, or `@login`
+  mentions (approval is impossible until they are removed). A mention is an `@` followed by a letter or digit unless a
+  letter, digit or underscore comes right before it (an e-mail address); text in backticks and in fenced blocks is not
+  scanned, because GitHub never notifies there. The only exempt comment lines are the brief's own marker and a final
+  line that matches the strict approval pattern exactly, and the draft builders refuse a text with an eminzo comment line of its own or an
   unclosed code block. Every brief-derived string in a deliverable issue is sanitized again (comment syntax stripped
   until stable, a zero-width space after `@`, control and bidi characters dropped).
 - Facts lines are trusted only from pull requests whose head branch starts with `factory/`; a pull request counts as

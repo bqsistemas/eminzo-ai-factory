@@ -28,7 +28,7 @@ const issue = (id, number, { state = 'OPEN', stateReason = null, labels = [], bo
   number, title: drafts[id].title, state, stateReason, body, labels: [...(noLabel ? [] : ['eminzo-deliverable']), ...labels].map((name) => ({ name })),
   url: `https://github.com/acme/shop/issues/${number}`, closedAt: state === 'CLOSED' ? '2026-11-14T10:00:00Z' : null, author: author ? { login: author } : null, createdAt,
 });
-const pr = (number, state, mergedAt, body = '', head = 'factory/161-pending') => ({ number, state, mergedAt, body, headRefName: head, url: `https://github.com/acme/shop/pull/${number}` });
+const pr = (number, state, mergedAt, body = '', head = 'factory/161-pending', cross = false) => ({ number, state, mergedAt, body, headRefName: head, isCrossRepository: cross, url: `https://github.com/acme/shop/pull/${number}` });
 const briefData = (body, over = {}) => ({ number: BRIEF_ISSUE, title: 'Brief: Pending filter', state: 'OPEN', body, labels: [{ name: 'eminzo-brief' }], url: `https://github.com/acme/shop/issues/${BRIEF_ISSUE}`, author: { login: 'ana-p' }, createdAt: BRIEF_AT, closedAt: null, ...over });
 
 function world(over = {}) {
@@ -230,6 +230,36 @@ test('trust in pull requests: closing keywords only, facts only from factory bra
   assert.equal(byId(huge).D3.actual_min, null, 'a facts line beyond 256 KiB is not read');
   const many = go(world({ noRefs: true, deliverables: [issue('D3', 43)], search: new Array(30).fill(0).map((_, i) => pr(200 + i, 'OPEN', null, 'unrelated')) }));
   assert.ok(many.warnings.includes('only the first 30 pull requests that mention #43 were searched.'));
+});
+
+test('a pull request from a fork is never trusted, even from a branch named factory/x', () => {
+  const fork = pr(300, 'OPEN', null, `Closes #44\n${facts('2026-11-13T10:00:00Z', '2026-11-13T10:05:00Z')}`, 'factory/evil', true);
+  const forkMerged = pr(301, 'MERGED', '2026-11-13T10:00:00Z', facts('2026-11-13T10:00:00Z', '2026-11-13T10:05:00Z'), 'factory/evil', true);
+  const open = go(world({ deliverables: [issue('D4', 44, { labels: ['factory'] })], closing: { 44: [{ number: 300 }] }, prs: { 300: fork } }));
+  assert.equal(byId(open).D4.status, 'in-factory', 'the fork PR cannot move it to in-review');
+  assert.equal(byId(open).D4.pr, null);
+  assert.ok(open.warnings.includes('pull request #300 comes from a fork and is ignored.'));
+  const done = go(world({ deliverables: [issue('D4', 44, { state: 'CLOSED', stateReason: 'COMPLETED' })], closing: { 44: [{ number: 301 }] }, prs: { 301: forkMerged } }));
+  assert.equal(byId(done).D4.status, 'closed', 'a fork merge cannot make it available');
+  assert.equal(byId(done).D4.actual_min, null);
+  const search = go(world({ noRefs: true, deliverables: [issue('D4', 44, { labels: ['factory'] })], search: [fork] }));
+  assert.equal(byId(search).D4.status, 'in-factory');
+  const missing = { ...pr(302, 'OPEN', null, '', 'factory/x') };
+  delete missing.isCrossRepository;
+  assert.equal(byId(go(world({ deliverables: [issue('D4', 44, { labels: ['factory'] })], closing: { 44: [{ number: 302 }] }, prs: { 302: missing } }))).D4.status, 'in-factory', 'an unknown origin is not trusted');
+});
+
+test('known numbers are deduplicated: no false duplicate warning', () => {
+  const w = world({ deliverables: [], extra: [issue('D5', 45)] });
+  const r = go(w, { known: [45, 45, 45] });
+  assert.equal(byId(r).D5.issue, 45);
+  assert.equal(r.warnings.some((x) => /more than one issue/.test(x)), false);
+  assert.equal(w.calls.filter((a) => a[0] === 'issue' && a[1] === 'view' && a[2] === '45' && a[4] !== 'closedByPullRequestsReferences').length, 1);
+});
+
+test('a call limit that cuts the head or the list read is a readable error', () => {
+  assert.throws(() => go(world(), { maxCalls: 0 }), /^Error: gh call limit reached \(0\): the initiative of issue #40 could not be read\.$/);
+  assert.throws(() => go(world(), { maxCalls: 1 }), /^Error: gh call limit reached \(1\): the initiative of issue #40 could not be read\.$/);
 });
 
 test('the last facts line of the pull request gives the actual time', () => {

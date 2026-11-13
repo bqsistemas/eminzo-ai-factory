@@ -35,23 +35,72 @@ const CRITERION = /^-\s*(BC-\d+):\s*(\S.*)$/;
 const DELIVERABLE = /^-\s*(D\d+):\s*(.+)$/;
 
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F]/;
-const BIDI = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
-// `@` after the start or a character that cannot be part of an e-mail address or a word, then a login: GitHub mentions it.
-const MENTION = /(?:^|[^A-Za-z0-9_.+\-@])@[A-Za-z0-9]/;
+const BIDI = /[؜‎‏‪-‮⁦-⁩]/;
+// C1 controls, line and paragraph separators, soft hyphen, word joiner, zero-width characters and a byte order mark.
+const INVISIBLE = /[\u0080-\u009F\u00AD\u200B-\u200D\u2028\u2029\u2060\uFEFF]/;
+// GitHub notifies for `@login` unless a letter, digit or underscore comes right before the `@` (an e-mail address).
+const MENTION = /(?:^|[^A-Za-z0-9_])@[A-Za-z0-9]/;
+const ISO_AT = '\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})';
+/** A whole line that is an approval marker; captures hash, login and date. brief-approval.js uses the same one. */
+export const APPROVAL_PATTERN = new RegExp(`^<!-- eminzo:approved sha256=([0-9a-f]{64}) by=([A-Za-z0-9][A-Za-z0-9-]{0,38}) at=(${ISO_AT}) -->$`);
+export const APPROVAL_ISO_AT = ISO_AT;
+
+/** The fence character a line opens or closes (up to 3 spaces in), or null. */
+function fenceChar(line) {
+  let i = 0;
+  while (i < line.length && line[i] === ' ') i += 1;
+  const ch = line[i];
+  return i <= 3 && (ch === '`' || ch === '~') && line[i + 1] === ch && line[i + 2] === ch ? ch : null;
+}
+
+/** The line with its inline code spans blanked: a backtick run closes at the next run of the same length (none: literal). */
+function withoutCodeSpans(line) {
+  const runs = [];
+  for (let i = 0; i < line.length; i += 1) {
+    if (line[i] !== '`') continue;
+    let end = i;
+    while (line[end] === '`') end += 1;
+    runs.push({ start: i, end });
+    i = end - 1;
+  }
+  if (!runs.length) return line;
+  const next = new Array(runs.length).fill(-1);
+  const lastOfLength = new Map();
+  for (let k = runs.length - 1; k >= 0; k -= 1) {
+    const length = runs[k].end - runs[k].start;
+    next[k] = lastOfLength.get(length) ?? -1;
+    lastOfLength.set(length, k);
+  }
+  let out = '';
+  let from = 0;
+  for (let k = 0; k < runs.length; k += 1) {
+    if (runs[k].start < from) continue;
+    if (next[k] === -1) continue;
+    out += `${line.slice(from, runs[k].start)} `;
+    from = runs[next[k]].end;
+  }
+  return out + line.slice(from);
+}
+
 const APPROVAL_OPEN = '<!-- eminzo:approved sha256=';
 
-/** What in the raw lines would misbehave once copied into an issue: comments, control or bidi characters, mentions. */
+/** What in the raw lines would misbehave once copied into an issue: comments, invisible, control or bidi characters, mentions. */
 function hazardsOf(lines) {
   let last = lines.length - 1;
   while (last >= 0 && lines[last].trim() === '') last -= 1;
   const found = new Set();
+  let fence = null;
   lines.forEach((line, i) => {
     const text = line.trim();
-    const own = text === BRIEF_MARKER || (i === last && line.startsWith(APPROVAL_OPEN) && line.length <= 200 && line.endsWith(' -->'));
-    if (!own && (line.includes('<!--') || line.includes('-->'))) found.add('comments');
+    const own = text === BRIEF_MARKER || (i === last && line.startsWith(APPROVAL_OPEN) && line.length <= 200 && APPROVAL_PATTERN.test(line.replace(/[ \t\r]+$/, '')));
+    if (!own && line.includes('<!--')) found.add('comments');
     if (CONTROL.test(line)) found.add('control');
     if (BIDI.test(line)) found.add('bidi');
-    if (!own && MENTION.test(line)) found.add('mentions');
+    if (INVISIBLE.test(line)) found.add('invisible');
+    const f = fenceChar(line);
+    if (fence) { if (f === fence) fence = null; return; }
+    if (f) { fence = f; return; }
+    if (!own && MENTION.test(withoutCodeSpans(line))) found.add('mentions');
   });
   return [...found];
 }
@@ -192,10 +241,11 @@ export function validateBrief(brief) {
   for (const raw of brief.badDeliverables) problems.push(`deliverable line is not "- Dn: title | size: s | risk: low | covers: BC-1": "${raw}"`);
   for (const heading of brief.unknown) problems.push(`unknown section "${heading}"`);
   const hazards = brief.hazards ?? [];
-  if (hazards.includes('comments')) problems.push('HTML comments are not allowed in a brief');
+  if (hazards.includes('comments')) problems.push('HTML comments are not allowed in a brief: remove "<!--"');
   if (hazards.includes('control')) problems.push('Control characters are not allowed in a brief');
   if (hazards.includes('bidi')) problems.push('Bidirectional control characters are not allowed in a brief');
-  if (hazards.includes('mentions')) problems.push("Write people's names without @: GitHub would notify them when the issues are created");
+  if (hazards.includes('invisible')) problems.push('Invisible characters are not allowed in a brief');
+  if (hazards.includes('mentions')) problems.push('Remove the @ before a name (or put it in backticks): GitHub would notify that person when the issues are created');
 
   const covered = new Set(brief.deliverables.flatMap((d) => d.covers));
   for (const c of brief.criteria) if (!covered.has(c.id)) warnings.push(`acceptance criterion ${c.id} is not covered by any deliverable`);

@@ -19,15 +19,14 @@
 // `can_create_issues` is true. Pure and linear in the size of the text: no I/O, no clock (the caller passes `at`).
 import { createHash } from 'node:crypto';
 
-import { parseBrief, validateBrief } from './brief.js';
+import { APPROVAL_ISO_AT as ISO_AT, APPROVAL_PATTERN, parseBrief, validateBrief } from './brief.js';
+
+export { APPROVAL_PATTERN };
 
 /** A line longer than this blocks approval (and is never scanned with a regular expression). */
 export const MAX_LINE = 10_000;
 const MAX_MARKER = 200;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
-const ISO_AT = '\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})';
-/** A whole line that is an approval marker; captures hash, login and date. */
-export const APPROVAL_PATTERN = new RegExp(`^<!-- eminzo:approved sha256=([0-9a-f]{64}) by=([A-Za-z0-9][A-Za-z0-9-]{0,38}) at=(${ISO_AT}) -->$`);
 
 const isoDate = (s) => typeof s === 'string' && s.length <= 40 && new RegExp(`^${ISO_AT}$`).test(s) && Number.isFinite(Date.parse(s));
 const isBlank = (line) => { for (let i = 0; i < line.length; i += 1) if (line[i] !== ' ' && line[i] !== '\t') return false; return true; };

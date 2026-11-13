@@ -114,7 +114,7 @@ const setUpInitiative = async () => {
     issues: { 40: { number: 40, title: brief.title, state: 'OPEN', body: brief.body, labels: [{ name: 'eminzo-brief' }], url: 'https://github.com/acme/shop/issues/40', author: { login: 'ana-p' }, createdAt: '2026-11-12T15:05:00Z', closedAt: null } },
     list: issues,
     closing: { 44: [{ number: 54 }], 45: [{ number: 55 }] },
-    prs: { 54: { number: 54, state: 'OPEN', mergedAt: null, url: 'https://github.com/acme/shop/pull/54', body: '', headRefName: 'factory/161-pending' }, 55: { number: 55, state: 'MERGED', mergedAt: '2026-11-11T09:00:00Z', url: 'https://github.com/acme/shop/pull/55', body: `Record\n${FACTS}\n`, headRefName: 'factory/161-pending' } },
+    prs: { 54: { number: 54, state: 'OPEN', mergedAt: null, url: 'https://github.com/acme/shop/pull/54', body: '', headRefName: 'factory/161-pending', isCrossRepository: false }, 55: { number: 55, state: 'MERGED', mergedAt: '2026-11-11T09:00:00Z', url: 'https://github.com/acme/shop/pull/55', body: `Record\n${FACTS}\n`, headRefName: 'factory/161-pending', isCrossRepository: false } },
   };
   writeFakeGh(data);
   return { data, drafts };

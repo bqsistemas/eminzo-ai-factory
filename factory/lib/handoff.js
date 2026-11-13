@@ -33,7 +33,7 @@ const CONTROL_OR_BIDI = /[\u0000-\u0008\u000B-\u001F\u007F\u061C\u200E\u200F\u20
 export function sanitize(value) {
   let s = String(value ?? '').replace(/[\t\r\n]+/g, ' ').replace(CONTROL_OR_BIDI, '');
   while (s.includes('<!--') || s.includes('-->')) s = s.split('<!--').join('').split('-->').join('');
-  return s.split('@').join('@\u200b');
+  return s.replace(/@(?!\u200b)/g, '@\u200b');
 }
 
 const cap = (s) => {
