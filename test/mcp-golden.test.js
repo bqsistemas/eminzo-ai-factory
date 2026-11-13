@@ -6,7 +6,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -50,9 +50,6 @@ const COMPLETE_BRIEF = [
   '## Entregas', '- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1',
 ].join('\n');
 
-// The same brief in English: briefs approved through the tool carry the marker, and any edit breaks it.
-const APPROVED = { text: null };
-
 const today = new Date().toISOString().slice(0, 10);
 const PRODUCT_MAP = [
   '# Mapa del producto: Tienda', '', `Revisado: ${today} por ana-p`, '',
@@ -81,6 +78,11 @@ const ask = async (name, args = {}) => {
   assert.ok(res.result, JSON.stringify(res));
   return res.result;
 };
+
+/** COMPLETE_BRIEF approved through the real tool, so no row depends on another having run. */
+const approved = async () => (await ask('approve_brief', { text: COMPLETE_BRIEF, by: 'ana-p' })).structuredContent.text;
+const writeMap = (text) => { mkdirSync(join(fixtureRoot, 'factory'), { recursive: true }); writeFileSync(join(fixtureRoot, 'factory/product-map.md'), text); };
+const removeMap = () => rmSync(join(fixtureRoot, 'factory/product-map.md'), { force: true });
 
 const QUESTIONS = [
   {
@@ -173,19 +175,18 @@ const QUESTIONS = [
       assert.match(d.text, /<!-- eminzo:approved sha256=[0-9a-f]{64} by=ana-p at=\d{4}-\d{2}-\d{2}T/);
       assert.equal(d.approval.by, 'ana-p');
       assert.equal(d.approval.at, d.read_at);
-      APPROVED.text = d.text;
     },
   },
   {
     question: '¿Puedo crear los issues del brief ya aprobado?',
     tool: 'brief_status',
-    argsFrom: () => ({ text: APPROVED.text }),
+    argsFrom: async () => ({ text: await approved() }),
     check: (d) => { assert.equal(d.state, 'approved'); assert.equal(d.can_create_issues, true); assert.equal(d.approval.by, 'ana-p'); },
   },
   {
     question: '¿Y si alguien cambió una línea después de aprobarlo?',
     tool: 'brief_status',
-    argsFrom: () => ({ text: APPROVED.text.replace('Menos tiempo.', 'Mucho menos tiempo.') }),
+    argsFrom: async () => ({ text: (await approved()).replace('Menos tiempo.', 'Mucho menos tiempo.') }),
     check: (d) => { assert.equal(d.state, 'changed'); assert.equal(d.can_create_issues, false); assert.match(d.reason, /^The brief changed after it was approved on \d{4}-\d{2}-\d{2}; approve it again\.$/); },
   },
   {
@@ -209,12 +210,13 @@ const QUESTIONS = [
   {
     question: '¿Cómo funciona hoy la app? (todavía no hay mapa)',
     tool: 'product_map',
+    setup: removeMap,
     check: (d) => { assert.equal(d.state, 'missing'); assert.deepEqual(d.areas, []); assert.match(d.summary, /\/eminzo-product map/); },
   },
   {
     question: '¿Cómo funciona hoy la app?',
     tool: 'product_map',
-    setup: () => { mkdirSync(join(fixtureRoot, 'factory'), { recursive: true }); writeFileSync(join(fixtureRoot, 'factory/product-map.md'), PRODUCT_MAP); },
+    setup: () => writeMap(PRODUCT_MAP),
     check: (d) => {
       assert.equal(d.state, 'reviewed');
       assert.deepEqual(d.reviewed, { date: today, by: 'ana-p' });
@@ -239,7 +241,7 @@ const QUESTIONS = [
 for (const { question, tool, args, argsFrom, setup, source = 'local', check } of QUESTIONS) {
   test(`golden: ${question} → ${tool}`, async () => {
     if (setup) setup();
-    const result = await ask(tool, argsFrom ? argsFrom() : args);
+    const result = await ask(tool, argsFrom ? await argsFrom() : args);
     assert.equal(result.isError, false, result.content?.[0]?.text);
     assert.equal(result.resultType, 'complete');
     const data = result.structuredContent;
@@ -256,6 +258,35 @@ test('golden: a job from another machine is not invented', async () => {
   const result = await ask('job_detail', { job: '999' });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /no job on this machine matches 999; jobs live only on the machine that ran them/);
+});
+
+for (const [name, args, message] of [
+  ['unknown argument', { text: COMPLETE_BRIEF, by: 'ana', extra: true }, /extra/],
+  ['bad login', { text: COMPLETE_BRIEF, by: 'ana bo' }, /by/],
+  ['missing login', { text: COMPLETE_BRIEF }, /by/],
+  ['incomplete brief', { text: '# Brief: x\n', by: 'ana' }, /^The brief cannot be approved yet: /],
+]) {
+  test(`golden: approve_brief refuses (${name}) with a sentence`, async () => {
+    const result = await ask('approve_brief', args);
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, message);
+  });
+}
+
+test('golden: product_map with a Reviewed date in the future is a draft, never reviewed', async () => {
+  writeMap(PRODUCT_MAP.replace(`Revisado: ${today}`, 'Revisado: 2999-01-01'));
+  const data = (await ask('product_map')).structuredContent;
+  assert.equal(data.state, 'draft');
+  assert.ok(data.problems.includes('the Reviewed date is in the future'));
+  removeMap();
+});
+
+test('golden: product_map with an oversize file says why it is missing', async () => {
+  writeMap(`# Mapa del producto: x\n${'- relleno [assumed]\n'.repeat(60_000)}`);
+  const data = (await ask('product_map')).structuredContent;
+  assert.equal(data.state, 'missing');
+  assert.match(data.summary, /larger than 1 MiB/);
+  removeMap();
 });
 
 test('golden: tools/list offers exactly the read-only tools', async () => {

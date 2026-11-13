@@ -2,7 +2,7 @@
 // Every result is wrapped the same way, so an answer can always say where its data came from and when:
 //   { source: "local" | "github", read_at, repo, summary, ...data }
 // Local means factory/jobs on this machine (gitignored, never shared); GitHub means what `gh` returned.
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
 
 import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
@@ -38,18 +38,37 @@ function languageOf(root) {
   }
 }
 
-/** A markdown file inside the repository, by a relative path; null when it is outside, missing or too large. */
-function repoMarkdown(root, rel) {
-  if (isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return null;
+const MAX_MARKDOWN = 1024 * 1024;
+
+/**
+ * A markdown file inside the repository, by a relative path: `{ text }`, or `{ reason }` (missing, outside the
+ * repository, larger than 1 MiB, or unreadable with the system's error code). Never throws; reads at most 1 MiB.
+ */
+function repoMarkdownResult(root, rel) {
+  if (isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return { reason: 'outside the repository' };
   const file = join(root, rel);
-  if (!existsSync(file)) return null;
-  const real = realpathSync(file);
-  const base = realpathSync(root);
-  const inside = relative(base, real);
-  if (!inside || inside.startsWith('..') || isAbsolute(inside)) return null;
-  if (!statSync(real).isFile() || statSync(real).size > 1024 * 1024) return null;
-  return readFileSync(real, 'utf8');
+  if (!existsSync(file)) return { reason: 'not found' };
+  let fd;
+  try {
+    const real = realpathSync(file);
+    const inside = relative(realpathSync(root), real);
+    if (!inside || inside.startsWith('..') || isAbsolute(inside)) return { reason: 'outside the repository' };
+    const stat = statSync(real);
+    if (!stat.isFile()) return { reason: 'not a file' };
+    if (stat.size > MAX_MARKDOWN) return { reason: 'larger than 1 MiB' };
+    fd = openSync(real, 'r');
+    const buffer = Buffer.alloc(MAX_MARKDOWN + 1);
+    const read = readSync(fd, buffer, 0, buffer.length, 0);
+    return read > MAX_MARKDOWN ? { reason: 'larger than 1 MiB' } : { text: buffer.toString('utf8', 0, read) };
+  } catch (err) {
+    return { reason: `could not be read (${err?.code ?? 'error'})` };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
+
+/** A markdown file inside the repository, by a relative path; null when it is outside, missing, unreadable or too large. */
+const repoMarkdown = (root, rel) => repoMarkdownResult(root, rel).text ?? null;
 
 /** The brief's parts that other tools take as arguments: its deliverables in estimate_work's shape. */
 const briefSummary = (parsed, check) => ({
@@ -327,12 +346,14 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
       title: 'Product map',
       description: 'How the product works today, in functional language, from the reviewed map the team keeps in factory/product-map.md: areas (things a person can do or see) with statements, each labelled confirmed or assumed, who reviewed the map and when. `state` is missing, draft, reviewed or stale (not reviewed for 90 days). Use it first when asked how something works today; call confirmed what the map confirms and assumed everything else. When the map is missing, say how to create it. Reads one file; never changes anything.',
       answer: (_, c) => {
-        const text = repoMarkdown(c.root, MAP_PATH);
-        const parsed = text === null ? null : parseProductMap(text);
+        const { text, reason } = repoMarkdownResult(c.root, MAP_PATH);
+        const parsed = text === undefined ? null : parseProductMap(text);
         const status = mapStatus(parsed, { now: c.now });
+        const unusable = reason && reason !== 'not found' ? reason : null;
         return {
-          summary: status.summary, state: status.state, age_days: status.age_days, path: MAP_PATH,
-          title: parsed?.title ?? null, reviewed: parsed?.reviewed ?? null, areas: parsed?.areas ?? [], problems: parsed?.problems ?? [],
+          summary: unusable ? `The product map cannot be used: ${MAP_PATH} is ${unusable.replace(/^could not be read/, 'unreadable')}. ${status.summary}` : status.summary,
+          state: status.state, age_days: status.age_days, path: MAP_PATH, reason: unusable,
+          title: parsed?.title ?? null, reviewed: parsed?.reviewed ?? null, areas: parsed?.areas ?? [], problems: [...(parsed?.problems ?? []), ...status.problems],
         };
       },
     }, ctx),
