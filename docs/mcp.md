@@ -53,7 +53,7 @@ runs it as `factory/bin/mcp`.
 | `brief_template` | an empty brief in the repository's language | `title` |
 | `import_egm_brief` | an Elephant-Goldfish `concepts_brief.md` turned into a brief draft, with what is still missing (reads a file inside the repository only) | `path` (default `concepts_brief.md`) |
 | `brief_review_prompts` | the prompt for each context-free reader of a brief; the host starts the readers | `text` |
-| `merge_brief_review` | the readers' answers as one list of findings, blockers first | `answers` |
+| `merge_brief_review` | the readers' answers as one list of findings, blockers first (each reader reports at most 3; near-duplicates across readers are merged) | `answers` |
 | `brief_status` | where a brief stands: `draft`, `ready`, `approved` or `changed`, and whether issues may be created from it (`can_create_issues`, with the `reason` when not); the gate every issue creator must pass | `text` |
 | `approve_brief` | the brief with an approval marker bound to its content, `by` and the time; refuses a brief that is not complete. It stores nothing and is called only after the person explicitly approved. The marker detects later edits but does not authenticate: `by` is self-declared, and GitHub is the record of who approved | `text`, `by` (a GitHub login) |
 | `product_map` | how the product works today, from the reviewed map in `factory/product-map.md`: areas with statements labelled `confirmed` or `assumed`, who reviewed it and when, and its state (`missing`, `draft`, `reviewed`, `stale` after 90 days). Reads that one file; a file larger than 1 MiB counts as missing | none |
