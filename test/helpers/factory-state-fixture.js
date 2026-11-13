@@ -84,6 +84,28 @@ export const QUEUE_ISSUES = [
   { number: 180, title: 'Dark mode <script>alert(1)</script>', assignees: [], labels: [{ name: 'factory' }, { name: 'factory:xs' }], createdAt: '2026-11-09T10:00:00Z', url: 'https://github.com/acme/shop/issues/180' },
 ];
 
+/**
+ * The fake gh: lists QUEUE_ISSUES as the open `factory` issues and, for an initiative, answers from `fake-gh.json` next
+ * to it ({ issues: {n: issue}, list: [issues a search returns], closing: {n: [{number}]}, prs: {n: pr} }). Anything
+ * else fails, and so does any command that is not a read.
+ */
+const FAKE_GH = `#!${process.execPath}
+const fs = require('fs');
+const path = require('path');
+const a = process.argv.slice(2);
+const data = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'fake-gh.json'), 'utf8')); } catch { return {}; } })();
+const out = (v) => process.stdout.write(typeof v === 'string' ? v : JSON.stringify(v));
+const fail = (m) => { process.stderr.write(m + '\\n'); process.exit(1); };
+const reads = ['issue list', 'issue view', 'pr list', 'pr view'];
+if (!reads.includes(a[0] + ' ' + a[1])) fail('fake gh: not a read: ' + a.join(' '));
+if (a[0] === 'issue' && a[1] === 'list' && a.includes('--search')) out(data.list || []);
+else if (a[0] === 'issue' && a[1] === 'list') out(__QUEUE__);
+else if (a[0] === 'issue' && a[1] === 'view' && a[4] === 'closedByPullRequestsReferences') out({ closedByPullRequestsReferences: (data.closing || {})[a[2]] || [] });
+else if (a[0] === 'issue' && a[1] === 'view') { (data.issues || {})[a[2]] ? out(data.issues[a[2]]) : fail('Could not resolve to an issue with the number of ' + a[2]); }
+else if (a[0] === 'pr' && a[1] === 'view') { (data.prs || {})[a[2]] ? out(data.prs[a[2]]) : fail('no pull request found for ' + a[2]); }
+else fail('fake gh: unsupported ' + a.join(' '));
+`;
+
 /** The team config of the fixture repository. */
 export const FIXTURE_CONFIG = {
   repo: 'https://github.com/acme/shop', base: 'origin/main', concurrency: 2, max_rounds: 3, auto_merge: false, spec_review: ['high'], language: 'es',
@@ -113,7 +135,7 @@ export function stateFixture({ now = Date.now(), jobs = fixtureJobs(now), config
   mkdirSync(join(root, 'factory/jobs/171-broken'), { recursive: true });
   writeFileSync(join(root, 'factory/jobs/171-broken/job.json'), '{ not json');
   const gh = join(root, 'fake-gh');
-  writeFileSync(gh, `#!${process.execPath}\nconst a = process.argv.slice(2);\nif (a[0] === 'issue' && a[1] === 'list') { process.stdout.write(${JSON.stringify(JSON.stringify(QUEUE_ISSUES))}); } else { process.stderr.write('fake gh: unsupported ' + a.join(' ') + '\\n'); process.exit(1); }\n`);
+  writeFileSync(gh, FAKE_GH.replace('__QUEUE__', () => JSON.stringify(JSON.stringify(QUEUE_ISSUES))));
   chmodSync(gh, 0o755);
   return { root, gh };
 }

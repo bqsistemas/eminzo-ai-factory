@@ -154,6 +154,40 @@ Hidden lines (HTML comments, found with a search on the issue body):
 Code: `factory/lib/handoff.js` (`briefIssueDraft`, `deliverableIssueDrafts`, `parseBriefIssueMarker`,
 `parseDeliverableMarker`, `briefIssueValidity`).
 
+## Following an initiative
+
+An initiative is the brief issue plus the deliverable issues cut from it, found by their hidden markers. `initiative`
+(`{ issue }`, the brief issue number) computes its state from GitHub alone, with read-only `gh` calls: `issue view` of
+the brief issue, `issue list --search '"eminzo:deliverable v1 brief=<n> " in:body' --state all` for its deliverables,
+and, for each, the pull requests that close it (`closedByPullRequestsReferences`, or a search for `#<n>` on a `gh` that
+lacks it), reading the `factory:facts` line of the pull request. Nothing is stored or written.
+
+| Status | Meaning |
+|---|---|
+| `not-created` | A deliverable of the brief that has no issue yet |
+| `waiting-tech-lead` | Open, without the `factory` label: the tech lead has not accepted it |
+| `in-factory` | Open, with the `factory` label, no pull request yet |
+| `in-review` | A pull request is open |
+| `available` | The pull request is merged, or the issue was closed as completed |
+| `closed` | The issue was closed without being completed |
+
+- The result has `brief` (issue, title, url, `approvedBy`, `approvedAt` and `valid`: the issue body, minus its hidden
+  line, still passes the approval check and the hidden line points at that approval), `deliverables` (id, issue,
+  title, url, status, `factory`, the ids it waits for, the pull request, the estimate shown at creation and
+  `actual_min`), `progress` (`done` = available, `total` = deliverables of the brief), `estimate_vs_actual`
+  and `warnings`.
+- `actual_min` is the time from the job's start until it was ready for approval, from the facts line, measured as an
+  estimate measures it (waiting for people not included).
+- `estimate_vs_actual` sums the estimate and the actual time over the same deliverables: those that have both.
+  `counted` says how many were compared out of how many exist, and `complete` is true only when every deliverable
+  is available and has both, so a partial comparison is never presented as the whole.
+- Issues that carry a marker for this brief but another approval hash, or an id the brief does not have, are
+  ignored with a warning; when two issues claim one deliverable the lowest number counts, with a warning. A marker
+  inside a code fence is never read.
+- If `gh` fails, or the issue is not a brief issue, the tool answers with a sentence a person can act on.
+
+Code: `factory/lib/state/initiative.js`.
+
 ## The functional map
 
 "How does it work today" needs a source better than a guess. The team keeps a reviewed markdown file,
@@ -197,6 +231,8 @@ These were chosen to keep moving and are pending the owner's confirmation:
   first 12 hex of the approval hash and the estimate shown at creation.
 - An initiative is the brief issue plus its deliverable issues, found by those markers; its state is computed from
   GitHub only.
+- `available` means a merged pull request or an issue closed as completed. The estimate is compared with the actual
+  time only over deliverables that have both.
 
 ## The context-free review
 
@@ -222,9 +258,10 @@ Code: `factory/lib/brief-review.js`.
 
 The stage uses these `eminzo mcp` tools, all read-only (see [eminzo mcp](mcp.md)): `discovery_methods`,
 `brief_template`, `check_brief`, `import_egm_brief`, `brief_review_prompts`, `merge_brief_review`,
-`brief_status`, `approve_brief`, `handoff_drafts`, `product_map` and `estimate_work`.
+`brief_status`, `approve_brief`, `handoff_drafts`, `initiative`, `product_map` and `estimate_work`.
 
 ## Not yet
 
-- Creating the issues from the desktop, with the person's confirmation (the engine side, the drafts, is done).
+- Creating the issues from the desktop, with the person's confirmation (the engine side, the drafts and the
+  following of an initiative, is done).
 - Ask Eminzo on Codex in the desktop: its non-interactive flags are not verified yet.

@@ -13,6 +13,7 @@ import { briefIssueDraft, deliverableIssueDrafts } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { diagnosis } from '../state/diagnosis.js';
+import { initiative } from '../state/initiative.js';
 import { estimateWork } from '../state/estimate.js';
 import { factoryQueue } from '../state/github.js';
 import { historyRecords } from '../state/history.js';
@@ -392,6 +393,14 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
         const drafts = deliverableIssueDrafts(args.text, { briefIssue: args.brief_issue, estimates, issues: Object.fromEntries((args.created ?? []).map((x) => [x.id, x.issue])) });
         return { summary: `${drafts.length} deliverable issue${drafts.length === 1 ? '' : 's'} ready to create in this order; this creates nothing, the Eminzo desktop creates them after the person confirms.`, kind: 'deliverables', drafts, estimate_input: estimateInput };
       },
+    }, ctx),
+    tool({
+      name: 'initiative',
+      title: 'Follow an initiative',
+      description: 'How an initiative is going, read from GitHub only: the brief issue (who approved it and when, and whether its text still matches that approval) and the deliverable issues cut from it, each with its status (not-created, waiting-tech-lead, in-factory, in-review, available or closed), its pull request, the estimate shown when it was created and the time it actually took until ready for approval, plus progress and the estimate against the actual time. Give the number of the brief issue. Reads with gh; fails with a clear message when gh is missing or not signed in, or when the issue is not an Eminzo brief issue. Never changes anything.',
+      source: 'github',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['issue'], properties: { issue: { type: 'integer', minimum: 1, maximum: 999_999_999, description: 'The number of the brief issue.' } } },
+      answer: (args, c) => initiative(c.root, { issue: args.issue, gh: c.gh, runner: c.runner }),
     }, ctx),
     tool({
       name: 'factory_config',
