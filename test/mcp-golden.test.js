@@ -81,6 +81,11 @@ const ask = async (name, args = {}) => {
 
 /** COMPLETE_BRIEF approved through the real tool, so no row depends on another having run. */
 const approved = async () => (await ask('approve_brief', { text: COMPLETE_BRIEF, by: 'ana-p' })).structuredContent.text;
+/** A Spanish brief with two deliverables, the first waiting for the second, approved through the real tool. */
+const approvedTwo = async () => {
+  const text = COMPLETE_BRIEF.replace('- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1', '- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1 | after: D2\n- D2: Guardar el filtro | size: m | risk: medium | covers: BC-1');
+  return (await ask('approve_brief', { text, by: 'ana-p' })).structuredContent.text;
+};
 const writeMap = (text) => { mkdirSync(join(fixtureRoot, 'factory'), { recursive: true }); writeFileSync(join(fixtureRoot, 'factory/product-map.md'), text); };
 const removeMap = () => rmSync(join(fixtureRoot, 'factory/product-map.md'), { force: true });
 
@@ -226,6 +231,47 @@ const QUESTIONS = [
     },
   },
   {
+    question: 'Prepara los issues del brief aprobado (todavía no existe el issue del brief)',
+    tool: 'handoff_drafts',
+    argsFrom: async () => ({ text: await approved() }),
+    check: (d) => {
+      assert.equal(d.kind, 'brief');
+      assert.deepEqual(d.draft.labels, ['eminzo-brief']);
+      assert.equal(d.draft.title, 'Brief: Filtro de sugerencias');
+      assert.match(d.draft.body, /<!-- eminzo:approved sha256=[0-9a-f]{64} by=ana-p at=/);
+      assert.match(d.draft.body, /\n<!-- eminzo:brief-issue v1 hash=[0-9a-f]{64} -->\n$/);
+      assert.equal(JSON.stringify(d).includes('"factory"'), false, 'no factory label anywhere');
+      assert.equal(d.drafts, undefined);
+      assert.deepEqual(d.estimate_input, [{ title: 'Ver solo lo pendiente', size: 's', risk: 'low' }]);
+      assert.match(d.summary, /creates nothing/);
+    },
+  },
+  {
+    question: 'Prepara los issues de las entregas, en orden de dependencia (el issue del brief es el 40)',
+    tool: 'handoff_drafts',
+    argsFrom: async () => ({ text: await approvedTwo(), brief_issue: 40, created: [{ id: 'D2', issue: 41 }] }),
+    check: (d) => {
+      assert.equal(d.kind, 'deliverables');
+      assert.deepEqual(d.drafts.map((x) => x.id), ['D2', 'D1']);
+      assert.deepEqual(d.drafts.map((x) => x.after), [[], ['D2']]);
+      for (const x of d.drafts) {
+        assert.deepEqual(x.labels, ['eminzo-deliverable']);
+        assert.match(x.body, /Parte de #40/);
+        assert.match(x.body, /<!-- eminzo:deliverable v1 brief=40 id=D[12] hash=[0-9a-f]{12} est=none -->/);
+        assert.doesNotMatch(x.body, /factory/i);
+      }
+      assert.match(d.drafts[1].body, /#41 \(D2: Guardar el filtro\)/);
+      assert.match(d.drafts[0].body, /Hay muy poco historial para estimar\./);
+      assert.equal(d.estimate_input.length, 2);
+    },
+  },
+  {
+    question: '¿Puedo crear los issues de un brief todavía sin aprobar?',
+    tool: 'handoff_drafts',
+    args: { text: COMPLETE_BRIEF },
+    refused: /^The brief is not approved yet\.$/,
+  },
+  {
     question: '¿Cómo está configurada la fábrica?',
     tool: 'factory_config',
     check: (d) => { assert.equal(d.config.concurrency, 2); assert.equal(d.config.auto_merge, false); assert.equal(Object.hasOwn(d.config, 'prices'), false); },
@@ -238,10 +284,15 @@ const QUESTIONS = [
   },
 ];
 
-for (const { question, tool, args, argsFrom, setup, source = 'local', check } of QUESTIONS) {
+for (const { question, tool, args, argsFrom, setup, source = 'local', check, refused } of QUESTIONS) {
   test(`golden: ${question} → ${tool}`, async () => {
     if (setup) setup();
     const result = await ask(tool, argsFrom ? await argsFrom() : args);
+    if (refused) {
+      assert.equal(result.isError, true);
+      assert.match(result.content[0].text, refused);
+      return;
+    }
     assert.equal(result.isError, false, result.content?.[0]?.text);
     assert.equal(result.resultType, 'complete');
     const data = result.structuredContent;
@@ -273,6 +324,15 @@ for (const [name, args, message] of [
   });
 }
 
+test('golden: handoff_drafts refuses a changed brief with the gate reason, and unknown arguments', async () => {
+  const changed = await ask('handoff_drafts', { text: (await approved()).replace('Menos tiempo.', 'Mucho menos tiempo.'), brief_issue: 40 });
+  assert.equal(changed.isError, true);
+  assert.match(changed.content[0].text, /^The brief changed after it was approved on \d{4}-\d{2}-\d{2}; approve it again\.$/);
+  const extra = await ask('handoff_drafts', { text: await approved(), labels: ['factory'] });
+  assert.equal(extra.isError, true);
+  assert.match(extra.content[0].text, /labels/);
+});
+
 test('golden: product_map with a Reviewed date in the future is a draft, never reviewed', async () => {
   writeMap(PRODUCT_MAP.replace(`Revisado: ${today}`, 'Revisado: 2999-01-01'));
   const data = (await ask('product_map')).structuredContent;
@@ -292,7 +352,7 @@ test('golden: product_map with an oversize file says why it is missing', async (
 test('golden: tools/list offers exactly the read-only tools', async () => {
   const res = await client.call('tools/list', {});
   const tools = res.result.tools;
-  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'product_map', 'factory_config', 'factory_queue']);
+  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'product_map', 'handoff_drafts', 'factory_config', 'factory_queue']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true, `${t.name} is read-only`);
     assert.equal(t.annotations.destructiveHint, false);
