@@ -24,7 +24,7 @@ Or pass it to one Claude Code session (claude --mcp-config <file>) with:
 
 Tools: factory_overview, list_jobs, job_detail, waiting_on_people, changes_since, period_summary, factory_diagnosis,
 estimate_work, discovery_methods, check_brief, brief_template, import_egm_brief, brief_review_prompts,
-merge_brief_review, brief_status, approve_brief, factory_config, factory_queue. None of them writes anything.
+merge_brief_review, brief_status, approve_brief, product_map, factory_config, factory_queue. None of them writes anything.
 `;
 
 /** The server for the repository at `root`. Exported for tests and for hosts that run it in-process. */

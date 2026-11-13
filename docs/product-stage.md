@@ -97,6 +97,31 @@ example "The brief changed after it was approved on 2026-11-12; approve it again
 
 Code: `factory/lib/brief-approval.js` (`canonicalBrief`, `briefHash`, `approveBrief`, `briefStatus`).
 
+## The functional map
+
+"How does it work today" needs a source better than a guess. The team keeps a reviewed markdown file,
+`factory/product-map.md`, that describes the product in functional language (no code terms):
+
+```markdown
+# Product map: <title>
+Reviewed: 2026-11-12 by ana-p
+
+## <area: something a person can do or see>
+- <statement> [confirmed]
+- <statement> [assumed] (source: <path or screen>)
+```
+
+- `confirmed` means a person checked it in the product; `assumed` means it was read or inferred and nobody has
+  checked it. The labels and the word `source` stay in English; the title prefix and the review word follow the
+  repository's language (`Product map`/`Reviewed`, `Mapa del producto`/`Revisado`, `Mapa do produto`/`Revisado`).
+- `product_map` reads the file (fixed path, inside the repository, up to 1 MiB) and returns its areas, who reviewed
+  it, and a state: `missing`, `draft` (never reviewed, empty or malformed), `reviewed`, or `stale` (reviewed more than
+  90 days ago; the threshold is `STALE_AFTER_DAYS`). When the map is missing it says how to create it.
+- Nothing in the engine writes the file. The `eminzo-product` skill, in a person's own terminal session, drafts it
+  with `/eminzo-product map`, shows it in full, and writes it only after the person agrees.
+
+Code: `factory/lib/product-map.js` (`parseProductMap`, `productMapTemplate`, `mapStatus`).
+
 ## Decided by default, to confirm
 
 These were chosen to keep moving and are pending the owner's confirmation:
@@ -104,6 +129,8 @@ These were chosen to keep moving and are pending the owner's confirmation:
 - Approval is a marker inside the brief bound to a content hash (no separate approval store).
 - `by` must look like a GitHub login (`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`); `at` is an ISO 8601 date and time.
 - A brief with two approval markers is never trusted (`changed`).
+- The functional map is a committed markdown file at a fixed path, `factory/product-map.md`, reviewed by a person
+  and stale after 90 days.
 
 ## The context-free review
 
@@ -129,7 +156,7 @@ Code: `factory/lib/brief-review.js`.
 
 The stage uses these `eminzo mcp` tools, all read-only (see [eminzo mcp](mcp.md)): `discovery_methods`,
 `brief_template`, `check_brief`, `import_egm_brief`, `brief_review_prompts`, `merge_brief_review`,
-`brief_status`, `approve_brief` and `estimate_work`.
+`brief_status`, `approve_brief`, `product_map` and `estimate_work`.
 
 ## Not yet
 
