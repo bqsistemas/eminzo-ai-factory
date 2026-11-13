@@ -241,15 +241,17 @@ function read(ctx, number, known, warnings, maxCalls) {
     prs = prs.filter((p) => !p.fork);
     const open = prs.filter((p) => p.state === 'OPEN').sort((a, b) => b.number - a.number)[0] ?? null;
     const merged = prs.filter((p) => p.merged).sort((a, b) => b.number - a.number)[0] ?? null;
-    const pr = open ?? merged;
     const status = statusOf(hit.issue, { open, merged }, factory, warnings);
+    // An available deliverable is described by the earliest merged pull request that closes it, never by an open one.
+    const firstMerged = prs.filter((p) => p.merged).sort((a, b) => (time(a.mergedAt) ?? Infinity) - (time(b.mergedAt) ?? Infinity) || a.number - b.number)[0] ?? null;
+    const pr = status === 'available' ? firstMerged : open ?? merged;
     return {
       id, issue: hit.issue.number, title: safeTitle(hit.issue.title), url: typeof hit.issue.url === 'string' ? hit.issue.url : null,
       status, factory, after,
       pr: pr ? { number: pr.number, url: pr.url, state: pr.state, merged: pr.merged } : null,
       estimate: hit.marker.est, actual_min: actualOf(pr),
       // when it became available: the merge of the pull request that closes it, else the time the issue was closed
-      available_at: status === 'available' ? isoOf(merged?.mergedAt) ?? isoOf(hit.issue.closedAt) : null,
+      available_at: status === 'available' ? isoOf(pr?.mergedAt) ?? isoOf(hit.issue.closedAt) : null,
       cost_usd: costOf(pr),
     };
   };

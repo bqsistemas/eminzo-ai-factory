@@ -427,7 +427,7 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
       },
       answer: (args, c) => {
         const data = initiative(c.root, { issue: args.issue, known: args.known ?? [], gh: c.gh, runner: c.runner });
-        const report = initiativeReport(data, { from: args.from, to: args.to, language: data.language ?? languageOf(c.root), includeCost: args.include_cost === true, includeLinks: args.include_links === true, now: c.now });
+        const report = initiativeReport(data, { from: args.from, to: args.to, language: ['en', 'es', 'pt'].includes(data.language) ? data.language : languageOf(c.root), includeCost: args.include_cost === true, includeLinks: args.include_links === true, now: c.now });
         return { summary: report.status, ...report };
       },
     }, ctx),

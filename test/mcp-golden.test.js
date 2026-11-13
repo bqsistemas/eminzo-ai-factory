@@ -120,7 +120,7 @@ const setUpInitiative = async () => {
   return { data, drafts };
 };
 const REPORT_ES = [
-  'Borrador — revisar antes de compartir.', '', '# Informe semanal de avance: Filtro de sugerencias', '', 'Período: 2026-11-05 a 2026-11-12', '',
+  'Borrador — revisar antes de compartir.', '', '# Informe semanal de avance: Filtro de sugerencias', '', 'Período: 2026-11-05 a 2026-11-12 (UTC)', '',
   '1 de 6 partes está disponible; 2 están en curso; 1 está esperando una decisión; 1 no empezó; 1 se cerró sin entregarse.', '',
   '## Entregado en este período', '', '- **Entrega 5** — disponible desde 2026-11-11.', '',
   '## En curso', '', '- **Entrega 4** — en revisión.', '- **Entrega 3** — en construcción.', '',

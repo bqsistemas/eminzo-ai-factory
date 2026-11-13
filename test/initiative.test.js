@@ -310,3 +310,20 @@ test('the language of the approved brief is reported, null when its text is not 
   const edited = go(world({ brief: briefData(`${briefIssueDraft(approved).body}\nedited`) }));
   assert.equal(edited.language, null);
 });
+
+test('an available deliverable takes its time, cost and date from the merged trusted pull request, never from an open one', () => {
+  const w = world({
+    deliverables: [issue('D2', 42, { state: 'CLOSED', stateReason: 'COMPLETED' })], closing: { 42: [{ number: 150 }, { number: 142 }, { number: 143 }] },
+    prs: {
+      142: pr(142, 'MERGED', '2026-11-13T09:00:00Z', facts('2026-11-12T16:00:00Z', '2026-11-12T17:30:00Z', 1.5)),
+      143: pr(143, 'MERGED', '2026-11-14T09:00:00Z', facts('2026-11-12T16:00:00Z', '2026-11-12T20:00:00Z', 7)),
+      150: pr(150, 'OPEN', null, facts('2026-11-12T16:00:00Z', '2026-11-12T16:10:00Z', 9)),
+    },
+  });
+  const d = byId(go(w)).D2;
+  assert.equal(d.status, 'available');
+  assert.equal(d.pr.number, 142, 'the earliest merged one');
+  assert.equal(d.actual_min, 90);
+  assert.equal(d.cost_usd, 1.5);
+  assert.equal(d.available_at, '2026-11-13T09:00:00.000Z');
+});

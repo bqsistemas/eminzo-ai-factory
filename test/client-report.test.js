@@ -1,6 +1,9 @@
 // The weekly client report of an initiative: a pure function of the initiative's data, in functional language.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import { initiativeReport } from '../factory/lib/client-report.js';
 
@@ -30,7 +33,7 @@ test('a report is a draft with a title, a period of ISO dates and a one-line sta
   assert.equal(lines[0], 'Borrador — revisar antes de compartir.');
   assert.equal(lines[2], '# Informe semanal de avance: Filtro de sugerencias');
   assert.equal(r.title, 'Informe semanal de avance: Filtro de sugerencias');
-  assert.equal(lines[4], 'Período: 2026-11-05 a 2026-11-12', 'the last 7 days ending `to`');
+  assert.equal(lines[4], 'Período: 2026-11-05 a 2026-11-11 (UTC)', 'by default the 7 whole UTC days before today');
   assert.equal(lines[6], '3 de 8 partes están disponibles; 2 están en curso; 1 está esperando una decisión; 1 no empezó; 1 se cerró sin entregarse.');
   assert.equal(r.status, lines[6]);
 });
@@ -118,7 +121,7 @@ test('links go at the end, as plain URLs, only when asked', () => {
 
 test('the period: from and to are validated, a day alone means that whole day, and the same input gives the same text', () => {
   assert.equal(make({}, { from: '2026-11-11T00:00:00Z' }).sections[0].items.length, 1, 'only what became available since `from`');
-  assert.match(make({}, { from: '2026-11-01', to: '2026-11-10' }).markdown, /^Período: 2026-11-01 a 2026-11-10$/m);
+  assert.match(make({}, { from: '2026-11-01', to: '2026-11-10' }).markdown, /^Período: 2026-11-01 a 2026-11-10 \(UTC\)$/m);
   assert.deepEqual(make({}, { from: '2026-11-01', to: '2026-11-10' }).sections[0].items, ['**Ordenar por fecha** — disponible desde 2026-11-10.'], 'the day of `to` is included');
   for (const bad of [{ from: 'ayer' }, { to: 'x' }, { from: '2026-02-31' }, { from: '2026-11-12', to: '2026-11-01' }, { from: '2026-11-12T12:00:00Z', to: '2026-11-12T12:00:00Z' }, { from: 5 }, { to: NOW }]) {
     assert.throws(() => make({}, bad), /from|to|date/i, JSON.stringify(bad));
@@ -136,4 +139,70 @@ test('a part delivered with no known date is named in the notes, not listed as d
 test('the report refuses data that is not an initiative', () => {
   assert.throws(() => initiativeReport(null, { now: NOW }), /initiative/);
   assert.throws(() => initiativeReport({ deliverables: 'x' }, { now: NOW }), /initiative/);
+});
+
+test('the default window is the 7 whole UTC days before today, and a `to` in the future is capped at now', () => {
+  const r = make({}, { now: Date.parse('2026-11-12T00:00:01Z') });
+  assert.deepEqual(r.period, { from: '2026-11-05', to: '2026-11-11' });
+  assert.equal(make({}, { now: Date.parse('2026-11-12T23:59:59Z') }).markdown, make({}, { now: Date.parse('2026-11-12T00:00:00Z') }).markdown, 'the same UTC day gives the same text');
+  assert.deepEqual(make({}, { to: '2099-01-01' }).period, { from: '2026-11-05', to: '2026-11-12' }, 'capped at now: 2026-11-12');
+  for (const language of ['en', 'es', 'pt']) assert.match(make({ language }).markdown, /^.+: 2026-11-05 .+ 2026-11-11 \(UTC\)$/m, language);
+});
+
+test('a date-time needs a zone, so the same input gives the same report in every time zone', async () => {
+  assert.throws(() => make({}, { from: '2026-11-11T00:00:00' }), /from .*zone|Z/i);
+  assert.throws(() => make({}, { to: '2026-11-11T10:00' }), /to .*zone|Z/i);
+  const script = "import('./factory/lib/client-report.js').then(({ initiativeReport }) => { const d = JSON.parse(process.argv[1]); let out = initiativeReport(d, { from: '2026-11-11T00:00:00Z', to: '2026-11-12T23:30:00-05:00', now: Date.parse('2026-11-13T12:00:00Z') }).markdown; try { initiativeReport(d, { from: '2026-11-11T00:00:00' }); out += 'NO ERROR'; } catch (e) { out += e.message; } console.log(out); })";
+  const outputs = [];
+  for (const TZ of ['Asia/Tokyo', 'America/Lima']) {
+    const { stdout } = await promisify(execFile)(process.execPath, ['-e', script, JSON.stringify(data())], { cwd: fileURLToPath(new URL('..', import.meta.url)), env: { ...process.env, TZ } });
+    outputs.push(stdout);
+  }
+  assert.equal(outputs[0], outputs[1]);
+  assert.doesNotMatch(outputs[0], /NO ERROR/);
+  assert.match(outputs[0], /disponible desde 2026-11-11/);
+});
+
+test('titles are plain: no links, no domains, no references', () => {
+  const dirty = [
+    part('D1', 41, 'Visit https://evil.com now', 'in-review'), part('D2', 42, 'See www.evil.com', 'in-factory'),
+    part('D3', 43, 'evil.com', 'waiting-tech-lead'), part('D4', 44, 'Fix #123 and docs.example.io today', 'not-created'),
+    part('D5', 45, 'Ver http://x.y/z?q=1', 'available', { available_at: '2026-11-11T09:00:00.000Z' }),
+  ];
+  const r = make({ deliverables: dirty, language: 'en', brief: { title: 'Brief: Tour evil.com #9' }, warnings: ['D3 was not found yet (x).'] }, { includeLinks: true, includeCost: true });
+  const body = r.markdown.split('\n').filter((l) => !/^- .+: https:\/\/github\.com\//.test(l)).join('\n');
+  assert.doesNotMatch(body, /evil|www\.|example|https?:|#\d|x\.y/);
+  assert.match(r.markdown, /\*\*Visit now\*\*/);
+  assert.match(r.markdown, /\*\*Fix and today\*\*/);
+  assert.match(r.markdown, /^# Weekly progress report: Tour$/m);
+  assert.match(r.markdown, /\*\*—\*\*/, 'a title that was only a domain becomes a dash');
+  const links = r.sections.at(-1).items;
+  assert.ok(links.every((x) => !/evil|#\d/.test(x.split(': https://')[0])), 'link labels are plain too');
+});
+
+test('the cost heading says what it covers, and the amount is always USD with a dot', () => {
+  assert.deepEqual(['en', 'es', 'pt'].map((language) => make({ language }, { includeCost: true }).sections.find((x) => x.id === 'cost').heading), ['Cost of the parts delivered', 'Costo de las partes entregadas', 'Custo das partes entregues']);
+  for (const language of ['en', 'es', 'pt']) assert.match(make({ language }, { includeCost: true }).sections.find((x) => x.id === 'cost').items[0], /USD 1\.50/);
+});
+
+test('long lists are capped: 5 dependencies per part, 20 items per section, with "+N more"', () => {
+  const many = Array.from({ length: 25 }, (_, i) => part(`D${i + 10}`, null, `Futura ${i + 10}`, 'not-created'));
+  const deps = Array.from({ length: 7 }, (_, i) => part(`D${i + 100}`, 200 + i, `Previa ${i}`, 'in-review'));
+  const r = make({ deliverables: [...many, ...deps, part('D99', null, 'Final', 'not-created', { after: deps.map((d) => d.id) })] });
+  const next = r.sections.find((x) => x.id === 'next').items;
+  assert.equal(next.length, 21);
+  assert.equal(next.at(-1), '+6 más');
+  const progress = r.sections.find((x) => x.id === 'in-progress').items;
+  assert.equal(progress.length, 7);
+  const final = make({ deliverables: [...deps, part('D99', null, 'Final', 'not-created', { after: deps.map((d) => d.id) })], language: 'en' }).sections.find((x) => x.id === 'next').items[0];
+  assert.equal(final, '**Final** — starts after **Previa 0**, **Previa 1**, **Previa 2**, **Previa 3**, **Previa 4**, +2 more.');
+  assert.equal(make({ deliverables: many, language: 'pt' }).sections.find((x) => x.id === 'next').items.at(-1), '+5 mais');
+});
+
+test('no jargon in the plain report in any language, with cost on', () => {
+  for (const language of ['en', 'es', 'pt']) {
+    const r = make({ language }, { includeCost: true });
+    assert.doesNotMatch(r.markdown, BANNED, language);
+    assert.doesNotMatch(r.markdown, BANNED_PR, language);
+  }
 });
