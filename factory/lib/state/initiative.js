@@ -20,7 +20,7 @@ export const MAX_PR_BODY = 256 * 1024;
 const MAX_KNOWN = 50;
 const ISSUE_FIELDS = 'number,title,state,body,labels,url,author,createdAt,closedAt';
 const LIST_FIELDS = 'number,title,state,body,labels,url,closedAt,author,createdAt';
-const PR_FIELDS = 'number,url,state,mergedAt,body,headRefName';
+const PR_FIELDS = 'number,url,state,mergedAt,body,headRefName,isCrossRepository';
 /** Only pull requests from the factory's own branches are trusted for their facts line. */
 const FACTORY_BRANCH = 'factory/';
 const KEYWORDS = new Set(['close', 'closes', 'closed', 'fix', 'fixes', 'fixed', 'resolve', 'resolves', 'resolved']);
@@ -69,6 +69,8 @@ function closes(text, n) {
 const prView = (p) => ({
   number: p.number, url: typeof p.url === 'string' ? p.url : null, state: String(p.state ?? '').toUpperCase(),
   merged: String(p.state).toUpperCase() === 'MERGED' || typeof p.mergedAt === 'string', body: p.body, head: typeof p.headRefName === 'string' ? p.headRefName : '',
+  // a pull request is trusted only when gh says it is from this repository: a fork can name its branch anything
+  fork: p.isCrossRepository !== false,
 });
 
 /** The pull requests that close an issue: through gh's closing references, or, on an older gh, by searching for a closing keyword. */
@@ -146,7 +148,7 @@ function deliverableIssues(ctx, known) {
   if (list.length >= LIST_LIMIT) ctx.warnings.push(`only the first ${LIST_LIMIT} issues that mention this brief were read.`);
   const candidates = list.filter((i) => isInt(i?.number));
   const seen = new Set(candidates.map((i) => i.number));
-  for (const n of known.filter((k) => !seen.has(k))) {
+  for (const n of [...new Set(known)].filter((k) => !seen.has(k))) {
     seen.add(n);
     try {
       const fields = ISSUE_FIELDS.replace('closedAt', 'closedAt,stateReason');
@@ -191,6 +193,15 @@ export function initiative(root, { issue: number, known = [], gh = process.env.F
   if (!Array.isArray(known) || known.length > MAX_KNOWN || !known.every(isInt)) throw new Error(`known must be a list of up to ${MAX_KNOWN} issue numbers.`);
   const warnings = [];
   const ctx = { root, gh, runner, maxCalls, calls: 0, warnings, number, limited: false };
+  try {
+    return read(ctx, number, known, warnings, maxCalls);
+  } catch (err) {
+    if (err instanceof LimitReached) throw new Error(`gh call limit reached (${maxCalls}): the initiative of issue #${number} could not be read.`);
+    throw err;
+  }
+}
+
+function read(ctx, number, known, warnings, maxCalls) {
   const head = ghRead(ctx, ['issue', 'view', String(number), '--json', ISSUE_FIELDS], `issue #${number}`);
   if (!head || typeof head !== 'object') throw new Error(`could not read issue #${number} from GitHub: gh did not return an issue`);
   if (!names(head.labels).includes(BRIEF_ISSUE_LABEL)) throw new Error(`Issue #${number} is not an Eminzo brief issue: it does not have the ${BRIEF_ISSUE_LABEL} label.`);
@@ -217,6 +228,8 @@ export function initiative(root, { issue: number, known = [], gh = process.env.F
       if (!(err instanceof LimitReached)) throw err;
       ctx.limited = true;
     }
+    for (const p of prs.filter((x) => x.fork)) warnings.push(`pull request #${p.number} comes from a fork and is ignored.`);
+    prs = prs.filter((p) => !p.fork);
     const open = prs.filter((p) => p.state === 'OPEN').sort((a, b) => b.number - a.number)[0] ?? null;
     const merged = prs.filter((p) => p.merged).sort((a, b) => b.number - a.number)[0] ?? null;
     const pr = open ?? merged;

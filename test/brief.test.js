@@ -152,23 +152,46 @@ const problemsOf = (text) => validateBrief(parseBrief(text)).problems;
 
 test('a brief cannot carry HTML comments, but its own marker and an approval line at the end are fine', () => {
   assert.deepEqual(problemsOf(renderBrief(BRIEF, 'es')), []);
-  const approval = `${renderBrief(BRIEF, 'es')}\n<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana-p at=2026-11-12T15:00:00Z -->\n`;
-  assert.deepEqual(parseBrief(approval).hazards, [], 'the approval line at the end is not a comment');
-  for (const bad of ['hola <!-- factory:facts {} --> chau', 'abre <!-- y no cierra', 'cierra --> solo', '<!-- eminzo:deliverable v1 brief=1 id=D1 hash=aaaaaaaaaaaa est=none -->']) {
-    assert.ok(problemsOf(withText(bad)).includes('HTML comments are not allowed in a brief'), bad);
+  const line = `<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana-p at=2026-11-12T15:00:00Z -->`;
+  assert.deepEqual(parseBrief(`${renderBrief(BRIEF, 'es')}\n${line}\n`).hazards, [], 'the approval line at the end is not a comment');
+  for (const bad of ['hola <!-- factory:facts {} --> chau', 'abre <!-- y no cierra', '<!-- eminzo:deliverable v1 brief=1 id=D1 hash=aaaaaaaaaaaa est=none -->']) {
+    assert.ok(problemsOf(withText(bad)).includes('HTML comments are not allowed in a brief: remove "<!--"'), bad);
   }
-  const inside = `${renderBrief(BRIEF, 'es')}\n<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana-p at=2026-11-12T15:00:00Z -->\ntexto después\n`;
-  assert.ok(problemsOf(inside).includes('HTML comments are not allowed in a brief'), 'an approval line that is not the last one is a comment');
+  assert.ok(problemsOf(`${renderBrief(BRIEF, 'es')}\n${line}\ntexto después\n`).some((p) => p.startsWith('HTML comments')), 'an approval line that is not the last one is a comment');
+  // the exemption is the whole strict approval line, nothing smuggled after it
+  for (const crafted of [`${line} @octocat`, `${line} -->`, `${line}<!-- x`, line.replace('by=ana-p', 'by=@octocat')]) {
+    const hazards = parseBrief(`${renderBrief(BRIEF, 'es')}\n${crafted}\n`).hazards;
+    assert.ok(hazards.includes('comments'), crafted);
+  }
 });
 
-test('a brief cannot carry control or bidirectional characters', () => {
+test('a bare --> is prose, not a comment: arrows and diagrams are fine', () => {
+  for (const ok of ['pasos: A --> B --> C', 'cierra --> solo']) assert.deepEqual(problemsOf(withText(ok)), [], ok);
+  assert.deepEqual(problemsOf(withText('```mermaid\nA --> B\n```')), []);
+});
+
+test('a brief cannot carry control, invisible or bidirectional characters', () => {
   for (const bad of ['a\u0000b', 'a\u001bb', 'a\rb', 'a\u007fb']) assert.ok(problemsOf(withText(bad)).includes('Control characters are not allowed in a brief'), JSON.stringify(bad));
-  for (const bad of ['a‮b', 'a⁦b', 'a⁩b', 'a‏b']) assert.ok(problemsOf(withText(bad)).includes('Bidirectional control characters are not allowed in a brief'), JSON.stringify(bad));
-  assert.deepEqual(problemsOf(withText('tab\tok y acentos áéí ñ')), []);
+  for (const bad of ['a\u202eb', 'a\u2066b', 'a\u2069b', 'a\u200fb']) assert.ok(problemsOf(withText(bad)).includes('Bidirectional control characters are not allowed in a brief'), JSON.stringify(bad));
+  for (const bad of ['a\u0085b', 'a\u0080b', 'a\u009fb', 'a\u2028b', 'a\u2029b', 'a\u00adb', 'a\u2060b', 'a\u200bb', 'a\u200cb', 'a\u200db', 'a\ufeffb']) {
+    assert.ok(problemsOf(withText(bad)).includes('Invisible characters are not allowed in a brief'), JSON.stringify(bad));
+  }
+  assert.deepEqual(problemsOf(withText('tab\tok y acentos áéí ñ 🙂')), []);
 });
 
-test('a brief cannot mention people with @, because GitHub would notify them', () => {
-  const message = "Write people's names without @: GitHub would notify them when the issues are created";
-  for (const bad of ['pregunta a @ana-p', '@ana al inicio', 'con (@equipo) y más', 'a @org/team']) assert.ok(problemsOf(withText(bad)).includes(message), bad);
-  for (const ok of ['escribir a ana@example.com', 'solo una @ suelta', 'precio a@b']) assert.deepEqual(problemsOf(withText(ok)), [], ok);
+test('a brief cannot mention people with @, except in e-mail addresses, code spans and code blocks', () => {
+  const message = 'Remove the @ before a name (or put it in backticks): GitHub would notify that person when the issues are created';
+  for (const bad of ['pregunta a @ana-p', '@ana al inicio', 'con (@equipo) y más', 'a @org/team', 'foo-@octocat', 'x.@user', '+@user', 'a/@user', '`code` y @ana', 'abre ` y @ana', '``a` @ana']) {
+    assert.ok(problemsOf(withText(bad)).includes(message), bad);
+  }
+  for (const ok of ['escribir a ana@example.com', 'solo una @ suelta', 'precio a@b', 'usar `@angular/core` aquí', 'usar ``@a ` @b`` aquí', '```\n@angular/core\n```', '~~~\nfoo @bar\n~~~']) {
+    assert.deepEqual(problemsOf(withText(ok)), [], ok);
+  }
+  assert.ok(problemsOf(withText('```\n@a\n```\nluego @ana')).includes(message), 'after the block it applies again');
+});
+
+test('the mention scan is linear on hostile lines', () => {
+  const started = Date.now();
+  parseBrief(`# Brief: x\n## Problema\n${'`` ` '.repeat(100_000)}\n${'a@'.repeat(100_000)}\n`);
+  assert.ok(Date.now() - started < 2000);
 });

@@ -116,6 +116,7 @@ test('brief-derived strings are made inert: no comment, no mention, no control o
   assert.equal(sanitize('ping @ana-p'), 'ping @\u200bana-p');
   assert.equal(sanitize('a\u0000b\u202ec\u2066d\r\ne\tf'), 'abcd e f');
   assert.equal(sanitize(null), '');
+  for (const text of ['ping @ana-p', 'a@@b', '@', 'x <!-- y']) assert.equal(sanitize(sanitize(text)), sanitize(text), `idempotent: ${text}`);
 });
 
 test('text with an eminzo comment line or an unclosed code block is refused before any draft', () => {
