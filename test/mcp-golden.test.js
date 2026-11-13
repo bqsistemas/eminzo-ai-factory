@@ -6,7 +6,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -53,9 +53,18 @@ const COMPLETE_BRIEF = [
 // The same brief in English: briefs approved through the tool carry the marker, and any edit breaks it.
 const APPROVED = { text: null };
 
+const today = new Date().toISOString().slice(0, 10);
+const PRODUCT_MAP = [
+  '# Mapa del producto: Tienda', '', `Revisado: ${today} por ana-p`, '',
+  '## Comprar un producto', '- Una visita agrega un producto al carrito sin cuenta. [confirmed]', '- Se puede pagar con tarjeta de regalo. [assumed] (source: pantalla de pago)',
+  '', '## Seguir un pedido', '- El comprador ve el estado del pedido en su cuenta. [confirmed]', '',
+].join('\n');
+
 let client;
+let fixtureRoot;
 before(async () => {
   const fixture = stateFixture();
+  fixtureRoot = fixture.root;
   writeFileSync(join(fixture.root, 'concepts_brief.md'), EGM_BRIEF);
   client = connect(fixture);
   const init = await client.call('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'golden', version: '1' } });
@@ -198,6 +207,23 @@ const QUESTIONS = [
     check: (d) => { assert.equal(d.findings.length, 1); assert.equal(d.findings[0].id, 'F1'); },
   },
   {
+    question: '¿Cómo funciona hoy la app? (todavía no hay mapa)',
+    tool: 'product_map',
+    check: (d) => { assert.equal(d.state, 'missing'); assert.deepEqual(d.areas, []); assert.match(d.summary, /\/eminzo-product map/); },
+  },
+  {
+    question: '¿Cómo funciona hoy la app?',
+    tool: 'product_map',
+    setup: () => { mkdirSync(join(fixtureRoot, 'factory'), { recursive: true }); writeFileSync(join(fixtureRoot, 'factory/product-map.md'), PRODUCT_MAP); },
+    check: (d) => {
+      assert.equal(d.state, 'reviewed');
+      assert.deepEqual(d.reviewed, { date: today, by: 'ana-p' });
+      assert.deepEqual(d.areas.map((a) => a.name), ['Comprar un producto', 'Seguir un pedido']);
+      assert.deepEqual(d.areas[0].items[1], { text: 'Se puede pagar con tarjeta de regalo.', basis: 'assumed', source: 'pantalla de pago' });
+      assert.deepEqual(d.problems, []);
+    },
+  },
+  {
     question: '¿Cómo está configurada la fábrica?',
     tool: 'factory_config',
     check: (d) => { assert.equal(d.config.concurrency, 2); assert.equal(d.config.auto_merge, false); assert.equal(Object.hasOwn(d.config, 'prices'), false); },
@@ -210,8 +236,9 @@ const QUESTIONS = [
   },
 ];
 
-for (const { question, tool, args, argsFrom, source = 'local', check } of QUESTIONS) {
+for (const { question, tool, args, argsFrom, setup, source = 'local', check } of QUESTIONS) {
   test(`golden: ${question} → ${tool}`, async () => {
+    if (setup) setup();
     const result = await ask(tool, argsFrom ? argsFrom() : args);
     assert.equal(result.isError, false, result.content?.[0]?.text);
     assert.equal(result.resultType, 'complete');
@@ -234,7 +261,7 @@ test('golden: a job from another machine is not invented', async () => {
 test('golden: tools/list offers exactly the read-only tools', async () => {
   const res = await client.call('tools/list', {});
   const tools = res.result.tools;
-  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'factory_config', 'factory_queue']);
+  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'product_map', 'factory_config', 'factory_queue']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true, `${t.name} is read-only`);
     assert.equal(t.annotations.destructiveHint, false);

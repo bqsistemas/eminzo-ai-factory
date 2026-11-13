@@ -9,6 +9,7 @@ import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
 import { approveBrief, briefStatus } from '../brief-approval.js';
 import { fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../brief.js';
 import { discoveryMethods } from '../discovery.js';
+import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { diagnosis } from '../state/diagnosis.js';
 import { estimateWork } from '../state/estimate.js';
@@ -319,6 +320,20 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
         const text = approveBrief(args.text, { by: args.by, at });
         const status = briefStatus(text);
         return { summary: `Approved by ${args.by}. Any later edit needs a new approval.`, text, approval: status.approval };
+      },
+    }, ctx),
+    tool({
+      name: 'product_map',
+      title: 'Product map',
+      description: 'How the product works today, in functional language, from the reviewed map the team keeps in factory/product-map.md: areas (things a person can do or see) with statements, each labelled confirmed or assumed, who reviewed the map and when. `state` is missing, draft, reviewed or stale (not reviewed for 90 days). Use it first when asked how something works today; call confirmed what the map confirms and assumed everything else. When the map is missing, say how to create it. Reads one file; never changes anything.',
+      answer: (_, c) => {
+        const text = repoMarkdown(c.root, MAP_PATH);
+        const parsed = text === null ? null : parseProductMap(text);
+        const status = mapStatus(parsed, { now: c.now });
+        return {
+          summary: status.summary, state: status.state, age_days: status.age_days, path: MAP_PATH,
+          title: parsed?.title ?? null, reviewed: parsed?.reviewed ?? null, areas: parsed?.areas ?? [], problems: parsed?.problems ?? [],
+        };
       },
     }, ctx),
     tool({
