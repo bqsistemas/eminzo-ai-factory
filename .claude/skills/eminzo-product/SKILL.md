@@ -36,6 +36,8 @@ The `eminzo` MCP server gives you read-only tools. Use them instead of guessing:
 | `import_egm_brief` | turn an Elephant-Goldfish `concepts_brief.md` into a brief draft |
 | `brief_review_prompts`, `merge_brief_review` | run and read the context-free review |
 | `estimate_work` | estimate the deliverables from the team's finished jobs |
+| `handoff_drafts` | show the texts of the issues that will be cut from the approved brief (it creates nothing) |
+| `initiative` | follow a brief issue and its deliverables on GitHub: status, progress, estimate against the actual time |
 | `factory_overview`, `waiting_on_people`, `changes_since`, `list_jobs`, `job_detail` | answer "how is it going" in functional words |
 
 You may read the repository (Read, Glob, Grep) to describe how the product works today. If the eminzo tools are
@@ -104,20 +106,29 @@ stores nothing; give the person the returned text to keep.
 ### 5. Deliverables
 
 - Propose deliverables that each deliver value on their own and say which criteria they cover (`covers: BC-1`).
-  Set each one's size (xs, s, m, l) and risk (low, medium, high) the way the factory's intake does: read
-  `eminzo show roles/intake.md` for its criteria and apply them, without inventing others.
+- Size and risk: read `eminzo show roles/intake.md` at run time and apply its criteria to each deliverable (size xs,
+  s, m or l; risk low, medium or high), the way the factory's intake would; do not copy those rules into the brief
+  or the conversation and do not invent others: if they change, the answer changes.
 - Call `check_brief`, then `estimate_work` with its `estimate_input` (ask before setting `include_github`, which
-  reads merged pull requests). Present each deliverable's range, the number of similar jobs, the wait after
-  approval and the warnings. When a deliverable is large, or its risk usually ends waiting for a person's
-  decision, propose a different split and estimate it too.
+  reads merged pull requests). Present each deliverable's range, its base (how many similar finished jobs), the wait
+  after approval and the warnings. An estimate is a range with its base, never a date.
+- When a deliverable's size is l or its risk is high, propose one or two other ways to split it, call
+  `estimate_work` for each option, and show the options side by side (range, base and warnings) so the person chooses.
+  Do not choose for them. If they choose a split, change the brief; it then needs a new review and approval.
 - Hand-off: call `brief_status` first and refuse to create issues, or to propose creating them, unless
-  `can_create_issues` is true; when it is not, quote its `reason` and go back to the step it points to. Issues are
-  created from the approved brief in the Eminzo desktop, with the person's confirmation (never by this skill), and a
-  tech lead labels the ones that enter the factory. Give the person the final brief to keep.
+  `can_create_issues` is true; when it is not, quote its `reason` and go back to the step it points to. Once the brief is approved,
+  tell the person that the Eminzo desktop creates the issues after the person confirms (never by this skill, which
+  never adds a label either), and that the tech lead adds the `factory` label to the deliverables they accept, which is
+  what puts them in the factory. To show what will be created, call `handoff_drafts` (it creates nothing). Give the
+  person the final brief to keep.
 
 ## status and estimate
 
-- `/eminzo-product status`: answer how things are going with the factory tools, in functional words.
+- `/eminzo-product status`: answer how things are going with the factory tools, in functional words. When the person
+  gives a brief issue (or says which initiative), call `initiative` with its number and report in functional words,
+  with its basis: how many deliverables are available out of the total, which ones are in review, in the factory,
+  waiting for the tech lead, closed without being delivered or not created yet, and the estimate against the time
+  it took when there is one (a range, never a date). Say when the brief issue no longer matches its approval.
 - `/eminzo-product estimate`: ask for the deliverables (or take them from the current brief) and run step 5's
   estimate only.
 - `/eminzo-product map`: draft or update the product map (see "map").
