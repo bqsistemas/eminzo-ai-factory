@@ -10,7 +10,7 @@
 // through the gate (`briefStatus(...).can_create_issues`). Markers are read in linear time: only unindented lines
 // outside code fences, one per body, every field checked with a small anchored pattern.
 import { fenceOf, briefStatus, canonicalBrief, stripEnd } from './brief-approval.js';
-import { parseBrief } from './brief.js';
+import { BRIEF_MARKER, parseBrief } from './brief.js';
 import { humanMinutes } from './state/estimate.js';
 
 export const BRIEF_ISSUE_LABEL = 'eminzo-brief';
@@ -23,8 +23,21 @@ const BRIEF_ISSUE_PREFIX = '<!-- eminzo:brief-issue ';
 const DELIVERABLE_PREFIX = '<!-- eminzo:deliverable ';
 const CLOSE = ' -->';
 
+const CONTROL_OR_BIDI = /[\u0000-\u0008\u000B-\u001F\u007F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+
+/**
+ * A brief-derived string made inert for an issue: one line, no HTML comment syntax (removed until none is left, so
+ * `<<!---->!--` cannot rebuild one), no control or bidirectional character, and a zero-width space after every `@` so
+ * GitHub does not notify anyone. The brief contract already refuses these; this is the second wall.
+ */
+export function sanitize(value) {
+  let s = String(value ?? '').replace(/[\t\r\n]+/g, ' ').replace(CONTROL_OR_BIDI, '');
+  while (s.includes('<!--') || s.includes('-->')) s = s.split('<!--').join('').split('-->').join('');
+  return s.split('@').join('@\u200b');
+}
+
 const cap = (s) => {
-  const chars = [...String(s ?? '').replace(/\s+/g, ' ').trim()];
+  const chars = [...sanitize(s).replace(/\s+/g, ' ').trim()];
   return chars.length <= MAX_TITLE ? chars.join('') : `${chars.slice(0, MAX_TITLE - 1).join('')}…`;
 };
 
@@ -103,13 +116,35 @@ export function briefIssueValidity(body) {
   const status = briefStatus(all.filter((_, i) => i !== found[0].index).join('\n'));
   if (!status.can_create_issues) return { valid: false, reason: status.reason, approval: status.approval, marker };
   if (status.approval.hash !== marker.hash) return { valid: false, reason: 'The issue points at another approval than the one it contains.', approval: status.approval, marker };
-  return { valid: true, reason: status.reason, approval: status.approval, marker };
+  return { valid: true, reason: status.reason, approval: status.approval, marker, text: all.filter((_, i) => i !== found[0].index).join('\n') };
+}
+
+/**
+ * Why a brief text must not become an issue even though it is approved, or null: a comment line of ours that is not its own
+ * approval line (it could forge a marker), or a code block that is never closed (it would swallow the hidden line).
+ */
+export function inertProblem(briefText) {
+  const lines = String(briefText ?? '').split('\n').map(stripEnd);
+  let last = lines.length - 1;
+  while (last >= 0 && lines[last].trim() === '') last -= 1;
+  let fence = null;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.includes('<!-- eminzo:') && line.trim() !== BRIEF_MARKER && !(i === last && line.startsWith('<!-- eminzo:approved '))) {
+      return 'The brief has an eminzo comment line that is not its own approval line; remove it.';
+    }
+    const f = fenceOf(line);
+    if (fence) { if (f === fence) fence = null; } else if (f) fence = f;
+  }
+  return fence ? 'The brief has a code block that is never closed; close it first.' : null;
 }
 
 /** The gate: the approval of a brief, or an Error with the gate's own sentence. */
 function approvedOrThrow(briefText) {
   const status = briefStatus(briefText);
   if (!status.can_create_issues) throw new Error(status.reason);
+  const problem = inertProblem(briefText);
+  if (problem) throw new Error(problem);
   return status;
 }
 
@@ -121,10 +156,18 @@ function checkBody(body) {
 /** The issue for an approved brief: `{ title, body, labels }`. Throws a readable Error unless the gate is open. */
 export function briefIssueDraft(briefText) {
   const status = approvedOrThrow(briefText);
-  const parsed = parseBrief(canonicalBrief(briefText));
   const body = `${String(briefText).replace(/^﻿/, '').trimEnd()}\n\n${BRIEF_ISSUE_PREFIX}v1 hash=${status.approval.hash}${CLOSE}\n`;
-  return { title: cap(`Brief: ${parsed.title}`), body: checkBody(body), labels: [BRIEF_ISSUE_LABEL] };
+  if (!briefIssueValidity(body).valid) throw new Error('The brief issue text does not pass its own approval check; approve the brief again.');
+  return { title: briefTitleOf(briefText), body: checkBody(body), labels: [BRIEF_ISSUE_LABEL] };
 }
+
+/** The title the brief issue is created with (the title is not covered by the approval, so readers compare it). */
+export function briefTitleOf(briefText) {
+  return cap(`Brief: ${parseBrief(canonicalBrief(briefText)).title}`);
+}
+
+/** The lines a deliverable issue carries to say which brief issue it belongs to, in every language of the template. */
+export const partOfLines = (n) => [...new Set(Object.values(TEXT).map((t) => t.part(n)))];
 
 const TEXT = {
   en: { delivers: 'What it delivers', covers: 'Acceptance criteria it covers', size: (s, r) => `Size: ${s}. Risk: ${r}.`, waits: 'Waits for', none: 'Nothing: it can start right away.', estimate: 'Estimate when this issue was created', part: (n) => `Part of #${n}`,
@@ -134,6 +177,16 @@ const TEXT = {
   pt: { delivers: 'O que entrega', covers: 'Critérios de aceitação que cobre', size: (s, r) => `Tamanho: ${s}. Risco: ${r}.`, waits: 'Espera por', none: 'Nada: pode começar já.', estimate: 'Estimativa ao criar esta issue', part: (n) => `Parte de #${n}`,
     range: (lo, hi, n) => `Entre ${lo} e ${hi} até ficar pronta para aprovação, com base em ${n} trabalho${n === 1 ? '' : 's'} parecido${n === 1 ? '' : 's'} já concluído${n === 1 ? '' : 's'}. É uma faixa, não uma data.`, few: 'Pouco histórico para estimar.' },
 };
+
+/** An estimate rounded to one decimal so the marker always parses back; null when it does not fit (then: no estimate). */
+function fitEstimate(est) {
+  if (!est) return null;
+  const round = (n) => Math.round(Number(n) * 10) / 10;
+  const low = round(est.low_min);
+  const high = round(est.high_min);
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high < low || high > 9_999_999) return null;
+  return { low_min: low, high_min: high, jobs: est.jobs };
+}
 
 /** Deliverables so that every `after` comes before the ones that wait for it; ties keep the brief's order. */
 function dependencyOrder(deliverables) {
@@ -166,12 +219,12 @@ export function deliverableIssueDrafts(briefText, { briefIssue, estimates = {}, 
   const criteria = new Map(parsed.criteria.map((c) => [c.id, c.text]));
   const hash = status.approval.hash.slice(0, 12);
   return dependencyOrder(parsed.deliverables).map((d) => {
-    const est = estimates[d.id] ?? null;
-    const waits = d.after.map((id) => `- ${Number.isInteger(issues[id]) ? `#${issues[id]} (${id}: ${byId.get(id).title})` : `${id}: ${byId.get(id).title}`}`);
+    const est = fitEstimate(estimates[d.id]);
+    const waits = d.after.map((id) => `- ${Number.isInteger(issues[id]) ? `#${issues[id]} (${id}: ${sanitize(byId.get(id).title)})` : `${id}: ${sanitize(byId.get(id).title)}`}`);
     const marker = `${DELIVERABLE_PREFIX}v1 brief=${briefIssue} id=${d.id} hash=${hash} est=${est ? `${est.low_min}-${est.high_min}` : 'none'}${CLOSE}`;
     const body = [
-      `## ${t.delivers}`, '', `> ${d.title}`, '',
-      `## ${t.covers}`, '', ...d.covers.map((c) => `> ${c}: ${criteria.get(c)}`), '',
+      `## ${t.delivers}`, '', `> ${sanitize(d.title)}`, '',
+      `## ${t.covers}`, '', ...d.covers.map((c) => `> ${c}: ${sanitize(criteria.get(c))}`), '',
       t.size(d.size, d.risk), '',
       `## ${t.waits}`, '', ...(waits.length ? waits : [t.none]), '',
       `## ${t.estimate}`, '', est ? t.range(humanMinutes(est.low_min), humanMinutes(est.high_min), est.jobs) : t.few, '',

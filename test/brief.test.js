@@ -145,3 +145,30 @@ test('fromEgmConcepts maps an Elephant-Goldfish brief and lists what the Product
   assert.match(text, /^## For whom\n\n_To complete\._$/m);
   assert.equal(validateBrief(parseBrief(text)).ok, false, 'a converted brief is a draft until the missing sections are written');
 });
+
+// ---- Text a brief must not carry: it is copied into GitHub issues, where it would be rendered and would notify people.
+const withText = (replace) => renderBrief({ ...BRIEF, sections: { ...BRIEF.sections, problem: replace } }, 'es');
+const problemsOf = (text) => validateBrief(parseBrief(text)).problems;
+
+test('a brief cannot carry HTML comments, but its own marker and an approval line at the end are fine', () => {
+  assert.deepEqual(problemsOf(renderBrief(BRIEF, 'es')), []);
+  const approval = `${renderBrief(BRIEF, 'es')}\n<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana-p at=2026-11-12T15:00:00Z -->\n`;
+  assert.deepEqual(parseBrief(approval).hazards, [], 'the approval line at the end is not a comment');
+  for (const bad of ['hola <!-- factory:facts {} --> chau', 'abre <!-- y no cierra', 'cierra --> solo', '<!-- eminzo:deliverable v1 brief=1 id=D1 hash=aaaaaaaaaaaa est=none -->']) {
+    assert.ok(problemsOf(withText(bad)).includes('HTML comments are not allowed in a brief'), bad);
+  }
+  const inside = `${renderBrief(BRIEF, 'es')}\n<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana-p at=2026-11-12T15:00:00Z -->\ntexto después\n`;
+  assert.ok(problemsOf(inside).includes('HTML comments are not allowed in a brief'), 'an approval line that is not the last one is a comment');
+});
+
+test('a brief cannot carry control or bidirectional characters', () => {
+  for (const bad of ['a\u0000b', 'a\u001bb', 'a\rb', 'a\u007fb']) assert.ok(problemsOf(withText(bad)).includes('Control characters are not allowed in a brief'), JSON.stringify(bad));
+  for (const bad of ['a‮b', 'a⁦b', 'a⁩b', 'a‏b']) assert.ok(problemsOf(withText(bad)).includes('Bidirectional control characters are not allowed in a brief'), JSON.stringify(bad));
+  assert.deepEqual(problemsOf(withText('tab\tok y acentos áéí ñ')), []);
+});
+
+test('a brief cannot mention people with @, because GitHub would notify them', () => {
+  const message = "Write people's names without @: GitHub would notify them when the issues are created";
+  for (const bad of ['pregunta a @ana-p', '@ana al inicio', 'con (@equipo) y más', 'a @org/team']) assert.ok(problemsOf(withText(bad)).includes(message), bad);
+  for (const ok of ['escribir a ana@example.com', 'solo una @ suelta', 'precio a@b']) assert.deepEqual(problemsOf(withText(ok)), [], ok);
+});

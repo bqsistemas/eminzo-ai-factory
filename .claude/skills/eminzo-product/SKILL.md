@@ -128,7 +128,8 @@ stores nothing; give the person the returned text to keep.
   gives a brief issue (or says which initiative), call `initiative` with its number and report in functional words,
   with its basis: how many deliverables are available out of the total, which ones are in review, in the factory,
   waiting for the tech lead, closed without being delivered or not created yet, and the estimate against the time
-  it took when there is one (a range, never a date). Say when the brief issue no longer matches its approval.
+  it took when there is one (a range, never a date). Say when the brief issue no longer matches its approval, and
+  mention its warnings (an issue that looks like a deliverable but was not created by Eminzo, a reopened or unmerged close).
 - `/eminzo-product estimate`: ask for the deliverables (or take them from the current brief) and run step 5's
   estimate only.
 - `/eminzo-product map`: draft or update the product map (see "map").

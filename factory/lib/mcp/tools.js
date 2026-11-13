@@ -397,10 +397,16 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'initiative',
       title: 'Follow an initiative',
-      description: 'How an initiative is going, read from GitHub only: the brief issue (who approved it and when, and whether its text still matches that approval) and the deliverable issues cut from it, each with its status (not-created, waiting-tech-lead, in-factory, in-review, available or closed), its pull request, the estimate shown when it was created and the time it actually took until ready for approval, plus progress and the estimate against the actual time. Give the number of the brief issue. Reads with gh; fails with a clear message when gh is missing or not signed in, or when the issue is not an Eminzo brief issue. Never changes anything.',
+      description: 'How an initiative is going, read from GitHub only: the brief issue (who approved it and when, and whether its text still matches that approval) and the deliverable issues cut from it, each with its status (not-created, waiting-tech-lead, in-factory, in-review, available or closed), its pull request, the estimate shown when it was created and the time it actually took until ready for approval, plus progress and the estimate against the actual time. Give the number of the brief issue. Reads with gh; fails with a clear message when gh is missing or not signed in, or when the issue is not an Eminzo brief issue. Only issues Eminzo created for this brief count (the eminzo-deliverable label, the brief issue\'s author, created after it, its marker and Part of line); lookalikes only produce warnings. Read the warnings aloud. Never changes anything.',
       source: 'github',
-      inputSchema: { type: 'object', additionalProperties: false, required: ['issue'], properties: { issue: { type: 'integer', minimum: 1, maximum: 999_999_999, description: 'The number of the brief issue.' } } },
-      answer: (args, c) => initiative(c.root, { issue: args.issue, gh: c.gh, runner: c.runner }),
+      inputSchema: {
+        type: 'object', additionalProperties: false, required: ['issue'],
+        properties: {
+          issue: { type: 'integer', minimum: 1, maximum: 999_999_999, description: 'The number of the brief issue.' },
+          known: { type: 'array', maxItems: 50, description: 'Numbers of deliverable issues the caller just created: they are read directly, because GitHub search can lag a minute.', items: { type: 'integer', minimum: 1, maximum: 999_999_999 } },
+        },
+      },
+      answer: (args, c) => initiative(c.root, { issue: args.issue, known: args.known ?? [], gh: c.gh, runner: c.runner }),
     }, ctx),
     tool({
       name: 'factory_config',
