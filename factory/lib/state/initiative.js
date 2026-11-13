@@ -68,7 +68,7 @@ function closes(text, n) {
 
 const prView = (p) => ({
   number: p.number, url: typeof p.url === 'string' ? p.url : null, state: String(p.state ?? '').toUpperCase(),
-  merged: String(p.state).toUpperCase() === 'MERGED' || typeof p.mergedAt === 'string', body: p.body, head: typeof p.headRefName === 'string' ? p.headRefName : '',
+  merged: String(p.state).toUpperCase() === 'MERGED' || typeof p.mergedAt === 'string', mergedAt: typeof p.mergedAt === 'string' ? p.mergedAt : null, body: p.body, head: typeof p.headRefName === 'string' ? p.headRefName : '',
   // a pull request is trusted only when gh says it is from this repository: a fork can name its branch anything
   fork: p.isCrossRepository !== false,
 });
@@ -94,6 +94,15 @@ function actualOf(pr) {
   if (!pr || !pr.head.startsWith(FACTORY_BRANCH)) return null;
   return parseFacts(String(pr.body ?? '').slice(0, MAX_PR_BODY)).map(factsMinutes).filter((m) => m !== null).at(-1) ?? null;
 }
+
+/** The cost of a factory pull request from its LAST facts line, in cents, or null when it is not known or not a trusted number. */
+function costOf(pr) {
+  if (!pr || !pr.head.startsWith(FACTORY_BRANCH)) return null;
+  const cost = parseFacts(String(pr.body ?? '').slice(0, MAX_PR_BODY)).at(-1)?.cost_usd;
+  return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? Math.round(cost * 100) / 100 : null;
+}
+
+const isoOf = (v) => { const ms = time(v); return ms === null ? null : new Date(ms).toISOString(); };
 
 /** Where a deliverable stands, from its issue and the pull requests that close it. */
 function statusOf(issue, { open, merged }, hasFactory, warnings) {
@@ -233,11 +242,15 @@ function read(ctx, number, known, warnings, maxCalls) {
     const open = prs.filter((p) => p.state === 'OPEN').sort((a, b) => b.number - a.number)[0] ?? null;
     const merged = prs.filter((p) => p.merged).sort((a, b) => b.number - a.number)[0] ?? null;
     const pr = open ?? merged;
+    const status = statusOf(hit.issue, { open, merged }, factory, warnings);
     return {
       id, issue: hit.issue.number, title: safeTitle(hit.issue.title), url: typeof hit.issue.url === 'string' ? hit.issue.url : null,
-      status: statusOf(hit.issue, { open, merged }, factory, warnings), factory, after,
+      status, factory, after,
       pr: pr ? { number: pr.number, url: pr.url, state: pr.state, merged: pr.merged } : null,
       estimate: hit.marker.est, actual_min: actualOf(pr),
+      // when it became available: the merge of the pull request that closes it, else the time the issue was closed
+      available_at: status === 'available' ? isoOf(merged?.mergedAt) ?? isoOf(hit.issue.closedAt) : null,
+      cost_usd: costOf(pr),
     };
   };
   const idNumber = (id) => Number(id.slice(1));
@@ -246,7 +259,7 @@ function read(ctx, number, known, warnings, maxCalls) {
       const hit = found.get(d.id)?.[0];
       if (hit) return describe(d.id, hit, d.after);
       warnings.push(`${d.id} was not found yet (GitHub search can lag a minute).`);
-      return { id: d.id, issue: null, title: safeTitle(d.title), url: null, status: 'not-created', factory: false, after: d.after, pr: null, estimate: null, actual_min: null };
+      return { id: d.id, issue: null, title: safeTitle(d.title), url: null, status: 'not-created', factory: false, after: d.after, pr: null, estimate: null, actual_min: null, available_at: null, cost_usd: null };
     })
     : [...found].sort(([a], [b]) => idNumber(a) - idNumber(b)).map(([id, hits]) => describe(id, hits[0], []));
   if (ctx.limited) warnings.push(`gh call limit reached (${maxCalls}): some pull requests were not read.`);
@@ -273,6 +286,7 @@ function read(ctx, number, known, warnings, maxCalls) {
 
   return {
     summary,
+    language: brief ? brief.language : null,
     brief: {
       issue: number, title: safeTitle(head.title), url: typeof head.url === 'string' ? head.url : null, state: String(head.state ?? '').toUpperCase(),
       author, created_at: typeof head.createdAt === 'string' ? head.createdAt : null,

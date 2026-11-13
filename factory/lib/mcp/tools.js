@@ -13,6 +13,7 @@ import { briefIssueDraft, deliverableIssueDrafts } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { diagnosis } from '../state/diagnosis.js';
+import { initiativeReport } from '../client-report.js';
 import { initiative } from '../state/initiative.js';
 import { estimateWork } from '../state/estimate.js';
 import { factoryQueue } from '../state/github.js';
@@ -407,6 +408,28 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
         },
       },
       answer: (args, c) => initiative(c.root, { issue: args.issue, known: args.known ?? [], gh: c.gh, runner: c.runner }),
+    }, ctx),
+    tool({
+      name: 'initiative_report',
+      title: 'Weekly report of an initiative',
+      description: 'Builds the weekly progress report of ONE initiative for a client, in functional language and in the language of its brief: what became available in the period (default: the last 7 days), what is in progress, what waits for a decision, what comes next, the estimate against the real time (ranges, never dates), and notes in plain words for anything odd found. It starts with a one-line status and the line "Draft" at the top. Cost is included only with include_cost and only what is known (never zero for unknown); links to the issues only with include_links. It reads the initiative from GitHub with the same trust rules as `initiative` (give the brief issue number, and `known` when you just created deliverables). It builds a draft the person reviews before sharing; it sends nothing, so show the markdown to the person and never post, send or save it anywhere on your own. Fails with a readable sentence when the initiative cannot be read.',
+      source: 'github',
+      inputSchema: {
+        type: 'object', additionalProperties: false, required: ['issue'],
+        properties: {
+          issue: { type: 'integer', minimum: 1, maximum: 999_999_999, description: 'The number of the brief issue.' },
+          known: { type: 'array', maxItems: 50, description: 'Numbers of deliverable issues the caller just created: they are read directly, because GitHub search can lag a minute.', items: { type: 'integer', minimum: 1, maximum: 999_999_999 } },
+          from: dateTime('Start of the period, an ISO date or date-time (default: 7 days before `to`).'),
+          to: dateTime('End of the period, an ISO date (the whole day counts) or date-time (default: now).'),
+          include_cost: { type: 'boolean', description: 'Add the known cost of the parts delivered in the period (default false).' },
+          include_links: { type: 'boolean', description: 'Add plain links to the GitHub issues at the end (default false).' },
+        },
+      },
+      answer: (args, c) => {
+        const data = initiative(c.root, { issue: args.issue, known: args.known ?? [], gh: c.gh, runner: c.runner });
+        const report = initiativeReport(data, { from: args.from, to: args.to, language: data.language ?? languageOf(c.root), includeCost: args.include_cost === true, includeLinks: args.include_links === true, now: c.now });
+        return { summary: report.status, ...report };
+      },
     }, ctx),
     tool({
       name: 'factory_config',

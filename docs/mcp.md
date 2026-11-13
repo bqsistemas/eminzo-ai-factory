@@ -59,6 +59,7 @@ runs it as `factory/bin/mcp`.
 | `product_map` | how the product works today, from the reviewed map in `factory/product-map.md`: areas with statements labelled `confirmed` or `assumed`, who reviewed it and when, and its state (`missing`, `draft`, `reviewed`, `stale` after 90 days). Reads that one file; a file larger than 1 MiB counts as missing | none |
 | `handoff_drafts` | the issue texts for an approved brief, behind the gate: without `brief_issue` the brief issue draft (label `eminzo-brief`), with it one draft per deliverable in dependency order (label `eminzo-deliverable`, never `factory`) plus `estimate_input`; fails with the gate's `reason` when the brief is not approved. Stores and creates nothing: the Eminzo desktop creates the issues after the person confirms | `text`, `brief_issue`, `created` (`[{ id, issue }]`) |
 | `initiative` | how an initiative is going, from GitHub: the brief issue (approver, date, whether its text still matches the approval) and its deliverable issues with a status (`not-created`, `waiting-tech-lead`, `in-factory`, `in-review`, `available`, `closed`), pull request, estimate at creation and actual time, plus progress and estimate against actual (available deliverables only); only issues Eminzo created for the brief count, lookalikes become warnings (GitHub, through `gh`) | `issue` (the brief issue number), `known` (up to 50 deliverable issue numbers the caller just created) |
+| `initiative_report` | the weekly progress report of one initiative for a client, as a draft markdown in functional language and in the brief's language: delivered in the period (default the last 7 days), in progress, waiting for a decision, coming next, estimate against actual (ranges, never dates), plain-words notes for the warnings; cost only with `include_cost` (known costs only, never 0 for unknown), links only with `include_links`. Reads the initiative like `initiative` (same trust rules); it sends nothing (GitHub, through `gh`) | `issue`, `known`, `from`, `to` (ISO date or date-time; a day alone means the whole day), `include_cost`, `include_links` |
 | `factory_config` | base, concurrency, rounds, auto-merge, spec review, providers, lanes, reviewers, local overrides (never prices) | none |
 | `factory_queue` | open `factory` issues no local job has taken, oldest first (GitHub, through `gh`) | none |
 
@@ -140,8 +141,9 @@ Only tools are offered. Batches are refused, and lines over 1 MiB are refused.
 | `factory/lib/state/estimate.js` | the estimate: matching levels, ranges, warnings and totals |
 | `factory/lib/state/github.js` | the queue, through `gh` |
 | `factory/lib/state/initiative.js` | an initiative: the brief issue, its deliverables, their pull requests and the estimate against the actual time, through `gh` |
+| `factory/lib/client-report.js` | the weekly client report of an initiative (pure): sections, plain-words notes, en/es/pt |
 | `factory/lib/handoff.js` | the texts and markers of the brief issue and the deliverable issues (pure) |
 
 Tests: `test/mcp-protocol.test.js`, `test/mcp-schema.test.js`, `test/factory-state.test.js`, `test/factory-diagnosis.test.js`, `test/factory-estimate.test.js`,
-`test/handoff.test.js`, `test/initiative.test.js`, `test/brief.test.js` and `test/mcp-golden.test.js`. The golden test asks known-answer questions through the real process. Add a
+`test/handoff.test.js`, `test/initiative.test.js`, `test/client-report.test.js`, `test/brief.test.js` and `test/mcp-golden.test.js`. The golden test asks known-answer questions through the real process. Add a
 row there whenever Ask Eminzo learns a new kind of question.
