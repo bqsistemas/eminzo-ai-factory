@@ -71,6 +71,18 @@ test('the skill sizes deliverables with intake\'s own criteria, compares splits,
   assert.doesNotMatch(codex, /\/eminzo-product|\/egm:/);
 });
 
+test('the skill builds the client report with `initiative_report` as a draft the person reviews, and never sends it', () => {
+  const codex = productSkill(source, { version, provider: 'codex' });
+  for (const [text, cmd] of [[source, '/eminzo-product'], [codex, '$eminzo-product']]) {
+    const flat = text.replace(/\s+/g, ' ');
+    for (const rule of [
+      `${cmd} report <brief issue>`, '`initiative_report`', 'Show the draft', 'reviews and edits it before sharing', 'Never send it anywhere',
+      'never post, e-mail or save it', '`include_cost` only when the person asks', 'functional words', 'Titles',
+    ]) assert.ok(flat.includes(rule), rule);
+  }
+  assert.doesNotMatch(codex, /\/eminzo-product|\/egm:/);
+});
+
 test('build ships both forms and install writes them; uninstall removes them', () => {
   const dist = join(mkdtempSync(join(tmpdir(), 'eminzo-product-dist-')), 'dist');
   const { adapters } = build({ out: dist });
