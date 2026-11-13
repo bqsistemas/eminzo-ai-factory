@@ -7,7 +7,9 @@ import { humanMinutes } from './state/estimate.js';
 const DAY_MS = 86_400_000;
 const PERIOD_DAYS = 7;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
+const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const MAX_ITEMS = 20;
+const MAX_DEPS = 5;
 const LANGUAGES = ['en', 'es', 'pt'];
 
 const join = (titles) => titles.join(', ');
@@ -17,8 +19,9 @@ const WORDS = {
   en: {
     draft: 'Draft — review before sharing.',
     title: (t) => `Weekly progress report: ${t}`,
-    period: (a, b) => `Period: ${a} to ${b}`,
-    headings: { delivered: 'Delivered this period', 'in-progress': 'In progress', waiting: 'Waiting for a decision', next: 'Coming next', estimate: 'Estimate and actual', cost: 'Cost of the period', notes: 'Notes', links: 'Links' },
+    period: (a, b) => `Period: ${a} to ${b} (UTC)`,
+    more: (n) => `+${n} more`,
+    headings: { delivered: 'Delivered this period', 'in-progress': 'In progress', waiting: 'Waiting for a decision', next: 'Coming next', estimate: 'Estimate and actual', cost: 'Cost of the parts delivered', notes: 'Notes', links: 'Links' },
     part: ['part', 'parts'],
     available: ['is available', 'are available'],
     clauses: { progress: ['is in progress', 'are in progress'], waiting: ['is waiting for a decision', 'are waiting for a decision'], notStarted: ['has not started', 'have not started'], closed: ['was closed without being delivered', 'were closed without being delivered'] },
@@ -55,8 +58,9 @@ const WORDS = {
   es: {
     draft: 'Borrador — revisar antes de compartir.',
     title: (t) => `Informe semanal de avance: ${t}`,
-    period: (a, b) => `Período: ${a} a ${b}`,
-    headings: { delivered: 'Entregado en este período', 'in-progress': 'En curso', waiting: 'Esperando una decisión', next: 'Lo que sigue', estimate: 'Estimación y tiempo real', cost: 'Costo del período', notes: 'Notas', links: 'Enlaces' },
+    period: (a, b) => `Período: ${a} a ${b} (UTC)`,
+    more: (n) => `+${n} más`,
+    headings: { delivered: 'Entregado en este período', 'in-progress': 'En curso', waiting: 'Esperando una decisión', next: 'Lo que sigue', estimate: 'Estimación y tiempo real', cost: 'Costo de las partes entregadas', notes: 'Notas', links: 'Enlaces' },
     part: ['parte', 'partes'],
     available: ['está disponible', 'están disponibles'],
     clauses: { progress: ['está en curso', 'están en curso'], waiting: ['está esperando una decisión', 'están esperando una decisión'], notStarted: ['no empezó', 'no empezaron'], closed: ['se cerró sin entregarse', 'se cerraron sin entregarse'] },
@@ -93,8 +97,9 @@ const WORDS = {
   pt: {
     draft: 'Rascunho — revisar antes de compartilhar.',
     title: (t) => `Relatório semanal de andamento: ${t}`,
-    period: (a, b) => `Período: ${a} a ${b}`,
-    headings: { delivered: 'Entregue neste período', 'in-progress': 'Em andamento', waiting: 'Aguardando uma decisão', next: 'Próximos passos', estimate: 'Estimativa e tempo real', cost: 'Custo do período', notes: 'Notas', links: 'Links' },
+    period: (a, b) => `Período: ${a} a ${b} (UTC)`,
+    more: (n) => `+${n} mais`,
+    headings: { delivered: 'Entregue neste período', 'in-progress': 'Em andamento', waiting: 'Aguardando uma decisão', next: 'Próximos passos', estimate: 'Estimativa e tempo real', cost: 'Custo das partes entregues', notes: 'Notas', links: 'Links' },
     part: ['parte', 'partes'],
     available: ['está disponível', 'estão disponíveis'],
     clauses: { progress: ['está em andamento', 'estão em andamento'], waiting: ['está aguardando uma decisão', 'estão aguardando uma decisão'], notStarted: ['não começou', 'não começaram'], closed: ['foi encerrada sem ser entregue', 'foram encerradas sem serem entregues'] },
@@ -132,7 +137,7 @@ const WORDS = {
 
 /** An instant in ms from an ISO date (a day alone: its start, or its end for `end`) or date-time; throws a sentence otherwise. */
 function instant(name, value, { end = false } = {}) {
-  const bad = () => new Error(`${name} must be an ISO date (2026-11-12) or date-time (2026-11-12T09:00:00Z).`);
+  const bad = () => new Error(`${name} must be an ISO date (2026-11-12) or a date-time with its zone (2026-11-12T09:00:00Z or 2026-11-12T09:00:00-05:00).`);
   if (value instanceof Date) {
     if (!Number.isFinite(value.getTime())) throw bad();
     return value.getTime();
@@ -148,10 +153,20 @@ function instant(name, value, { end = false } = {}) {
   return ms;
 }
 
+/** A title as plain words: no links, no domains that would turn into links, no `#123` references. Linear: one pass per rule. */
+function plain(title) {
+  const text = String(title ?? '')
+    .replace(/\S+:\/\/\S*/g, ' ')
+    .replace(/\bwww\.\S*/gi, ' ')
+    .replace(/\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|dev|app|co)\b/gi, ' ')
+    .replace(/#\d+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return text || '—';
+}
+
 const day = (ms) => new Date(ms).toISOString().slice(0, 10);
 const timeOf = (v) => { const ms = Date.parse(v ?? ''); return Number.isFinite(ms) ? ms : null; };
-const bold = (t) => `**${t}**`;
-const count = (n, forms) => `${n} ${forms[n === 1 ? 0 : 1]}`;
+const bold = (t) => `**${plain(t)}**`;
 
 /** The plain-words notes for the initiative's warnings, without repeats, in the order they came. */
 function notesOf(warnings, deliverables, words) {
@@ -189,14 +204,18 @@ function notesOf(warnings, deliverables, words) {
  */
 export function initiativeReport(data, { from, to, language, includeCost = false, includeLinks = false, now = Date.now() } = {}) {
   if (data === null || typeof data !== 'object' || !Array.isArray(data.deliverables)) throw new Error('initiativeReport needs the data of an initiative.');
-  const end = to === undefined ? now : instant('to', to, { end: true });
-  const start = from === undefined ? end - PERIOD_DAYS * DAY_MS : instant('from', from);
+  // By default the window is the 7 whole UTC days before today, so the same day always gives the same report.
+  const today = Math.floor(now / DAY_MS) * DAY_MS;
+  const wanted = to === undefined ? today - 1 : instant('to', to, { end: true });
+  const end = Math.min(wanted, now);
+  const start = from === undefined ? (to === undefined ? today - PERIOD_DAYS * DAY_MS : end - PERIOD_DAYS * DAY_MS) : instant('from', from);
   if (start >= end) throw new Error('from must be before to.');
   const lang = LANGUAGES.includes(language) ? language : LANGUAGES.includes(data.language) ? data.language : 'en';
   const words = WORDS[lang];
   const parts = data.deliverables;
   const where = (status) => parts.filter((d) => d.status === status);
-  const title = String(data.brief?.title ?? '').replace(/^\s*brief\s*:\s*/i, '').trim() || '—';
+  const rawTitle = String(data.brief?.title ?? '').replace(/^\s*brief\s*:\s*/i, '');
+  const name = plain(rawTitle);
 
   const available = where('available');
   const dated = available.map((d) => ({ d, at: timeOf(d.available_at) }));
@@ -205,22 +224,27 @@ export function initiativeReport(data, { from, to, language, includeCost = false
   const titleOf = (id) => { const d = parts.find((x) => x.id === id); return d ? bold(d.title) : null; };
 
   const sections = [];
-  const add = (id, items) => sections.push({ id, heading: words.headings[id], items });
+  const add = (id, items, tail = []) => sections.push({ id, heading: words.headings[id], items: [...(items.length > MAX_ITEMS ? [...items.slice(0, MAX_ITEMS), words.more(items.length - MAX_ITEMS)] : items), ...tail] });
   add('delivered', delivered.length ? delivered.map((d) => words.delivered(bold(d.title), day(timeOf(d.available_at)))) : [words.empty.delivered]);
   const progress = [...where('in-review').map((d) => words.inProgress(bold(d.title), words.review)), ...where('in-factory').map((d) => words.inProgress(bold(d.title), words.building))];
   add('in-progress', progress.length ? progress : [words.empty['in-progress']]);
   const waiting = where('waiting-tech-lead');
   add('waiting', waiting.length ? waiting.map((d) => words.waitingItem(bold(d.title))) : [words.empty.waiting]);
   const upcoming = where('not-created');
+  const unmet = (d) => {
+    const all = (d.after ?? []).filter((id) => parts.find((x) => x.id === id)?.status !== 'available').map(titleOf).filter(Boolean);
+    return all.length > MAX_DEPS ? [...all.slice(0, MAX_DEPS), words.more(all.length - MAX_DEPS)] : all;
+  };
   add('next', upcoming.length
-    ? upcoming.map((d) => words.next(bold(d.title), (d.after ?? []).filter((id) => parts.find((x) => x.id === id)?.status !== 'available').map(titleOf).filter(Boolean)))
+    ? upcoming.map((d) => words.next(bold(d.title), unmet(d)))
     : [words.empty.next]);
 
   const compared = available.filter((d) => d.estimate && typeof d.actual_min === 'number');
   const total = data.estimate_vs_actual;
   const estimate = compared.map((d) => words.estimateItem(bold(d.title), humanMinutes(d.estimate.low_min), humanMinutes(d.estimate.high_min), humanMinutes(d.actual_min)));
-  if (compared.length && total?.estimated) estimate.push(words.estimateTotal(humanMinutes(total.estimated.low_min), humanMinutes(total.estimated.high_min), humanMinutes(total.actual_min), compared.length, available.length));
-  add('estimate', compared.length ? [...estimate, words.estimateNote] : [words.empty.estimate]);
+  const totalLine = compared.length && total?.estimated ? [words.estimateTotal(humanMinutes(total.estimated.low_min), humanMinutes(total.estimated.high_min), humanMinutes(total.actual_min), compared.length, available.length)] : [];
+  if (compared.length) add('estimate', estimate, [...totalLine, words.estimateNote]);
+  else add('estimate', [words.empty.estimate]);
 
   if (includeCost) {
     const known = delivered.filter((d) => typeof d.cost_usd === 'number' && Number.isFinite(d.cost_usd));
@@ -231,7 +255,7 @@ export function initiativeReport(data, { from, to, language, includeCost = false
   const notes = [...notesOf(Array.isArray(data.warnings) ? data.warnings : [], parts, words), ...undated.map((d) => words.notes.undated(bold(d.title)))];
   if (notes.length) add('notes', notes);
   if (includeLinks) {
-    const links = parts.filter((d) => typeof d.url === 'string' && /^https?:\/\/\S+$/.test(d.url)).map((d) => `${d.title}: ${d.url}`);
+    const links = parts.filter((d) => typeof d.url === 'string' && /^https?:\/\/\S+$/.test(d.url)).map((d) => `${plain(d.title)}: ${d.url}`);
     if (links.length) add('links', links);
   }
 
@@ -242,7 +266,7 @@ export function initiativeReport(data, { from, to, language, includeCost = false
     ? `${words.of(done, parts.length, words.part[parts.length === 1 ? 0 : 1])} ${words.available[done === 1 ? 0 : 1]}${clauses.map((c) => `; ${c}`).join('')}.`
     : words.noParts;
 
-  const heading = words.title(title);
+  const heading = words.title(name);
   const lines = [words.draft, '', `# ${heading}`, '', words.period(day(start), day(end)), '', status];
   for (const s of sections) lines.push('', `## ${s.heading}`, '', ...s.items.map((i) => `- ${i}`));
   return { title: heading, status, period: { from: day(start), to: day(end) }, markdown: `${lines.join('\n')}\n`, sections, warnings: notes };

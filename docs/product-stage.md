@@ -187,7 +187,8 @@ lacks it), reading the `factory:facts` line of the pull request. Nothing is stor
   hidden line, still passes the approval check and the hidden line points at that approval), `deliverables` (id, issue,
   title, url, status, `factory`, the ids it waits for, the pull request, the estimate shown at creation,
   `actual_min`, `available_at` (when it became available: the merge of its pull request, else the time its issue was
-  closed) and `cost_usd` (known cost from the same facts line, else `null`)), `progress` (`done` = available, `total` = deliverables of the brief), `estimate_vs_actual` and
+  closed; for an available deliverable `pr`, `actual_min`, `cost_usd` and `available_at` all come from the earliest merged
+  trusted pull request that closes it, never from an open one) and `cost_usd` (known cost from the same facts line, else `null`)), `progress` (`done` = available, `total` = deliverables of the brief), `estimate_vs_actual` and
   `warnings` and `language` (the approved brief's, `null` when its text is not trusted). Read the warnings: they are where a forged, edited or odd issue shows up.
 - Optional `known`: the numbers (up to 50) of deliverable issues the caller just created. They are read directly with
   `issue view` and go through the same rules, because GitHub's search can lag a minute. A deliverable with no issue
@@ -242,15 +243,21 @@ shares it themselves.
 - Sections, in this order: **Delivered this period** (parts that became available between `from` and `to`, named by
   their titles, oldest first), **In progress** (being built or in review), **Waiting for a decision** (waiting for the
   tech lead), **Coming next** (not created yet, with the parts they start after), **Estimate and actual** (available
-  parts only; ranges, never dates), **Cost of the period** (only with `include_cost`), **Notes** (only when there are
+  parts only; ranges, never dates), **Cost of the parts delivered** (only with `include_cost`), **Notes** (only when there are
   warnings) and **Links** (only with `include_links`, plain URLs at the end).
 - Functional language: no job ids, no issue or pull request numbers, no "PR", "merge", "gate", "round", "spec",
   "intake" or "factory". The initiative's warnings become plain sentences; one that is not recognized becomes "something
   unusual was found; the tech lead should take a look".
-- Period: `from` to `to`, by default the last 7 days ending now. A date alone (`2026-11-12`) means the whole day. Both
-  are validated; `from` must be before `to`. A part belongs to the period by the time its merged change became
+- Period, always in UTC and shown as "(UTC)" next to it: when `to` is omitted the window is the 7 whole UTC days before
+  today (from 00:00 seven days ago to 23:59:59.999 yesterday), so the same day always gives the same report. A date
+  alone (`2026-11-12`) means that whole UTC day; a date-time must carry its zone (`Z` or `+hh:mm`), otherwise it is
+  refused, because a zoneless time would depend on the machine's time zone. A `to` in the future is capped at now. With
+  `to` and no `from`, `from` is 7 days before `to`. Both are validated; `from` must be before `to`. A part belongs to the period by the time its merged change became
   available (else the time its issue was closed); a part with no known date is named in the notes.
-- Cost: from the `cost_usd` of the LAST facts line of the part's trusted pull request (same-repository, `factory/`
+- Titles are shown as plain words: links, `www.` addresses, bare domains and `#123` references are removed from them,
+  so the draft never carries something that turns into a link or a mention when pasted elsewhere.
+- Long lists are capped: at most 5 dependencies per part and 20 items per section, then "+N more".
+- Cost: the amount is always in USD with a dot decimal (`USD 1.50`), in every language. It comes from the `cost_usd` of the LAST facts line of the part's trusted pull request (same-repository, `factory/`
   head). Only known costs are summed, with how many parts they cover; when none is known the report says "the cost is
   not known", never 0.
 - The text is deterministic: the same data and the same period give the same markdown.
