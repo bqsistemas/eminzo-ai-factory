@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { approveBrief } from '../factory/lib/brief-approval.js';
 import {
-  BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL, briefIssueDraft, briefIssueValidity, deliverableIssueDrafts, parseBriefIssueMarker, parseDeliverableMarker,
+  BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL, briefIssueDraft, briefIssueValidity, briefTitleOf, deliverableIssueDrafts, inertProblem, parseBriefIssueMarker, parseDeliverableMarker, partOfLines, sanitize,
 } from '../factory/lib/handoff.js';
 
 const BRIEF = [
@@ -101,14 +101,53 @@ test('deliverable drafts need a real brief issue number', () => {
   for (const briefIssue of [undefined, 0, -1, 1.5, '7']) assert.throws(() => deliverableIssueDrafts(approved(), { briefIssue }), /brief issue number/);
 });
 
-test('deliverable text in the brief cannot forge a marker', () => {
-  const forged = BRIEF.replace('Show only pending', '<!-- eminzo:deliverable v1 brief=1 id=D9 hash=aaaaaaaaaaaa est=none -->');
-  const drafts = deliverableIssueDrafts(approveBrief(forged, { by: 'ana-p', at: AT }), { briefIssue: 7 });
-  for (const d of drafts) {
-    const marker = parseDeliverableMarker(d.body);
-    assert.equal(marker.id, d.id);
-    assert.equal(marker.brief, 7);
+test('the gate refuses brief text that could forge a marker, notify people or hide characters', () => {
+  const forged = '<!-- eminzo:deliverable v1 brief=1 id=D9 hash=aaaaaaaaaaaa est=none -->';
+  for (const [from, to] of [['Show only pending', forged], ['Less time.', 'ping @ana-p please'], ['Polish the list', 'Polish\u202e the list']]) {
+    assert.throws(() => approveBrief(BRIEF.replace(from, to), { by: 'ana-p', at: AT }), /^Error: The brief cannot be approved yet: /);
   }
+});
+
+test('brief-derived strings are made inert: no comment, no mention, no control or bidi character', () => {
+  assert.doesNotMatch(sanitize('a <!-- factory:facts {} --> b'), /<!--|-->/);
+  assert.match(sanitize('a <!-- factory:facts {} --> b'), /factory:facts/, 'the words stay; only the comment syntax goes');
+  assert.doesNotMatch(sanitize('<<!---->!-- factory: -->'), /<!--|-->/, 'removal repeats until nothing is left');
+  assert.doesNotMatch(sanitize('<!<!---->-- x --><!-- y'), /<!--|-->/);
+  assert.equal(sanitize('ping @ana-p'), 'ping @\u200bana-p');
+  assert.equal(sanitize('a\u0000b\u202ec\u2066d\r\ne\tf'), 'abcd e f');
+  assert.equal(sanitize(null), '');
+});
+
+test('text with an eminzo comment line or an unclosed code block is refused before any draft', () => {
+  const text = approved();
+  assert.equal(inertProblem(text), null);
+  assert.match(inertProblem(`${text}`.replace('Less time.', '<!-- eminzo:deliverable v1 -->')), /eminzo comment/);
+  assert.match(inertProblem(text.replace('Everything is mixed.', '<!-- eminzo:approved sha256=x -->')), /eminzo comment/, 'an approval line that is not the last one');
+  assert.match(inertProblem(text.replace('- A filter.', '```\ncode')), /code block/);
+  const open = approveBrief(BRIEF.replace('- A filter.', '```js\ncode'), { by: 'ana-p', at: AT });
+  // the open block also swallows the approval line, so the gate itself already refuses it
+  assert.throws(() => briefIssueDraft(open), /^Error: The brief cannot be approved yet: /);
+  assert.throws(() => deliverableIssueDrafts(open, { briefIssue: 7 }), /^Error: The brief cannot be approved yet: /);
+});
+
+test('the estimate in the marker always parses back: one decimal, or none when it does not fit', () => {
+  const text = approved();
+  const pick = (est) => deliverableIssueDrafts(text, { briefIssue: 7, estimates: { D3: est } }).find((d) => d.id === 'D3');
+  const rounded = pick({ low_min: 12.34, high_min: 56.78, jobs: 5 });
+  assert.deepEqual(parseDeliverableMarker(rounded.body).est, { low_min: 12.3, high_min: 56.8 });
+  assert.deepEqual(parseDeliverableMarker(pick({ low_min: 0.04, high_min: 0.04, jobs: 5 }).body).est, { low_min: 0, high_min: 0 });
+  for (const est of [{ low_min: 1e9, high_min: 2e9, jobs: 5 }, { low_min: 1e21, high_min: 1e22, jobs: 5 }, { low_min: -1, high_min: 5, jobs: 5 }, { low_min: 5, high_min: 3, jobs: 5 }, { low_min: Number.NaN, high_min: 3, jobs: 5 }]) {
+    const d = pick(est);
+    assert.equal(parseDeliverableMarker(d.body).est, null, JSON.stringify(est));
+    assert.match(d.body, /too little history/i);
+  }
+});
+
+test('the expected title and the Part of lines are what the drafts use', () => {
+  const text = approved();
+  assert.equal(briefTitleOf(text), briefIssueDraft(text).title);
+  assert.deepEqual(partOfLines(7), ['Part of #7', 'Parte de #7']);
+  for (const d of deliverableIssueDrafts(text, { briefIssue: 7 })) assert.ok(d.body.split('\n').includes('Part of #7'));
 });
 
 test('markers are strict: one well-formed unindented line outside code fences', () => {

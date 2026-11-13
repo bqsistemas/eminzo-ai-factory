@@ -101,7 +101,7 @@ if (!reads.includes(a[0] + ' ' + a[1])) fail('fake gh: not a read: ' + a.join(' 
 if (a[0] === 'issue' && a[1] === 'list' && a.includes('--search')) out(data.list || []);
 else if (a[0] === 'issue' && a[1] === 'list') out(__QUEUE__);
 else if (a[0] === 'issue' && a[1] === 'view' && a[4] === 'closedByPullRequestsReferences') out({ closedByPullRequestsReferences: (data.closing || {})[a[2]] || [] });
-else if (a[0] === 'issue' && a[1] === 'view') { (data.issues || {})[a[2]] ? out(data.issues[a[2]]) : fail('Could not resolve to an issue with the number of ' + a[2]); }
+else if (a[0] === 'issue' && a[1] === 'view') { const one = (data.issues || {})[a[2]] || (data.list || []).find((i) => String(i.number) === a[2]); one ? out(one) : fail('Could not resolve to an issue with the number of ' + a[2]); }
 else if (a[0] === 'pr' && a[1] === 'view') { (data.prs || {})[a[2]] ? out(data.prs[a[2]]) : fail('no pull request found for ' + a[2]); }
 else fail('fake gh: unsupported ' + a.join(' '));
 `;

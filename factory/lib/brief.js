@@ -34,6 +34,28 @@ const PLACEHOLDERS = new Set(Object.values(PLACEHOLDER));
 const CRITERION = /^-\s*(BC-\d+):\s*(\S.*)$/;
 const DELIVERABLE = /^-\s*(D\d+):\s*(.+)$/;
 
+const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F]/;
+const BIDI = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
+// `@` after the start or a character that cannot be part of an e-mail address or a word, then a login: GitHub mentions it.
+const MENTION = /(?:^|[^A-Za-z0-9_.+\-@])@[A-Za-z0-9]/;
+const APPROVAL_OPEN = '<!-- eminzo:approved sha256=';
+
+/** What in the raw lines would misbehave once copied into an issue: comments, control or bidi characters, mentions. */
+function hazardsOf(lines) {
+  let last = lines.length - 1;
+  while (last >= 0 && lines[last].trim() === '') last -= 1;
+  const found = new Set();
+  lines.forEach((line, i) => {
+    const text = line.trim();
+    const own = text === BRIEF_MARKER || (i === last && line.startsWith(APPROVAL_OPEN) && line.length <= 200 && line.endsWith(' -->'));
+    if (!own && (line.includes('<!--') || line.includes('-->'))) found.add('comments');
+    if (CONTROL.test(line)) found.add('control');
+    if (BIDI.test(line)) found.add('bidi');
+    if (!own && MENTION.test(line)) found.add('mentions');
+  });
+  return [...found];
+}
+
 const normalize = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[:.]+$/, '').replace(/\s+/g, ' ').trim();
 const HEADINGS = new Map(SECTIONS.flatMap((s) => LANGS.map((lang) => [`${lang}:${normalize(s[lang])}`, s.key])));
 const trimBlock = (lines) => lines.join('\n').replace(/^\s*\n/, '').replace(/\n\s*$/, '').trim();
@@ -70,7 +92,7 @@ function parseDeliverable(id, rest) {
  */
 export function parseBrief(text) {
   const lines = String(text ?? '').replace(/^﻿/, '').split(/\r?\n/);
-  const out = { title: null, language: 'en', marker: lines.some((l) => l.trim() === BRIEF_MARKER), sections: {}, criteria: [], deliverables: [], badCriteria: [], badDeliverables: [], unknown: [] };
+  const out = { title: null, language: 'en', marker: lines.some((l) => l.trim() === BRIEF_MARKER), sections: {}, criteria: [], deliverables: [], badCriteria: [], badDeliverables: [], unknown: [], hazards: hazardsOf(lines) };
   const votes = { en: 0, es: 0, pt: 0 };
   let current = null;
   const blocks = {};
@@ -169,6 +191,11 @@ export function validateBrief(brief) {
   for (const cycle of cycles(brief.deliverables)) problems.push(`deliverables ${cycle} wait for each other`);
   for (const raw of brief.badDeliverables) problems.push(`deliverable line is not "- Dn: title | size: s | risk: low | covers: BC-1": "${raw}"`);
   for (const heading of brief.unknown) problems.push(`unknown section "${heading}"`);
+  const hazards = brief.hazards ?? [];
+  if (hazards.includes('comments')) problems.push('HTML comments are not allowed in a brief');
+  if (hazards.includes('control')) problems.push('Control characters are not allowed in a brief');
+  if (hazards.includes('bidi')) problems.push('Bidirectional control characters are not allowed in a brief');
+  if (hazards.includes('mentions')) problems.push("Write people's names without @: GitHub would notify them when the issues are created");
 
   const covered = new Set(brief.deliverables.flatMap((d) => d.covers));
   for (const c of brief.criteria) if (!covered.has(c.id)) warnings.push(`acceptance criterion ${c.id} is not covered by any deliverable`);

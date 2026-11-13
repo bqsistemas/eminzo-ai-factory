@@ -86,6 +86,11 @@ const approvedTwo = async () => {
   const text = COMPLETE_BRIEF.replace('- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1', '- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1 | after: D2\n- D2: Guardar el filtro | size: m | risk: medium | covers: BC-1');
   return (await ask('approve_brief', { text, by: 'ana-p' })).structuredContent.text;
 };
+/** COMPLETE_BRIEF with six deliverables, approved through the real tool. */
+const approvedSix = async () => {
+  const six = [2, 3, 4, 5, 6].map((n) => `- D${n}: Entrega ${n} | size: s | risk: low | covers: BC-1`).join('\n');
+  return (await ask('approve_brief', { text: COMPLETE_BRIEF.replace('- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1', `- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1\n${six}`), by: 'ana-p' })).structuredContent.text;
+};
 const FACTS = '<!-- factory:facts {"v":1,"job":"161-pending","issue":43,"lane":"normal","size":"s","risk":"low","surfaces":[],"round":1,"started":"2026-11-10T10:00:00.000Z","approve_entered":"2026-11-10T11:30:00.000Z","cost_usd":null,"decision":"APPROVE"} -->';
 const writeFakeGh = (data) => writeFileSync(join(fixtureRoot, 'fake-gh.json'), JSON.stringify(data));
 const removeFakeGh = () => rmSync(join(fixtureRoot, 'fake-gh.json'), { force: true });
@@ -94,11 +99,10 @@ const removeFakeGh = () => rmSync(join(fixtureRoot, 'fake-gh.json'), { force: tr
  * and the deliverable issues in every status but "not created" (D1), with a 60-120 minute estimate on D5.
  */
 const setUpInitiative = async () => {
-  const six = [2, 3, 4, 5, 6].map((n) => `- D${n}: Entrega ${n} | size: s | risk: low | covers: BC-1`).join('\n');
-  const text = (await ask('approve_brief', { text: COMPLETE_BRIEF.replace('- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1', `- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1\n${six}`), by: 'ana-p' })).structuredContent.text;
+  const text = await approvedSix();
   const brief = (await ask('handoff_drafts', { text })).structuredContent.draft;
   const drafts = Object.fromEntries((await ask('handoff_drafts', { text, brief_issue: 40 })).structuredContent.drafts.map((d) => [d.id, d]));
-  const labelled = (id, number, state, labels, extra = {}) => ({ number, title: drafts[id].title, state, stateReason: extra.stateReason ?? null, body: extra.body ?? drafts[id].body, labels: ['eminzo-deliverable', ...labels].map((name) => ({ name })), url: `https://github.com/acme/shop/issues/${number}`, closedAt: null });
+  const labelled = (id, number, state, labels, extra = {}) => ({ number, title: drafts[id].title, state, stateReason: extra.stateReason ?? null, body: extra.body ?? drafts[id].body, labels: ['eminzo-deliverable', ...labels].map((name) => ({ name })), url: `https://github.com/acme/shop/issues/${number}`, closedAt: null, author: { login: 'ana-p' }, createdAt: '2026-11-12T16:00:00Z' });
   const issues = [
     labelled('D2', 42, 'OPEN', []),
     labelled('D3', 43, 'OPEN', ['factory']),
@@ -106,12 +110,14 @@ const setUpInitiative = async () => {
     labelled('D5', 45, 'CLOSED', ['factory'], { stateReason: 'COMPLETED', body: drafts.D5.body.replace('est=none', 'est=60-120') }),
     labelled('D6', 46, 'CLOSED', [], { stateReason: 'NOT_PLANNED' }),
   ];
-  writeFakeGh({
+  const data = {
     issues: { 40: { number: 40, title: brief.title, state: 'OPEN', body: brief.body, labels: [{ name: 'eminzo-brief' }], url: 'https://github.com/acme/shop/issues/40', author: { login: 'ana-p' }, createdAt: '2026-11-12T15:05:00Z', closedAt: null } },
     list: issues,
     closing: { 44: [{ number: 54 }], 45: [{ number: 55 }] },
-    prs: { 54: { number: 54, state: 'OPEN', mergedAt: null, url: 'https://github.com/acme/shop/pull/54', body: '' }, 55: { number: 55, state: 'MERGED', mergedAt: '2026-11-11T09:00:00Z', url: 'https://github.com/acme/shop/pull/55', body: `Record\n${FACTS}\n` } },
-  });
+    prs: { 54: { number: 54, state: 'OPEN', mergedAt: null, url: 'https://github.com/acme/shop/pull/54', body: '', headRefName: 'factory/161-pending' }, 55: { number: 55, state: 'MERGED', mergedAt: '2026-11-11T09:00:00Z', url: 'https://github.com/acme/shop/pull/55', body: `Record\n${FACTS}\n`, headRefName: 'factory/161-pending' } },
+  };
+  writeFakeGh(data);
+  return { data, drafts };
 };
 const writeMap = (text) => { mkdirSync(join(fixtureRoot, 'factory'), { recursive: true }); writeFileSync(join(fixtureRoot, 'factory/product-map.md'), text); };
 const removeMap = () => rmSync(join(fixtureRoot, 'factory/product-map.md'), { force: true });
@@ -311,7 +317,9 @@ const QUESTIONS = [
       assert.equal(d.deliverables[4].actual_min, 90);
       assert.deepEqual(d.deliverables[4].estimate, { low_min: 60, high_min: 120 });
       assert.deepEqual(d.progress, { done: 1, total: 6 });
-      assert.deepEqual(d.estimate_vs_actual, { estimated: { low_min: 60, high_min: 120 }, actual_min: 90, complete: false, counted: { compared: 1, of: 6 } });
+      assert.deepEqual(d.estimate_vs_actual, { estimated: { low_min: 60, high_min: 120 }, actual_min: 90, complete: false, counted: { compared: 1, of: 6 }, basis: d.estimate_vs_actual.basis });
+      assert.match(d.estimate_vs_actual.basis, /last facts line/);
+      assert.deepEqual(d.warnings, ['D1 was not found yet (GitHub search can lag a minute).']);
       assert.match(d.summary, /1 of 6 deliverables is available; 1 in review, 1 in the factory, 1 waiting for the tech lead, 1 closed without being delivered, 1 not created yet\./);
     },
   },
@@ -375,6 +383,19 @@ test('golden: handoff_drafts refuses a changed brief with the gate reason, and u
   const extra = await ask('handoff_drafts', { text: await approved(), labels: ['factory'] });
   assert.equal(extra.isError, true);
   assert.match(extra.content[0].text, /labels/);
+});
+
+test('golden: initiative reads a known deliverable issue the search has not shown yet', async () => {
+  const { data, drafts } = await setUpInitiative();
+  const d1 = drafts.D1;
+  data.issues[48] = { number: 48, title: d1.title, state: 'OPEN', stateReason: null, body: d1.body, labels: [{ name: 'eminzo-deliverable' }, { name: 'factory' }], url: 'https://github.com/acme/shop/issues/48', closedAt: null, author: { login: 'ana-p' }, createdAt: '2026-11-12T16:30:00Z' };
+  writeFakeGh(data);
+  const result = (await ask('initiative', { issue: 40, known: [48] })).structuredContent;
+  assert.deepEqual(result.deliverables[0], { ...result.deliverables[0], id: 'D1', issue: 48, status: 'in-factory', factory: true });
+  assert.deepEqual(result.warnings, []);
+  const bad = await ask('initiative', { issue: 40, known: ['x'] });
+  assert.equal(bad.isError, true);
+  removeFakeGh();
 });
 
 test('golden: initiative says why when gh cannot answer, and refuses an issue that is not a brief', async () => {

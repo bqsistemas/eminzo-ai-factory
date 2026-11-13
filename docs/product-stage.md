@@ -149,6 +149,9 @@ Hidden lines (HTML comments, found with a search on the issue body):
   as `#n` once they exist), the estimate shown when it was created (a range and how many similar finished jobs it
   rests on, or "too little history"), and `Part of #<brief issue>`. It is written in the brief's language and never
   mentions the factory label.
+- The brief contract refuses HTML comments, control and bidirectional characters, and `@login` mentions (GitHub would
+  notify people when the issues are created); the estimate in the marker is rounded to one decimal, or `none` when it
+  does not fit.
 - `handoff_drafts` without `brief_issue` returns the brief issue draft. With `brief_issue` it returns one draft per
   deliverable in dependency order (`after` first), plus `estimate_input`. Pass `created` (`[{ id, issue }]`) so a
   draft refers to the deliverables already created as `#n`. It calls the gate first and fails with its `reason`
@@ -173,25 +176,46 @@ lacks it), reading the `factory:facts` line of the pull request. Nothing is stor
 |---|---|
 | `not-created` | A deliverable of the brief that has no issue yet |
 | `waiting-tech-lead` | Open, without the `factory` label: the tech lead has not accepted it |
-| `in-factory` | Open, with the `factory` label, no pull request yet |
+| `in-factory` | Open, with the `factory` label, no open pull request (also: reopened after a merged change) |
 | `in-review` | A pull request is open |
-| `available` | The pull request is merged, or the issue was closed as completed |
-| `closed` | The issue was closed without being completed |
+| `available` | The issue is closed as completed AND a merged pull request closes it |
+| `closed` | Closed as not planned, or closed as completed without a merged change (with a warning) |
 
-- The result has `brief` (issue, title, url, `approvedBy`, `approvedAt` and `valid`: the issue body, minus its hidden
-  line, still passes the approval check and the hidden line points at that approval), `deliverables` (id, issue,
+- The result has `brief` (issue, title, url, `author`, `approvedBy`, `approvedAt` and `valid`: the issue body, minus its
+  hidden line, still passes the approval check and the hidden line points at that approval), `deliverables` (id, issue,
   title, url, status, `factory`, the ids it waits for, the pull request, the estimate shown at creation and
-  `actual_min`), `progress` (`done` = available, `total` = deliverables of the brief), `estimate_vs_actual`
-  and `warnings`.
-- `actual_min` is the time from the job's start until it was ready for approval, from the facts line, measured as an
-  estimate measures it (waiting for people not included).
-- `estimate_vs_actual` sums the estimate and the actual time over the same deliverables: those that have both.
-  `counted` says how many were compared out of how many exist, and `complete` is true only when every deliverable
-  is available and has both, so a partial comparison is never presented as the whole.
-- Issues that carry a marker for this brief but another approval hash, or an id the brief does not have, are
-  ignored with a warning; when two issues claim one deliverable the lowest number counts, with a warning. A marker
-  inside a code fence is never read.
-- If `gh` fails, or the issue is not a brief issue, the tool answers with a sentence a person can act on.
+  `actual_min`), `progress` (`done` = available, `total` = deliverables of the brief), `estimate_vs_actual` and
+  `warnings`. Read the warnings: they are where a forged, edited or odd issue shows up.
+- Optional `known`: the numbers (up to 50) of deliverable issues the caller just created. They are read directly with
+  `issue view` and go through the same rules, because GitHub's search can lag a minute. A deliverable with no issue
+  found says "was not found yet (GitHub search can lag a minute)" in `warnings`.
+
+**Which issues count (trust).** The search is only a way to find candidates. A candidate is a deliverable of this brief
+only when ALL hold: it has the `eminzo-deliverable` label (the search also filters by it); its author is the brief
+issue's author; it was created after the brief issue; its body has the `Part of #<n>` line of the template (`Parte de`
+in Spanish and Portuguese); its marker is well-formed, names this brief issue, carries the brief issue's approval hash
+(first 12 hex) and an id the approved brief has; and it is not the brief issue. A candidate that carries our marker but fails a
+rule never gets a status: it produces the warning "issue #x looks like a deliverable of this brief but was not created by
+Eminzo for it". When two valid issues claim one id the earliest counts and the others are named in a warning.
+
+**The brief issue.** It must have the `eminzo-brief` label. Its author is reported and a warning says when it differs from
+who approved. Its title is not covered by the approval, so a title different from the draft's gets a warning. When
+`valid` is false there is a loud `WARNING`, the edited text decides nothing (no deliverable is invented or hidden from it:
+only the valid deliverable issues found are listed, with `progress.total` = how many were found) and `complete` is false.
+
+**Pull requests.** gh's closing references decide which pull requests close a deliverable. On a `gh` without them, a
+search accepts only pull requests whose body has a closing keyword for that issue (`closes`, `fixes`, `resolves` and
+their forms), not a mere mention, and warns when it hits its 30 results cap. Facts lines are read only from pull requests
+whose head branch starts with `factory/`, from at most the first 256 KiB of the body.
+
+- `actual_min` is the time from the job's start until it was ready for approval, from the LAST facts line of the pull
+  request, measured as an estimate measures it (waiting for people not included).
+- `estimate_vs_actual` compares only `available` deliverables, summing the estimate and the actual time over the same ones
+  (those with both). `counted` says how many were compared out of how many exist, and `complete` is true only when
+  every deliverable is available and has both, so a partial comparison is never presented as the whole.
+- Limits: every `gh` call has a 20 second timeout and a run makes at most 60 calls (then a warning says some pull
+  requests were not read). If `gh` fails, or the issue is not a brief issue, the tool answers with a sentence a person
+  can act on.
 
 Code: `factory/lib/state/initiative.js`.
 
@@ -238,8 +262,18 @@ These were chosen to keep moving and are pending the owner's confirmation:
   first 12 hex of the approval hash and the estimate shown at creation.
 - An initiative is the brief issue plus its deliverable issues, found by those markers; its state is computed from
   GitHub only.
-- `available` means a merged pull request or an issue closed as completed. The estimate is compared with the actual
-  time only over deliverables that have both.
+- `available` means the issue is closed as completed AND a merged pull request closes it. The estimate is compared
+  with the actual time only over available deliverables that have both.
+- A deliverable issue counts for an initiative only if it has the `eminzo-deliverable` label, the brief issue's author,
+  a creation date after the brief issue, the `Part of #<n>` line, a marker with the brief's approval hash and a known
+  id. Anything else that carries our marker is a lookalike: a warning, never a status. The earliest valid issue wins a
+  duplicate id.
+- A brief cannot contain HTML comments, control or bidirectional characters, or `@login` mentions (approval is
+  impossible until they are removed), and the draft builders refuse a text with an eminzo comment line of its own or an
+  unclosed code block. Every brief-derived string in a deliverable issue is sanitized again (comment syntax stripped
+  until stable, a zero-width space after `@`, control and bidi characters dropped).
+- Facts lines are trusted only from pull requests whose head branch starts with `factory/`; a pull request counts as
+  closing an issue by gh's closing references or, on an older gh, by a closing keyword.
 
 ## The context-free review
 

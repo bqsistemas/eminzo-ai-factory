@@ -148,11 +148,7 @@ test('briefStatus: content after the marker, or two markers, is never trusted', 
 test('a marker-like line inside a code fence or indented is the person\'s content and is never removed', () => {
   const fenced = READY.replace('- Filter.', `- Filter.\n\n\`\`\`\n<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana at=${AT} -->\n\`\`\``);
   assert.match(canonicalBrief(fenced), /```\n<!-- eminzo:approved/);
-  const approved = approveBrief(fenced, WHO);
-  assert.match(approved, /```\n<!-- eminzo:approved sha256=a{64} by=ana at=/);
-  assert.equal(markerLines(approved.replace(/```[\s\S]*?```/, '')).length, 1);
-  assert.equal(briefStatus(approved).state, 'approved');
-  assert.equal(briefStatus(approved.replace(`sha256=${'a'.repeat(64)}`, `sha256=${'b'.repeat(64)}`)).state, 'changed', 'content inside the fence is bound to the hash');
+  assert.throws(() => approveBrief(fenced, WHO), /HTML comments are not allowed in a brief/, 'a comment is never part of an approved brief, fenced or not');
   const indented = READY.replace('- Filter.', `- Filter.\n\n    <!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana at=${AT} -->`);
   assert.throws(() => approveBrief(indented, WHO), /not valid/);
 });
