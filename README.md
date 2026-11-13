@@ -193,7 +193,7 @@ Team settings live in `factory/config.json`; personal ones go in the gitignored 
 | `auto_merge` | `true` | Merge approved pull requests after a second gate |
 | `run_mode` | `own` | `queue` makes `run` also start every open `factory` issue |
 | `spec_review` | `false` | Stop after the spec for your approval (`true`, or a list of risks) |
-| `default_provider` | `claude` | `claude` or `codex` |
+| `default_provider` | `claude` | `claude` or `codex`, for jobs made without `--provider` (each skill names its own: `/eminzo-factory` makes Claude jobs, `$eminzo-factory` Codex jobs) |
 | `protected_tests` | `[]` | Tests the builder cannot edit |
 
 Routing, models, lanes and prices are in the same file. See the [user guide](docs/guide.md) for spec review, run mode and issue claims.

@@ -134,7 +134,7 @@ developer's spec review).
   `factory/config.json` is `"queue"`; with `"own"` (the default when `run_mode` is missing) a new
   issue enters only through `issue <n>`, `<feature>` or `xs <request>`.
 - `/eminzo-factory issue <n>`: run issue `<n>` now (it must be open and labeled `factory`).
-  `factory/bin/job new <n>` claims the issue when it creates the job: it assigns it to the
+  `factory/bin/job new <n> --provider claude` claims the issue when it creates the job: it assigns it to the
   `gh` user, and refuses when someone else is assigned or `factory/<id>` already exists on the
   remote of `base`. A refusal stops the command: show its reason to the user.
 - `/eminzo-factory <feature>`: write the request to a temp file, run
@@ -203,7 +203,7 @@ the next `/eminzo-factory run` moves the job to `merged`.
    command: tell the user. With `own`, skip step 1: `run` takes no new issue and applies
    steps 2-5 to every job in `factory/jobs/`. With `queue`, run step 1 first.
 1. Only with `queue`: `gh issue list --label factory --state open --json number --limit 100`, then
-   `factory/bin/job new <n>` for each issue. It prints the job id and is idempotent,
+   `factory/bin/job new <n> --provider claude` for each issue. It prints the job id and is idempotent,
    so existing jobs keep theirs. A refusal means the issue isn't open or labeled, is
    assigned to someone else, or already has its `factory/<id>` branch on the remote: skip it.
 2. PR checks (both modes): for every `needs-info` job try `job <id> to intake`. For every job in

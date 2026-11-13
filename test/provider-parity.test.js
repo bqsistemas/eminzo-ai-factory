@@ -87,6 +87,16 @@ const frontmatter = (text) => /^---\n([\s\S]*?)\n---\n/.exec(text)?.[1] ?? '';
 const stopCommands = (text) => [...frontmatter(text).matchAll(/command:\s*(.+)$/gm)]
   .map((m) => m[1].trim().replace(/^'(.*)'$/, '$1').replace(/^"(.*)"$/, '$1').replaceAll('\\"', '"'));
 
+test('each orchestrator skill creates jobs with its own provider, never the configured default', () => {
+  // A person's factory/config.local.json may set default_provider to the other provider; a job made from Claude Code must
+  // still be a Claude job (and one made from Codex a Codex job), so every `job new <n>` names its provider explicitly.
+  for (const [path, provider] of [['.claude/skills/eminzo-factory/SKILL.md', 'claude'], ['.agents/skills/eminzo-factory/SKILL.md', 'codex']]) {
+    const calls = read(path).match(/factory\/bin\/job new <n>[^`]*/g) ?? [];
+    assert.ok(calls.length > 0, `${path} never creates a job`);
+    for (const call of calls) assert.match(call, new RegExp(`--provider ${provider}\\b`), `${path}: "${call}" does not name --provider ${provider}`);
+  }
+});
+
 test('the output table covers exactly the roles that exist', () => {
   assert.deepEqual(Object.keys(OUTPUT).sort(), roles);
 });
