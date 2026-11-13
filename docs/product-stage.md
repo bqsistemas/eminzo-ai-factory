@@ -339,7 +339,14 @@ one reader each:
 | `testability` | Can a person check each criterion by using the product? |
 
 Each reader gets only the brief, as quoted data, and answers with fixed `FINDING:` lines. `merge_brief_review` puts
-the answers together, blockers first. The desktop starts each reader as a fresh process with no tools, no MCP
+the answers together, blockers first, and drops near-duplicates (the same target with the same first words), keeping the
+most severe.
+
+Each reader reports at most three findings, the ones that matter most for building the right thing, and answers
+`NO FINDINGS` when the brief is clear for its lens (a good outcome, not a failure). Why: a first real review with ten
+per reader returned 39 findings and overwhelmed the Product Lead; few and sharp findings get read and acted on. A
+blocker means the brief cannot be built or checked as written; style and wording preferences are not reported. If a
+reader mixes the order, the blockers are the ones kept. The desktop starts each reader as a fresh process with no tools, no MCP
 server, no session kept and `--safe-mode`, so no conversation, CLAUDE.md, hook, plugin or memory reaches it. In a
 terminal, the skill gives each prompt to a fresh subagent, or sends the person to the desktop or to
 Elephant-Goldfish's own review.
