@@ -55,6 +55,22 @@ test('the skill reads the map first, drafts it with `map`, and gates approval an
   assert.doesNotMatch(codex, /\/eminzo-product/);
 });
 
+test('the skill sizes deliverables with intake\'s own criteria, compares splits, and hands off to the desktop', () => {
+  const codex = productSkill(source, { version, provider: 'codex' });
+  for (const text of [source, codex]) {
+    const flat = text.replace(/\s+/g, ' ');
+    for (const rule of [
+      'eminzo show roles/intake.md', 'at run time', 'do not copy', 'size is l or its risk is high', 'one or two other ways', 'side by side', 'range, its base', 'never a date',
+      '`handoff_drafts`', 'creates the issues after the person confirms', 'tech lead adds the `factory` label', 'never adds a label',
+      '`initiative`', 'brief issue', 'waiting for the tech lead', 'not created yet',
+    ]) assert.ok(flat.includes(rule), rule);
+  }
+  assert.doesNotMatch(source, /auth, permissions, secrets|protected_tests|SURFACES: none/, 'intake\'s criteria are read at run time, never copied into the skill');
+  assert.match(source, /\/eminzo-product status/);
+  assert.match(codex, /\$eminzo-product status/);
+  assert.doesNotMatch(codex, /\/eminzo-product|\/egm:/);
+});
+
 test('build ships both forms and install writes them; uninstall removes them', () => {
   const dist = join(mkdtempSync(join(tmpdir(), 'eminzo-product-dist-')), 'dist');
   const { adapters } = build({ out: dist });

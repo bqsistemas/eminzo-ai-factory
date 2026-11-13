@@ -21,6 +21,13 @@ The skill's sub-commands are `<idea>`, `status`, `estimate` and `map` (draft or 
 - It refuses to create issues, or to propose creating them, unless `brief_status` says `can_create_issues` is true,
   and quotes the `reason`. It never creates issues itself: the Eminzo desktop does, with the person's
   confirmation (see [Hand-off](#hand-off-from-an-approved-brief-to-issues)).
+- In step 5 it sizes each deliverable by reading intake's criteria (`eminzo show roles/intake.md`) when it runs, never
+  from a copy. When a deliverable is size `l` or risk `high` it proposes one or two other splits, runs `estimate_work`
+  for each option and shows them side by side (range, base, warnings) for the person to choose. After approval it
+  points to the Eminzo desktop, which creates the issues after the person confirms, and says the tech lead adds the
+  `factory` label to the deliverables they accept.
+- `status` with a brief issue calls `initiative` and reports in functional words
+  (see [Following an initiative](#following-an-initiative)).
 
 ## The five steps
 
