@@ -9,8 +9,8 @@ It runs in the Eminzo desktop (Ask Eminzo, Product mode) and, without the deskto
 (`/eminzo-product <idea>`) or Codex (`$eminzo-product <idea>`). `eminzo install` installs the `eminzo-product`
 skill for both tools, next to `eminzo-factory`.
 
-The skill's sub-commands are `<idea>`, `status`, `estimate` and `map` (draft or update the
-[functional map](#the-functional-map)). In the terminal the skill follows the same rules as the desktop:
+The skill's sub-commands are `<idea>`, `status`, `estimate`, `map` (draft or update the
+[functional map](#the-functional-map)) and `report <brief issue>` (the [client report](#the-client-report)). In the terminal the skill follows the same rules as the desktop:
 
 - It reads `product_map` first and labels each claim about today's behaviour `confirmed` (in the map, or seen in the
   product) or `assumed`.
@@ -28,6 +28,8 @@ The skill's sub-commands are `<idea>`, `status`, `estimate` and `map` (draft or 
   `factory` label to the deliverables they accept.
 - `status` with a brief issue calls `initiative` and reports in functional words
   (see [Following an initiative](#following-an-initiative)).
+- `report <brief issue>` builds the weekly client report with `initiative_report`, shows the draft, reminds the person
+  to review and edit it before sharing, and never sends it anywhere.
 
 ## The five steps
 
@@ -183,9 +185,10 @@ lacks it), reading the `factory:facts` line of the pull request. Nothing is stor
 
 - The result has `brief` (issue, title, url, `author`, `approvedBy`, `approvedAt` and `valid`: the issue body, minus its
   hidden line, still passes the approval check and the hidden line points at that approval), `deliverables` (id, issue,
-  title, url, status, `factory`, the ids it waits for, the pull request, the estimate shown at creation and
-  `actual_min`), `progress` (`done` = available, `total` = deliverables of the brief), `estimate_vs_actual` and
-  `warnings`. Read the warnings: they are where a forged, edited or odd issue shows up.
+  title, url, status, `factory`, the ids it waits for, the pull request, the estimate shown at creation,
+  `actual_min`, `available_at` (when it became available: the merge of its pull request, else the time its issue was
+  closed) and `cost_usd` (known cost from the same facts line, else `null`)), `progress` (`done` = available, `total` = deliverables of the brief), `estimate_vs_actual` and
+  `warnings` and `language` (the approved brief's, `null` when its text is not trusted). Read the warnings: they are where a forged, edited or odd issue shows up.
 - Optional `known`: the numbers (up to 50) of deliverable issues the caller just created. They are read directly with
   `issue view` and go through the same rules, because GitHub's search can lag a minute. A deliverable with no issue
   found says "was not found yet (GitHub search can lag a minute)" in `warnings`.
@@ -225,6 +228,34 @@ whose writers you trust; the checks stop strangers and lookalikes, not a colleag
   can act on.
 
 Code: `factory/lib/state/initiative.js`.
+
+## The client report
+
+`initiative_report` (`{ issue, from?, to?, include_cost?, include_links?, known? }`) turns an initiative into the
+weekly progress report a client can read. It reads the initiative exactly as `initiative` does (same trust rules, same
+read-only `gh` calls) and builds a **draft**; it sends, posts and stores nothing. The person reviews and edits it, and
+shares it themselves.
+
+- Language: the approved brief's (`en`, `es` or `pt`); the repository's language when the brief's text is not trusted.
+- It starts with the line "Draft — review before sharing." (localized), a title, the period as ISO dates and a one-line
+  status ("2 of 5 parts are available; 1 is waiting for a decision.").
+- Sections, in this order: **Delivered this period** (parts that became available between `from` and `to`, named by
+  their titles, oldest first), **In progress** (being built or in review), **Waiting for a decision** (waiting for the
+  tech lead), **Coming next** (not created yet, with the parts they start after), **Estimate and actual** (available
+  parts only; ranges, never dates), **Cost of the period** (only with `include_cost`), **Notes** (only when there are
+  warnings) and **Links** (only with `include_links`, plain URLs at the end).
+- Functional language: no job ids, no issue or pull request numbers, no "PR", "merge", "gate", "round", "spec",
+  "intake" or "factory". The initiative's warnings become plain sentences; one that is not recognized becomes "something
+  unusual was found; the tech lead should take a look".
+- Period: `from` to `to`, by default the last 7 days ending now. A date alone (`2026-11-12`) means the whole day. Both
+  are validated; `from` must be before `to`. A part belongs to the period by the time its merged change became
+  available (else the time its issue was closed); a part with no known date is named in the notes.
+- Cost: from the `cost_usd` of the LAST facts line of the part's trusted pull request (same-repository, `factory/`
+  head). Only known costs are summed, with how many parts they cover; when none is known the report says "the cost is
+  not known", never 0.
+- The text is deterministic: the same data and the same period give the same markdown.
+
+Code: `factory/lib/client-report.js` (pure); `initiative()` supplies `available_at`, `cost_usd` and `language`.
 
 ## The functional map
 
@@ -285,6 +316,8 @@ These were chosen to keep moving and are pending the owner's confirmation:
   until stable, a zero-width space after `@`, control and bidi characters dropped).
 - Facts lines are trusted only from pull requests whose head branch starts with `factory/`; a pull request counts as
   closing an issue by gh's closing references or, on an older gh, by a closing keyword.
+- The client report is weekly (the last 7 days) by default, includes cost only when asked, is written in functional
+  language, and is a draft that Eminzo never sends: the person reviews, edits and shares it.
 
 ## The context-free review
 
@@ -310,7 +343,7 @@ Code: `factory/lib/brief-review.js`.
 
 The stage uses these `eminzo mcp` tools, all read-only (see [eminzo mcp](mcp.md)): `discovery_methods`,
 `brief_template`, `check_brief`, `import_egm_brief`, `brief_review_prompts`, `merge_brief_review`,
-`brief_status`, `approve_brief`, `handoff_drafts`, `initiative`, `product_map` and `estimate_work`.
+`brief_status`, `approve_brief`, `handoff_drafts`, `initiative`, `initiative_report`, `product_map` and `estimate_work`.
 
 ## Not yet
 

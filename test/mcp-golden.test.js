@@ -119,6 +119,18 @@ const setUpInitiative = async () => {
   writeFakeGh(data);
   return { data, drafts };
 };
+const REPORT_ES = [
+  'Borrador — revisar antes de compartir.', '', '# Informe semanal de avance: Filtro de sugerencias', '', 'Período: 2026-11-05 a 2026-11-12', '',
+  '1 de 6 partes está disponible; 2 están en curso; 1 está esperando una decisión; 1 no empezó; 1 se cerró sin entregarse.', '',
+  '## Entregado en este período', '', '- **Entrega 5** — disponible desde 2026-11-11.', '',
+  '## En curso', '', '- **Entrega 4** — en revisión.', '- **Entrega 3** — en construcción.', '',
+  '## Esperando una decisión', '', '- **Entrega 2** — esperando que el líder técnico lo acepte.', '',
+  '## Lo que sigue', '', '- **Ver solo lo pendiente** — todavía no empezó.', '',
+  '## Estimación y tiempo real', '', '- **Entrega 5**: estimado de 60 min a 2 h, tomó 1.5 h.', '- Total: estimado de 60 min a 2 h, tomó 1.5 h (partes comparadas: 1 de 1).',
+  '- Son rangos medidos sobre trabajo parecido; no son fechas de entrega.', '',
+  '## Notas', '', '- **Ver solo lo pendiente** todavía no se ve en el seguimiento; puede tardar un minuto en aparecer.', '',
+].join('\n');
+const REPORT_JARGON = /\b(jobs?|pull requests?|merge[sd]?|gate|rounds?|rondas?|specs?|intake|factory|f[aá]brica|briefs?|issues?|deliverables?|gh|github|sha256|D\d+)\b|\bPRs?\b|#\d+/i;
 const writeMap = (text) => { mkdirSync(join(fixtureRoot, 'factory'), { recursive: true }); writeFileSync(join(fixtureRoot, 'factory/product-map.md'), text); };
 const removeMap = () => rmSync(join(fixtureRoot, 'factory/product-map.md'), { force: true });
 
@@ -324,6 +336,22 @@ const QUESTIONS = [
     },
   },
   {
+    question: 'Arma el reporte semanal de la iniciativa #40 para el cliente',
+    tool: 'initiative_report',
+    source: 'github',
+    argsFrom: async () => { await setUpInitiative(); return { issue: 40, from: '2026-11-05', to: '2026-11-12' }; },
+    check: (d) => {
+      assert.deepEqual(d.sections.map((x) => x.id), ['delivered', 'in-progress', 'waiting', 'next', 'estimate', 'notes']);
+      assert.equal(d.summary, '1 de 6 partes está disponible; 2 están en curso; 1 está esperando una decisión; 1 no empezó; 1 se cerró sin entregarse.');
+      assert.equal(d.status, d.summary);
+      assert.deepEqual(d.period, { from: '2026-11-05', to: '2026-11-12' });
+      assert.equal(d.markdown, REPORT_ES);
+      assert.doesNotMatch(d.markdown, REPORT_JARGON);
+      assert.doesNotMatch(d.markdown, /Costo del período|https?:\/\//, 'cost and links only on request');
+      assert.deepEqual(d.warnings, ['**Ver solo lo pendiente** todavía no se ve en el seguimiento; puede tardar un minuto en aparecer.']);
+    },
+  },
+  {
     question: '¿Cómo está configurada la fábrica?',
     tool: 'factory_config',
     check: (d) => { assert.equal(d.config.concurrency, 2); assert.equal(d.config.auto_merge, false); assert.equal(Object.hasOwn(d.config, 'prices'), false); },
@@ -398,6 +426,41 @@ test('golden: initiative reads a known deliverable issue the search has not show
   removeFakeGh();
 });
 
+test('golden: initiative_report adds cost and links only when asked, never invents a cost, and gives the same text twice', async () => {
+  const { data } = await setUpInitiative();
+  const period = { issue: 40, from: '2026-11-05', to: '2026-11-12' };
+  const plain = (await ask('initiative_report', period)).structuredContent;
+  assert.equal((await ask('initiative_report', period)).structuredContent.markdown, plain.markdown, 'same input, same text');
+  const unknown = (await ask('initiative_report', { ...period, include_cost: true })).structuredContent;
+  assert.deepEqual(unknown.sections.find((x) => x.id === 'cost').items, ['El costo no se conoce.'], 'a cost that is not known is not 0');
+  assert.doesNotMatch(unknown.markdown, /USD 0/);
+  data.prs[55].body = data.prs[55].body.replace('"cost_usd":null', '"cost_usd":2.5');
+  writeFakeGh(data);
+  const known = (await ask('initiative_report', { ...period, include_cost: true, include_links: true })).structuredContent;
+  assert.deepEqual(known.sections.find((x) => x.id === 'cost').items, ['Costo conocido de las partes entregadas en este período: USD 2.50 (conocido en 1 de 1 partes).']);
+  assert.equal(known.sections.at(-1).id, 'links');
+  assert.ok(known.sections.at(-1).items.includes('Entrega 5: https://github.com/acme/shop/issues/45'));
+  assert.equal((await ask('initiative_report', { ...period, from: '2026-11-12', to: '2026-11-01' })).isError, true);
+  removeFakeGh();
+});
+
+test('golden: initiative_report says why when the initiative cannot be read, and sends nothing', async () => {
+  removeFakeGh();
+  const missing = await ask('initiative_report', { issue: 999 });
+  assert.equal(missing.isError, true);
+  assert.match(missing.content[0].text, /^could not read issue #999 from GitHub: /);
+  writeFakeGh({ issues: { 41: { number: 41, title: 'Plain', state: 'OPEN', body: 'hello', labels: [], url: 'u', author: null, createdAt: '2026-11-12T15:05:00Z', closedAt: null } } });
+  const plain = await ask('initiative_report', { issue: 41 });
+  assert.equal(plain.isError, true);
+  assert.match(plain.content[0].text, /^Issue #41 is not an Eminzo brief issue/);
+  const bad = await ask('initiative_report', { issue: 40, from: 'ayer' });
+  assert.equal(bad.isError, true);
+  const tool = (await client.call('tools/list', {})).result.tools.find((t) => t.name === 'initiative_report');
+  assert.equal(tool.annotations.readOnlyHint, true);
+  assert.match(tool.description, /builds a draft the person reviews before sharing; it sends nothing/);
+  removeFakeGh();
+});
+
 test('golden: initiative says why when gh cannot answer, and refuses an issue that is not a brief', async () => {
   removeFakeGh();
   const missing = await ask('initiative', { issue: 999 });
@@ -431,7 +494,7 @@ test('golden: product_map with an oversize file says why it is missing', async (
 test('golden: tools/list offers exactly the read-only tools', async () => {
   const res = await client.call('tools/list', {});
   const tools = res.result.tools;
-  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'product_map', 'handoff_drafts', 'initiative', 'factory_config', 'factory_queue']);
+  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'product_map', 'handoff_drafts', 'initiative', 'initiative_report', 'factory_config', 'factory_queue']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true, `${t.name} is read-only`);
     assert.equal(t.annotations.destructiveHint, false);

@@ -20,7 +20,7 @@ const approved = approveBrief(BRIEF, { by: 'ana-p', at: AT });
 const BRIEF_ISSUE = 40;
 const estimates = { D2: { low_min: 60, high_min: 120, jobs: 6 }, D3: { low_min: 30, high_min: 60, jobs: 5 }, D7: { low_min: 10, high_min: 20, jobs: 8 } };
 const drafts = Object.fromEntries(deliverableIssueDrafts(approved, { briefIssue: BRIEF_ISSUE, estimates }).map((d) => [d.id, d]));
-const facts = (started, entered) => factsComment({ v: 1, job: '161-pending', issue: 1, lane: 'normal', size: 's', risk: 'low', surfaces: [], round: 1, started, approve_entered: entered, cost_usd: null, decision: 'APPROVE' });
+const facts = (started, entered, cost = null) => factsComment({ v: 1, job: '161-pending', issue: 1, lane: 'normal', size: 's', risk: 'low', surfaces: [], round: 1, started, approve_entered: entered, cost_usd: cost, decision: 'APPROVE' });
 
 const BRIEF_AT = '2026-11-12T15:05:00Z';
 const LATER = '2026-11-12T16:00:00Z';
@@ -96,11 +96,11 @@ test('every status, the progress, and estimate against actual (available deliver
   assert.deepEqual(r.brief, { issue: 40, title: 'Brief: Pending filter', url: 'https://github.com/acme/shop/issues/40', state: 'OPEN', author: 'ana-p', created_at: BRIEF_AT, approvedBy: 'ana-p', approvedAt: AT, valid: true });
   assert.deepEqual(r.deliverables.map((d) => [d.id, d.status]), [['D1', 'closed'], ['D2', 'available'], ['D3', 'in-review'], ['D4', 'in-factory'], ['D5', 'waiting-tech-lead'], ['D6', 'not-created'], ['D7', 'closed']]);
   const d = byId(r);
-  assert.deepEqual(d.D2, { id: 'D2', issue: 42, title: 'Deliverable 2', url: 'https://github.com/acme/shop/issues/42', status: 'available', factory: true, after: ['D1'], pr: { number: 142, url: 'https://github.com/acme/shop/pull/142', state: 'MERGED', merged: true }, estimate: { low_min: 60, high_min: 120 }, actual_min: 90 });
+  assert.deepEqual(d.D2, { id: 'D2', issue: 42, title: 'Deliverable 2', url: 'https://github.com/acme/shop/issues/42', status: 'available', factory: true, after: ['D1'], pr: { number: 142, url: 'https://github.com/acme/shop/pull/142', state: 'MERGED', merged: true }, estimate: { low_min: 60, high_min: 120 }, actual_min: 90, available_at: '2026-11-13T09:00:00.000Z', cost_usd: null });
   assert.equal(d.D3.pr.number, 144, 'the open pull request wins over a closed one');
   assert.equal(d.D3.actual_min, 45);
   assert.equal(d.D5.issue, 45);
-  assert.deepEqual(d.D6, { id: 'D6', issue: null, title: 'Deliverable 6', url: null, status: 'not-created', factory: false, after: [], pr: null, estimate: null, actual_min: null });
+  assert.deepEqual(d.D6, { id: 'D6', issue: null, title: 'Deliverable 6', url: null, status: 'not-created', factory: false, after: [], pr: null, estimate: null, actual_min: null, available_at: null, cost_usd: null });
   assert.deepEqual(r.progress, { done: 1, total: 7 });
   // D3 has an estimate and a time, but is not available yet: only D2 is compared
   assert.deepEqual(r.estimate_vs_actual.estimated, { low_min: 60, high_min: 120 });
@@ -290,4 +290,23 @@ test('when gh fails, the error says why', () => {
   assert.throws(() => initiative('/repo', { issue: BRIEF_ISSUE, gh: 'gh', runner: () => ({ error: Object.assign(new Error('spawn gh'), { code: 'ENOENT' }) }) }), /the GitHub CLI \(gh\) is not installed/);
   assert.throws(() => initiative('/repo', { issue: BRIEF_ISSUE, gh: 'gh', runner: () => ({ error: Object.assign(new Error('spawnSync gh ETIMEDOUT'), { code: 'ETIMEDOUT' }) }) }), /gh did not answer within 20 seconds/);
   assert.throws(() => initiative('/repo', { issue: BRIEF_ISSUE, gh: 'gh', runner: () => ({ status: 0, stdout: 'not json', stderr: '' }) }), /gh did not return JSON/);
+});
+
+test('an available deliverable says when it became available and what it cost, from the trusted pull request', () => {
+  const merged = (body, head, cross) => world({ deliverables: [issue('D2', 42, { state: 'CLOSED', stateReason: 'COMPLETED' })], closing: { 42: [{ number: 142 }] }, prs: { 142: pr(142, 'MERGED', '2026-11-13T09:00:00Z', body, head, cross) } });
+  const line = facts('2026-11-12T16:00:00Z', '2026-11-12T17:30:00Z', 1.234);
+  const ok = byId(go(merged(line)));
+  assert.equal(ok.D2.available_at, '2026-11-13T09:00:00.000Z', 'the merge time of the pull request');
+  assert.equal(ok.D2.cost_usd, 1.23, 'the cost of the last facts line, in cents');
+  assert.equal(byId(go(merged(line, 'feature/x'))).D2.cost_usd, null, 'not a factory branch: not trusted');
+  assert.equal(byId(go(merged(line, 'factory/161-pending', true))).D2.status, 'closed', 'a fork is ignored altogether');
+  for (const bad of [-1, 'free', Number.NaN]) assert.equal(byId(go(merged(facts('2026-11-12T16:00:00Z', '2026-11-12T17:30:00Z', bad)))).D2.cost_usd, null);
+  const two = byId(go(merged(`${facts('2026-11-12T16:00:00Z', '2026-11-12T16:30:00Z', 5)}\n${line}`)));
+  assert.equal(two.D2.cost_usd, 1.23, 'the LAST facts line counts');
+});
+
+test('the language of the approved brief is reported, null when its text is not trusted', () => {
+  assert.equal(go(world()).language, 'en');
+  const edited = go(world({ brief: briefData(`${briefIssueDraft(approved).body}\nedited`) }));
+  assert.equal(edited.language, null);
 });
