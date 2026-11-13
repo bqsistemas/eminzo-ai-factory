@@ -68,6 +68,43 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 
 Code: `factory/lib/brief.js` (`parseBrief`, `validateBrief`, `renderBrief`, `fromEgmConcepts`).
 
+## Approval and the gate
+
+Approval is a marker line inside the brief text, bound to a hash of its content:
+
+```markdown
+<!-- eminzo:approved sha256=<64 hex> by=<github login> at=<ISO 8601> -->
+```
+
+- The hash is SHA-256 over the brief's canonical text: the brief without any approval marker, `\n` line endings,
+  no trailing whitespace per line and no trailing blank lines. Any later edit stops the hash from matching: the
+  brief is `changed` and needs a new approval.
+- `approve_brief` returns the brief with exactly one marker (an old one is replaced) and refuses a brief that has
+  problems. It stores nothing; the caller saves the text. It is called only after the person said, in so many
+  words, that they approve (the desktop calls it from the Approve button and keeps it away from its chat agent).
+- `brief_status` says where a brief stands:
+
+| State | Meaning | `can_create_issues` |
+|---|---|---|
+| `draft` | The brief has problems | no |
+| `ready` | Complete, not approved | no |
+| `approved` | The marker's hash matches the content | **yes** |
+| `changed` | A marker is there but the content differs (or there are two markers) | no |
+
+`brief_status` is **the gate**: whatever creates issues from a brief (phase 4; nothing creates issues today) must
+call it and go on only when `can_create_issues` is true. `reason` is one sentence a Product Lead understands, for
+example "The brief changed after it was approved on 2026-11-12; approve it again."
+
+Code: `factory/lib/brief-approval.js` (`canonicalBrief`, `briefHash`, `approveBrief`, `briefStatus`).
+
+## Decided by default, to confirm
+
+These were chosen to keep moving and are pending the owner's confirmation:
+
+- Approval is a marker inside the brief bound to a content hash (no separate approval store).
+- `by` must look like a GitHub login (`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`); `at` is an ISO 8601 date and time.
+- A brief with two approval markers is never trusted (`changed`).
+
 ## The context-free review
 
 A reader who never heard the discussion is the best test of whether the brief says what it means. Four lenses,
@@ -91,8 +128,8 @@ Code: `factory/lib/brief-review.js`.
 ## Tools
 
 The stage uses these `eminzo mcp` tools, all read-only (see [eminzo mcp](mcp.md)): `discovery_methods`,
-`brief_template`, `check_brief`, `import_egm_brief`, `brief_review_prompts`, `merge_brief_review` and
-`estimate_work`.
+`brief_template`, `check_brief`, `import_egm_brief`, `brief_review_prompts`, `merge_brief_review`,
+`brief_status`, `approve_brief` and `estimate_work`.
 
 ## Not yet
 

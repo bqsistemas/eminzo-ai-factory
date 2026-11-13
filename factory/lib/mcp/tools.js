@@ -6,6 +6,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
 
 import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
+import { approveBrief, briefStatus } from '../brief-approval.js';
 import { fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../brief.js';
 import { discoveryMethods } from '../discovery.js';
 import { configLanguage, effectiveConfig } from '../util.js';
@@ -294,6 +295,31 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
         },
       },
       answer: (args) => mergeFindings(args.answers),
+    }, ctx),
+    tool({
+      name: 'brief_status',
+      title: 'Brief status',
+      description: 'Where a brief stands: draft (it has problems), ready (complete, not approved), approved (its approval marker matches its content) or changed (edited after it was approved). `can_create_issues` is true only when approved; this is the gate any creation of issues from a brief must pass, and `reason` says in one sentence why not. Never changes anything.',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: briefText } },
+      answer: (args) => {
+        const status = briefStatus(args.text);
+        return { summary: status.reason, ...status };
+      },
+    }, ctx),
+    tool({
+      name: 'approve_brief',
+      title: 'Approve a brief',
+      description: 'Returns the brief with an approval marker bound to its content (who approved and when), or an error when the brief is not complete. It stores nothing: the caller saves the returned text. Call it only after the person explicitly approved this brief, for example from an Approve button; never on your own initiative.',
+      inputSchema: {
+        type: 'object', additionalProperties: false, required: ['text', 'by'],
+        properties: { text: briefText, by: { type: 'string', pattern: '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$', description: 'The GitHub login of the person who approved.' } },
+      },
+      answer: (args, c) => {
+        const at = new Date(c.now).toISOString();
+        const text = approveBrief(args.text, { by: args.by, at });
+        const status = briefStatus(text);
+        return { summary: `Approved by ${args.by}. Any later edit needs a new approval.`, text, approval: status.approval };
+      },
     }, ctx),
     tool({
       name: 'factory_config',
