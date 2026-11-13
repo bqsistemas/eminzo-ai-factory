@@ -15,7 +15,9 @@ The skill's sub-commands are `<idea>`, `status`, `estimate` and `map` (draft or 
 - It reads `product_map` first and labels each claim about today's behaviour `confirmed` (in the map, or seen in the
   product) or `assumed`.
 - It approves only after the person's explicit words, with `brief_status` in state `ready` and no open blocker
-  finding; then it calls `approve_brief` and shows the returned brief.
+  finding. It quotes those words back, uses the person's GitHub login (`gh api user --jq .login`, or asks; it never
+  invents one), calls `approve_brief` and shows the returned brief. The desktop keeps `approve_brief` out of its chat
+  agent's tools and calls it from the person's Approve button.
 - It refuses to create issues, or to propose creating them, unless `brief_status` says `can_create_issues` is true,
   and quotes the `reason`. It never creates issues itself: that is the Eminzo desktop's job, with the person's
   confirmation (not built yet).
@@ -81,15 +83,24 @@ Code: `factory/lib/brief.js` (`parseBrief`, `validateBrief`, `renderBrief`, `fro
 
 ## Approval and the gate
 
-Approval is a marker line inside the brief text, bound to a hash of its content:
+Approval is a marker line at the end of the brief text, bound to a hash of the content, who approved and when:
 
 ```markdown
 <!-- eminzo:approved sha256=<64 hex> by=<github login> at=<ISO 8601> -->
 ```
 
-- The hash is SHA-256 over the brief's canonical text: the brief without any approval marker, `\n` line endings,
-  no trailing whitespace per line and no trailing blank lines. Any later edit stops the hash from matching: the
+- The hash is SHA-256 (UTF-8) of `canonical + "\n" + by + "\n" + at`. The canonical text is the brief without its
+  approval marker, with `\n` line endings, without a leading BOM, and without trailing spaces and tabs on each line
+  or blank lines at the end. Only ASCII space and tab are ignored there; any other edit (a non-breaking space, a
+  line separator) changes the hash. Any later edit to the text, to `by` or to `at` stops the hash from matching: the
   brief is `changed` and needs a new approval.
+- A marker counts only as an unindented line outside fenced code blocks, and it must be the last non-blank line.
+  Marker-like text inside a code fence is the person's content and is never removed. A malformed marker (uppercase
+  hash, bad date, indented), two markers, or text after the marker make the brief `changed`.
+- A line longer than 10 000 characters is a problem that blocks approval.
+- **The marker detects edits; it does not authenticate.** `by` is self-declared and anyone who holds the text can
+  compute a valid marker. GitHub (phase 4: the author and history of the issue created from the brief) is the record
+  of who approved.
 - `approve_brief` returns the brief with exactly one marker (an old one is replaced) and refuses a brief that has
   problems. It stores nothing; the caller saves the text. It is called only after the person said, in so many
   words, that they approve (the desktop calls it from the Approve button and keeps it away from its chat agent).
@@ -100,13 +111,13 @@ Approval is a marker line inside the brief text, bound to a hash of its content:
 | `draft` | The brief has problems | no |
 | `ready` | Complete, not approved | no |
 | `approved` | The marker's hash matches the content | **yes** |
-| `changed` | A marker is there but the content differs (or there are two markers) | no |
+| `changed` | A marker is there but the content, `by` or `at` differ, or the marker is malformed, doubled or not at the end | no |
 
 `brief_status` is **the gate**: whatever creates issues from a brief (phase 4; nothing creates issues today) must
 call it and go on only when `can_create_issues` is true. `reason` is one sentence a Product Lead understands, for
 example "The brief changed after it was approved on 2026-11-12; approve it again."
 
-Code: `factory/lib/brief-approval.js` (`canonicalBrief`, `briefHash`, `approveBrief`, `briefStatus`).
+Code: `factory/lib/brief-approval.js` (`canonicalBrief`, `briefHash`, `approveBrief`, `briefStatus`), linear in the size of the text.
 
 ## The functional map
 
@@ -126,8 +137,10 @@ Reviewed: 2026-11-12 by ana-p
   checked it. The labels and the word `source` stay in English; the title prefix and the review word follow the
   repository's language (`Product map`/`Reviewed`, `Mapa del producto`/`Revisado`, `Mapa do produto`/`Revisado`).
 - `product_map` reads the file (fixed path, inside the repository, up to 1 MiB) and returns its areas, who reviewed
-  it, and a state: `missing`, `draft` (never reviewed, empty or malformed), `reviewed`, or `stale` (reviewed more than
-  90 days ago; the threshold is `STALE_AFTER_DAYS`). When the map is missing it says how to create it.
+  it, and a state: `missing`, `draft` (never reviewed, empty, malformed, with a Reviewed date in the future or two
+  Reviewed lines), `reviewed`, or `stale` (reviewed more than 90 days ago; the threshold is `STALE_AFTER_DAYS`). When
+  the map is missing it says how to create it; when the file exists but cannot be used (larger than 1 MiB, outside the
+  repository, permission error) `state` is `missing` and `reason` says why. A line over 2000 characters is a problem.
 - Nothing in the engine writes the file. The `eminzo-product` skill, in a person's own terminal session, drafts it
   with `/eminzo-product map`, shows it in full, and writes it only after the person agrees.
 

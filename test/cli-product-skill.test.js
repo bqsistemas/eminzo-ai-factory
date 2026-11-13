@@ -46,6 +46,12 @@ test('the skill reads the map first, drafts it with `map`, and gates approval an
   const codex = productSkill(source, { version, provider: 'codex' });
   assert.match(codex, /\$eminzo-product map/);
   assert.match(codex, /`brief_status`/);
+  for (const text of [source, codex]) {
+    for (const rule of ['gh api user --jq .login', 'never invent a login', 'quote those words back', 'tied to this exact text', 'does not prove who approved']) {
+      assert.ok(text.replace(/\s+/g, ' ').includes(rule), rule);
+    }
+    assert.doesNotMatch(text, /keeps the approval honest/);
+  }
   assert.doesNotMatch(codex, /\/eminzo-product/);
 });
 

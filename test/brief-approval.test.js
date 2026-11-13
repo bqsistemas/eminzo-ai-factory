@@ -1,9 +1,10 @@
-// Brief approval: a marker bound to a hash of the brief's content. Any later edit breaks the binding, and only an
-// approved brief opens the gate that issue creation must pass.
+// Brief approval: a marker bound to a hash of the brief's content, who approved and when. Any later edit breaks the
+// binding, and only an approved brief opens the gate that issue creation must pass. The marker detects edits; it does
+// not authenticate (`by` is self-declared).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { APPROVAL_PATTERN, approveBrief, briefHash, briefStatus, canonicalBrief } from '../factory/lib/brief-approval.js';
+import { APPROVAL_PATTERN, MAX_LINE, approveBrief, briefHash, briefStatus, canonicalBrief } from '../factory/lib/brief-approval.js';
 import { renderBrief } from '../factory/lib/brief.js';
 
 const BRIEF = {
@@ -17,34 +18,46 @@ const BRIEF = {
 };
 const READY = renderBrief(BRIEF, 'en');
 const AT = '2026-11-12T15:00:00.000Z';
+const WHO = { by: 'ana-p', at: AT };
+const markerLines = (t) => t.split('\n').filter((l) => APPROVAL_PATTERN.test(l));
+const timed = (fn) => { const t = process.hrtime.bigint(); fn(); return Number(process.hrtime.bigint() - t) / 1e6; };
 
-test('canonicalBrief ignores the marker, line endings and trailing whitespace', () => {
+test('canonicalBrief ignores the marker, line endings and trailing spaces and tabs', () => {
   const marked = `${READY.trimEnd()}\n<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana at=${AT} -->\n`;
   assert.equal(canonicalBrief(marked), canonicalBrief(READY));
   assert.equal(canonicalBrief(READY.replace(/\n/g, '\r\n')), canonicalBrief(READY));
   assert.equal(canonicalBrief(`${READY}\n\n\n`), canonicalBrief(READY));
-  assert.equal(canonicalBrief(READY.replace('## Scope\n', '## Scope   \n')), canonicalBrief(READY));
+  assert.equal(canonicalBrief(READY.replace('## Scope\n', '## Scope \t \n')), canonicalBrief(READY));
+  assert.equal(canonicalBrief(`﻿${READY}`), canonicalBrief(READY), 'a leading BOM is ignored');
   assert.notEqual(canonicalBrief(READY.replace('Filter.', 'Filter it.')), canonicalBrief(READY));
 });
 
-test('briefHash is 64 hex characters and stable', () => {
-  assert.match(briefHash(READY), /^[0-9a-f]{64}$/);
-  assert.equal(briefHash(READY), briefHash(`${READY}\n`));
+test('canonicalBrief keeps every other whitespace edit visible', () => {
+  for (const ch of [' ', ' ', '　', '​']) {
+    assert.notEqual(canonicalBrief(READY.replace('## Scope\n', `## Scope${ch}\n`)), canonicalBrief(READY), JSON.stringify(ch));
+  }
 });
 
-test('approveBrief adds exactly one marker bound to the hash, replacing an old one', () => {
-  const once = approveBrief(READY, { by: 'ana-p', at: AT });
-  assert.equal(once.split('\n').filter((l) => APPROVAL_PATTERN.test(l)).length, 1);
-  assert.match(once, new RegExp(`<!-- eminzo:approved sha256=${briefHash(READY)} by=ana-p at=${AT} -->`));
+test('briefHash is 64 hex characters, stable, and bound to who and when', () => {
+  assert.match(briefHash(READY, WHO), /^[0-9a-f]{64}$/);
+  assert.equal(briefHash(READY, WHO), briefHash(`${READY}\n`, WHO));
+  assert.notEqual(briefHash(READY, WHO), briefHash(READY, { ...WHO, by: 'ceo' }));
+  assert.notEqual(briefHash(READY, WHO), briefHash(READY, { ...WHO, at: '2026-11-13T15:00:00.000Z' }));
+});
+
+test('approveBrief adds exactly one marker bound to content, who and when, replacing an old one', () => {
+  const once = approveBrief(READY, WHO);
+  assert.equal(markerLines(once).length, 1);
+  assert.match(once, new RegExp(`<!-- eminzo:approved sha256=${briefHash(READY, WHO)} by=ana-p at=${AT} -->\\n$`));
   const twice = approveBrief(once, { by: 'bo', at: '2026-11-13T09:00:00.000Z' });
-  assert.equal(twice.split('\n').filter((l) => APPROVAL_PATTERN.test(l)).length, 1);
+  assert.equal(markerLines(twice).length, 1);
   assert.match(twice, /by=bo /);
-  assert.equal(briefHash(twice), briefHash(READY));
+  assert.equal(canonicalBrief(twice), canonicalBrief(READY));
 });
 
 test('approveBrief refuses a brief with problems, with a sentence a person understands', () => {
-  assert.throws(() => approveBrief(READY.replace('- BC-1: A reviewer sees only what is pending.', ''), { by: 'ana', at: AT }), /The brief cannot be approved yet: /);
-  assert.throws(() => approveBrief('not a brief', { by: 'ana', at: AT }), /The brief cannot be approved yet: /);
+  assert.throws(() => approveBrief(READY.replace('- BC-1: A reviewer sees only what is pending.', ''), WHO), /The brief cannot be approved yet: /);
+  assert.throws(() => approveBrief('not a brief', WHO), /The brief cannot be approved yet: /);
 });
 
 test('approveBrief validates who approved and when', () => {
@@ -74,30 +87,89 @@ test('briefStatus: ready when complete and not approved', () => {
   assert.equal(s.reason, 'The brief is not approved yet.');
 });
 
-test('briefStatus: approved only while the hash matches', () => {
-  const approved = approveBrief(READY, { by: 'ana', at: AT });
+test('briefStatus: approved only while content, who and when still match', () => {
+  const approved = approveBrief(READY, WHO);
   const s = briefStatus(approved);
   assert.equal(s.state, 'approved');
   assert.equal(s.can_create_issues, true);
-  assert.deepEqual(s.approval, { by: 'ana', at: AT, hash: briefHash(READY) });
-  assert.equal(briefStatus(approved.replace('Filter.', 'Filter it.')).state, 'changed');
+  assert.deepEqual(s.approval, { by: 'ana-p', at: AT, hash: briefHash(READY, WHO) });
   const changed = briefStatus(approved.replace('Filter.', 'Filter it.'));
+  assert.equal(changed.state, 'changed');
   assert.equal(changed.can_create_issues, false);
   assert.equal(changed.reason, 'The brief changed after it was approved on 2026-11-12; approve it again.');
-  assert.equal(changed.approval.by, 'ana');
+  assert.equal(changed.approval.by, 'ana-p');
 });
 
-test('briefStatus: a malformed marker does not approve anything', () => {
-  const forged = `${READY}<!-- eminzo:approved sha256=${briefHash(READY)} by=ana -->\n`;
-  assert.notEqual(briefStatus(forged).state, 'approved');
-  assert.equal(briefStatus(forged).can_create_issues, false);
+test('briefStatus: editing who approved or when breaks the approval', () => {
+  const approved = approveBrief(READY, WHO);
+  const byTampered = briefStatus(approved.replace('by=ana-p', 'by=ceo'));
+  assert.equal(byTampered.state, 'changed');
+  assert.equal(byTampered.can_create_issues, false);
+  const atTampered = briefStatus(approved.replace(AT, '2026-11-01T08:00:00.000Z'));
+  assert.equal(atTampered.state, 'changed');
+  assert.equal(atTampered.can_create_issues, false);
 });
 
-test('briefStatus: two markers are never trusted', () => {
-  const approved = approveBrief(READY, { by: 'ana', at: AT });
-  const doubled = `${approved}<!-- eminzo:approved sha256=${briefHash(READY)} by=bo at=${AT} -->\n`;
-  const s = briefStatus(doubled);
+test('briefStatus: a well-formed marker with the wrong hash on an unedited body is changed', () => {
+  const forged = `${canonicalBrief(READY)}\n\n<!-- eminzo:approved sha256=${'0'.repeat(64)} by=ana at=${AT} -->\n`;
+  const s = briefStatus(forged);
   assert.equal(s.state, 'changed');
   assert.equal(s.can_create_issues, false);
-  assert.match(s.reason, /more than one approval marker/);
+});
+
+test('briefStatus: a malformed marker never approves (uppercase hash, no date, bad date)', () => {
+  const body = canonicalBrief(READY);
+  const good = briefHash(READY, WHO);
+  for (const line of [
+    `<!-- eminzo:approved sha256=${good.toUpperCase()} by=ana-p at=${AT} -->`,
+    `<!-- eminzo:approved sha256=${good} by=ana-p -->`,
+    `<!-- eminzo:approved sha256=${good} by=ana-p at=2026-13-45T00:00:00Z -->`,
+    `  <!-- eminzo:approved sha256=${good} by=ana-p at=${AT} -->`,
+  ]) {
+    const s = briefStatus(`${body}\n\n${line}\n`);
+    assert.notEqual(s.state, 'approved', line);
+    assert.equal(s.can_create_issues, false, line);
+  }
+  assert.match(briefStatus(`${body}\n\n<!-- eminzo:approved sha256=${good.toUpperCase()} by=ana-p at=${AT} -->\n`).reason, /not valid/);
+});
+
+test('briefStatus: content after the marker, or two markers, is never trusted', () => {
+  const approved = approveBrief(READY, WHO);
+  const after = briefStatus(`${approved}\nA note added later.\n`);
+  assert.equal(after.state, 'changed');
+  assert.equal(after.can_create_issues, false);
+  assert.match(after.reason, /end of the brief/);
+  const doubled = briefStatus(`${approved}<!-- eminzo:approved sha256=${briefHash(READY, WHO)} by=ana-p at=${AT} -->\n`);
+  assert.equal(doubled.state, 'changed');
+  assert.equal(doubled.can_create_issues, false);
+  assert.match(doubled.reason, /more than one approval marker/);
+});
+
+test('a marker-like line inside a code fence or indented is the person\'s content and is never removed', () => {
+  const fenced = READY.replace('- Filter.', `- Filter.\n\n\`\`\`\n<!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana at=${AT} -->\n\`\`\``);
+  assert.match(canonicalBrief(fenced), /```\n<!-- eminzo:approved/);
+  const approved = approveBrief(fenced, WHO);
+  assert.match(approved, /```\n<!-- eminzo:approved sha256=a{64} by=ana at=/);
+  assert.equal(markerLines(approved.replace(/```[\s\S]*?```/, '')).length, 1);
+  assert.equal(briefStatus(approved).state, 'approved');
+  assert.equal(briefStatus(approved.replace(`sha256=${'a'.repeat(64)}`, `sha256=${'b'.repeat(64)}`)).state, 'changed', 'content inside the fence is bound to the hash');
+  const indented = READY.replace('- Filter.', `- Filter.\n\n    <!-- eminzo:approved sha256=${'a'.repeat(64)} by=ana at=${AT} -->`);
+  assert.throws(() => approveBrief(indented, WHO), /not valid/);
+});
+
+test('a line over the limit blocks approval and is rejected without a regex scan', () => {
+  const long = READY.replace('- Filter.', `- Filter ${'x'.repeat(MAX_LINE)}`);
+  const s = briefStatus(long);
+  assert.equal(s.state, 'draft');
+  assert.match(s.problems[0], /longer than 10000 characters/);
+  assert.throws(() => approveBrief(long, WHO), /longer than 10000 characters/);
+});
+
+test('canonicalBrief and briefStatus run in linear time on pathological input', () => {
+  const spaces = `# Brief: x\n${' '.repeat(200_000)}x`;
+  assert.ok(timed(() => canonicalBrief(spaces)) < 200, 'canonicalBrief');
+  assert.ok(timed(() => briefStatus(spaces)) < 200, 'briefStatus');
+  const blanks = `# Brief: x\n${'\n \t'.repeat(60_000)}x`;
+  assert.ok(timed(() => canonicalBrief(blanks)) < 200, 'blank lines');
+  assert.ok(timed(() => briefStatus(`# Brief: x\n${'<!-- eminzo:approved '.repeat(9_000)}`)) < 200, 'marker-like noise');
 });

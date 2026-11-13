@@ -93,9 +93,12 @@ Go through the findings with the person, blockers first. Each one is resolved (t
 Call `brief_status`. Only when its `state` is `ready` and no blocker finding is open, ask the person to approve the brief,
 in so many words. Approval is theirs: never assume it, and never call `approve_brief` on your own initiative.
 
-When the person gives their explicit words ("I approve it"), call `approve_brief` with the brief and their GitHub
-login, and show the brief it returns: the approval marker inside it is what keeps the approval honest. After
-approval the brief does not change without a new approval: any edit makes `brief_status` answer `changed`. The tool
+When the person gives their explicit words ("I approve it"), quote those words back to them, then get their GitHub
+login with `gh api user --jq .login` (if that fails, ask them for it; never invent a login). Call `approve_brief`
+with the brief and that login, and show the brief it returns: the approval marker inside it keeps the approval tied
+to this exact text. The marker detects later edits; it does not prove who approved, because GitHub keeps that record
+once the issues exist. (The Eminzo desktop keeps `approve_brief` out of its chat agent and calls it from the
+person's Approve button.) After approval the brief does not change without a new approval: any edit makes `brief_status` answer `changed`. The tool
 stores nothing; give the person the returned text to keep.
 
 ### 5. Deliverables
