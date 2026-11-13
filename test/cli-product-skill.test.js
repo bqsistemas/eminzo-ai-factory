@@ -38,6 +38,17 @@ test('the source keeps the rules that make it a product stage', () => {
   }
 });
 
+test('the skill reads the map first, drafts it with `map`, and gates approval and issues on the engine', () => {
+  for (const rule of ['`product_map`', '"confirmed"', '"assumed"', '## map', 'factory/product-map.md', 'only after the person says yes', '`brief_status`', '`approve_brief`', '`can_create_issues` is true', 'quote its `reason`', 'never by this skill', 'explicit words']) {
+    assert.ok(source.includes(rule), rule);
+  }
+  assert.match(productSkill(source, { version, provider: 'claude' }), /\/eminzo-product map/);
+  const codex = productSkill(source, { version, provider: 'codex' });
+  assert.match(codex, /\$eminzo-product map/);
+  assert.match(codex, /`brief_status`/);
+  assert.doesNotMatch(codex, /\/eminzo-product/);
+});
+
 test('build ships both forms and install writes them; uninstall removes them', () => {
   const dist = join(mkdtempSync(join(tmpdir(), 'eminzo-product-dist-')), 'dist');
   const { adapters } = build({ out: dist });

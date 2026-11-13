@@ -9,6 +9,17 @@ It runs in the Eminzo desktop (Ask Eminzo, Product mode) and, without the deskto
 (`/eminzo-product <idea>`) or Codex (`$eminzo-product <idea>`). `eminzo install` installs the `eminzo-product`
 skill for both tools, next to `eminzo-factory`.
 
+The skill's sub-commands are `<idea>`, `status`, `estimate` and `map` (draft or update the
+[functional map](#the-functional-map)). In the terminal the skill follows the same rules as the desktop:
+
+- It reads `product_map` first and labels each claim about today's behaviour `confirmed` (in the map, or seen in the
+  product) or `assumed`.
+- It approves only after the person's explicit words, with `brief_status` in state `ready` and no open blocker
+  finding; then it calls `approve_brief` and shows the returned brief.
+- It refuses to create issues, or to propose creating them, unless `brief_status` says `can_create_issues` is true,
+  and quotes the `reason`. It never creates issues itself: that is the Eminzo desktop's job, with the person's
+  confirmation (not built yet).
+
 ## The five steps
 
 | Step | What happens | Who decides |
