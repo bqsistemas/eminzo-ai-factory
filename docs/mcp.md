@@ -54,6 +54,8 @@ runs it as `factory/bin/mcp`.
 | `import_egm_brief` | an Elephant-Goldfish `concepts_brief.md` turned into a brief draft, with what is still missing (reads a file inside the repository only) | `path` (default `concepts_brief.md`) |
 | `brief_review_prompts` | the prompt for each context-free reader of a brief; the host starts the readers | `text` |
 | `merge_brief_review` | the readers' answers as one list of findings, blockers first | `answers` |
+| `brief_status` | where a brief stands: `draft`, `ready`, `approved` or `changed`, and whether issues may be created from it (`can_create_issues`, with the `reason` when not); the gate every issue creator must pass | `text` |
+| `approve_brief` | the brief with an approval marker bound to its content; refuses a brief that is not complete. It stores nothing and is called only after the person explicitly approved | `text`, `by` (a GitHub login) |
 | `factory_config` | base, concurrency, rounds, auto-merge, spec review, providers, lanes, reviewers, local overrides (never prices) | none |
 | `factory_queue` | open `factory` issues no local job has taken, oldest first (GitHub, through `gh`) | none |
 

@@ -50,6 +50,9 @@ const COMPLETE_BRIEF = [
   '## Entregas', '- D1: Ver solo lo pendiente | size: s | risk: low | covers: BC-1',
 ].join('\n');
 
+// The same brief in English: briefs approved through the tool carry the marker, and any edit breaks it.
+const APPROVED = { text: null };
+
 let client;
 before(async () => {
   const fixture = stateFixture();
@@ -148,6 +151,53 @@ const QUESTIONS = [
     check: (d) => { assert.equal(d.readers.length, 4); assert.equal(d.language, 'es'); assert.match(d.readers[0].user, /<brief>/); },
   },
   {
+    question: '¿Puedo crear los issues de este brief?',
+    tool: 'brief_status',
+    args: { text: COMPLETE_BRIEF },
+    check: (d) => { assert.equal(d.state, 'ready'); assert.equal(d.can_create_issues, false); assert.equal(d.reason, 'The brief is not approved yet.'); },
+  },
+  {
+    question: '(el desktop) la persona aprobó el brief: devuelve el brief con la marca',
+    tool: 'approve_brief',
+    args: { text: COMPLETE_BRIEF, by: 'ana-p' },
+    check: (d) => {
+      assert.match(d.text, /<!-- eminzo:approved sha256=[0-9a-f]{64} by=ana-p at=\d{4}-\d{2}-\d{2}T/);
+      assert.equal(d.approval.by, 'ana-p');
+      assert.equal(d.approval.at, d.read_at);
+      APPROVED.text = d.text;
+    },
+  },
+  {
+    question: '¿Puedo crear los issues del brief ya aprobado?',
+    tool: 'brief_status',
+    argsFrom: () => ({ text: APPROVED.text }),
+    check: (d) => { assert.equal(d.state, 'approved'); assert.equal(d.can_create_issues, true); assert.equal(d.approval.by, 'ana-p'); },
+  },
+  {
+    question: '¿Y si alguien cambió una línea después de aprobarlo?',
+    tool: 'brief_status',
+    argsFrom: () => ({ text: APPROVED.text.replace('Menos tiempo.', 'Mucho menos tiempo.') }),
+    check: (d) => { assert.equal(d.state, 'changed'); assert.equal(d.can_create_issues, false); assert.match(d.reason, /^The brief changed after it was approved on \d{4}-\d{2}-\d{2}; approve it again\.$/); },
+  },
+  {
+    question: '¿Puedo crear los issues de un brief incompleto?',
+    tool: 'brief_status',
+    args: { text: '# Brief: x\n' },
+    check: (d) => { assert.equal(d.state, 'draft'); assert.equal(d.can_create_issues, false); assert.match(d.reason, /^The brief cannot be approved yet: /); },
+  },
+  {
+    question: 'Dame un brief vacío para empezar',
+    tool: 'brief_template',
+    args: { title: 'Filtro de sugerencias' },
+    check: (d) => { assert.match(d.markdown, /^<!-- eminzo:brief v1 -->\n# Brief: Filtro de sugerencias\n/); assert.match(d.markdown, /^## Problema\n\n_Por completar\._$/m); },
+  },
+  {
+    question: '(el desktop) junta lo que dijeron los revisores',
+    tool: 'merge_brief_review',
+    args: { answers: [{ lens: 'newcomer', answer: 'FINDING: Problema | blocker | No se entiende para quién es.' }, { lens: 'user', answer: 'FINDING: Problema | blocker | No se entiende para quién es.' }] },
+    check: (d) => { assert.equal(d.findings.length, 1); assert.equal(d.findings[0].id, 'F1'); },
+  },
+  {
     question: '¿Cómo está configurada la fábrica?',
     tool: 'factory_config',
     check: (d) => { assert.equal(d.config.concurrency, 2); assert.equal(d.config.auto_merge, false); assert.equal(Object.hasOwn(d.config, 'prices'), false); },
@@ -160,9 +210,9 @@ const QUESTIONS = [
   },
 ];
 
-for (const { question, tool, args, source = 'local', check } of QUESTIONS) {
+for (const { question, tool, args, argsFrom, source = 'local', check } of QUESTIONS) {
   test(`golden: ${question} → ${tool}`, async () => {
-    const result = await ask(tool, args);
+    const result = await ask(tool, argsFrom ? argsFrom() : args);
     assert.equal(result.isError, false, result.content?.[0]?.text);
     assert.equal(result.resultType, 'complete');
     const data = result.structuredContent;
@@ -184,7 +234,7 @@ test('golden: a job from another machine is not invented', async () => {
 test('golden: tools/list offers exactly the read-only tools', async () => {
   const res = await client.call('tools/list', {});
   const tools = res.result.tools;
-  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'factory_config', 'factory_queue']);
+  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'factory_config', 'factory_queue']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true, `${t.name} is read-only`);
     assert.equal(t.annotations.destructiveHint, false);
