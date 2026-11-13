@@ -9,7 +9,7 @@ export const FACTORY_LABEL = 'factory';
 const QUEUE_LIMIT = 100;
 
 /** A short reason from gh's stderr, for a tool error the model can show. */
-function ghProblem(res) {
+export function ghProblem(res) {
   if (res.error) return res.error.code === 'ENOENT' ? 'the GitHub CLI (gh) is not installed' : res.error.message;
   const last = String(res.stderr ?? '').trim().split('\n').slice(-1)[0];
   return last || `gh exited with code ${res.status}`;

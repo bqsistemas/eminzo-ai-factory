@@ -17,6 +17,9 @@ const minutes = (from, to) => (from !== null && to !== null && to >= from ? Math
 const knownCost = (job) => job.cost_status !== 'unavailable' && typeof job.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
 const decisionOf = (d) => (d === 'ESCALATE' ? true : d === 'APPROVE' ? false : null);
 
+/** Minutes from a facts line's start until the job was ready for approval (what an estimate measures), or null. */
+export const factsMinutes = (facts) => minutes(at(facts?.started), at(facts?.approve_entered));
+
 /** One record per merged local job that has a start and an approve time. */
 export function localRecords(root) {
   return readJobs(root).filter((j) => j.stage === 'merged' && at(j.started) !== null && at(j.approve_entered) !== null).map((j) => ({
@@ -60,7 +63,7 @@ export function githubRecords(root, { gh = process.env.FACTORY_GH || 'gh', runne
         lane: f.lane === 'xs' ? 'xs' : 'normal',
         surfaces: Array.isArray(f.surfaces) ? f.surfaces : [],
         rounds: Number.isInteger(f.round) ? f.round : 1,
-        factory_minutes: minutes(at(f.started), at(f.approve_entered)),
+        factory_minutes: factsMinutes(f),
         wait_minutes: minutes(at(f.approve_entered), at(pr.mergedAt)),
         cost_usd: typeof f.cost_usd === 'number' && f.cost_usd >= 0 ? f.cost_usd : null,
         escalated: decisionOf(f.decision),
