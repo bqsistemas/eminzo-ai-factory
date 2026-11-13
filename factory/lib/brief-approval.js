@@ -31,7 +31,7 @@ export const APPROVAL_PATTERN = new RegExp(`^<!-- eminzo:approved sha256=([0-9a-
 
 const isoDate = (s) => typeof s === 'string' && s.length <= 40 && new RegExp(`^${ISO_AT}$`).test(s) && Number.isFinite(Date.parse(s));
 const isBlank = (line) => { for (let i = 0; i < line.length; i += 1) if (line[i] !== ' ' && line[i] !== '\t') return false; return true; };
-const stripEnd = (line) => {
+export const stripEnd = (line) => {
   let end = line.length;
   if (line[end - 1] === '\r') end -= 1;
   while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end -= 1;
@@ -40,7 +40,7 @@ const stripEnd = (line) => {
 const leading = (line) => { let i = 0; while (i < line.length && (line[i] === ' ' || line[i] === '\t')) i += 1; return i; };
 
 /** The fence character a line opens or closes (``` or ~~~, up to 3 spaces in), or null. */
-function fenceOf(line) {
+export function fenceOf(line) {
   const i = leading(line);
   if (i > 3 || line[i] === '\t') return null;
   const ch = line[i];

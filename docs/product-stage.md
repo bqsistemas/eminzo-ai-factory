@@ -19,8 +19,8 @@ The skill's sub-commands are `<idea>`, `status`, `estimate` and `map` (draft or 
   invents one), calls `approve_brief` and shows the returned brief. The desktop keeps `approve_brief` out of its chat
   agent's tools and calls it from the person's Approve button.
 - It refuses to create issues, or to propose creating them, unless `brief_status` says `can_create_issues` is true,
-  and quotes the `reason`. It never creates issues itself: that is the Eminzo desktop's job, with the person's
-  confirmation (not built yet).
+  and quotes the `reason`. It never creates issues itself: the Eminzo desktop does, with the person's
+  confirmation (see [Hand-off](#hand-off-from-an-approved-brief-to-issues)).
 
 ## The five steps
 
@@ -113,11 +113,46 @@ Approval is a marker line at the end of the brief text, bound to a hash of the c
 | `approved` | The marker's hash matches the content | **yes** |
 | `changed` | A marker is there but the content, `by` or `at` differ, or the marker is malformed, doubled or not at the end | no |
 
-`brief_status` is **the gate**: whatever creates issues from a brief (phase 4; nothing creates issues today) must
-call it and go on only when `can_create_issues` is true. `reason` is one sentence a Product Lead understands, for
+`brief_status` is **the gate**: whatever creates issues from a brief must call it and go on only when
+`can_create_issues` is true (`handoff_drafts` does, and refuses with the `reason` when it is not). `reason` is one sentence a Product Lead understands, for
 example "The brief changed after it was approved on 2026-11-12; approve it again."
 
 Code: `factory/lib/brief-approval.js` (`canonicalBrief`, `briefHash`, `approveBrief`, `briefStatus`), linear in the size of the text.
+
+## Hand-off: from an approved brief to issues
+
+The engine only **builds the texts**. `handoff_drafts` stores nothing, creates nothing, labels nothing and closes
+nothing on GitHub; the Eminzo desktop creates the issues after the person confirms them. The tech lead decides what
+enters the factory by adding the `factory` label to a deliverable. Nothing here ever sets that label.
+
+| Issue | Label | Body |
+|---|---|---|
+| The brief (one) | `eminzo-brief` | The approved brief text exactly as approved (approval marker included), then a hidden line |
+| A deliverable (one per `Dn`) | `eminzo-deliverable` | Functional text (below), then a hidden line |
+
+Hidden lines (HTML comments, found with a search on the issue body):
+
+```markdown
+<!-- eminzo:brief-issue v1 hash=<64 hex: the approval hash> -->
+<!-- eminzo:deliverable v1 brief=<n> id=<Dn> hash=<first 12 hex of the approval hash> est=<low_min>-<high_min>|none -->
+```
+
+- A deliverable issue is titled with the deliverable title (up to 120 characters) and says: what it delivers, the
+  acceptance criteria it covers (the `BC-n` lines, quoted), size and risk, what it waits for (other deliverables,
+  as `#n` once they exist), the estimate shown when it was created (a range and how many similar finished jobs it
+  rests on, or "too little history"), and `Part of #<brief issue>`. It is written in the brief's language and never
+  mentions the factory label.
+- `handoff_drafts` without `brief_issue` returns the brief issue draft. With `brief_issue` it returns one draft per
+  deliverable in dependency order (`after` first), plus `estimate_input`. Pass `created` (`[{ id, issue }]`) so a
+  draft refers to the deliverables already created as `#n`. It calls the gate first and fails with its `reason`
+  when `can_create_issues` is false, including a brief edited after approval.
+- The brief issue is never edited by Eminzo afterwards: it is the approved record. Whoever created it, and when, is
+  GitHub's record of who approved.
+- Markers are read in linear time: one well-formed unindented line outside code fences, every field checked, at most
+  200 characters. A body with two markers, or a text inside a code fence, is not trusted.
+
+Code: `factory/lib/handoff.js` (`briefIssueDraft`, `deliverableIssueDrafts`, `parseBriefIssueMarker`,
+`parseDeliverableMarker`, `briefIssueValidity`).
 
 ## The functional map
 
@@ -155,6 +190,13 @@ These were chosen to keep moving and are pending the owner's confirmation:
 - A brief with two approval markers is never trusted (`changed`).
 - The functional map is a committed markdown file at a fixed path, `factory/product-map.md`, reviewed by a person
   and stale after 90 days.
+- The approved brief becomes ONE issue labeled `eminzo-brief`; its body is the approved text exactly as approved
+  plus the hidden line `eminzo:brief-issue`, and Eminzo never edits it afterwards (it is the approved record).
+- Each deliverable becomes ONE issue labeled `eminzo-deliverable`, never `factory`: the tech lead adds `factory`
+  when they accept it. Its hidden line `eminzo:deliverable` carries the brief issue number, the deliverable id, the
+  first 12 hex of the approval hash and the estimate shown at creation.
+- An initiative is the brief issue plus its deliverable issues, found by those markers; its state is computed from
+  GitHub only.
 
 ## The context-free review
 
@@ -180,10 +222,9 @@ Code: `factory/lib/brief-review.js`.
 
 The stage uses these `eminzo mcp` tools, all read-only (see [eminzo mcp](mcp.md)): `discovery_methods`,
 `brief_template`, `check_brief`, `import_egm_brief`, `brief_review_prompts`, `merge_brief_review`,
-`brief_status`, `approve_brief`, `product_map` and `estimate_work`.
+`brief_status`, `approve_brief`, `handoff_drafts`, `product_map` and `estimate_work`.
 
 ## Not yet
 
-- Creating the brief issue and the deliverable issues from the desktop, with the person's confirmation, and
-  following an initiative from GitHub.
+- Creating the issues from the desktop, with the person's confirmation (the engine side, the drafts, is done).
 - Ask Eminzo on Codex in the desktop: its non-interactive flags are not verified yet.

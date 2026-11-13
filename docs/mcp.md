@@ -5,8 +5,8 @@
 [Model Context Protocol](https://modelcontextprotocol.io) server. Ask Eminzo, the chat in the Eminzo
 desktop app, uses it. Any Claude Code or Codex session can use it too.
 
-It is **read-only**. It runs no git command and changes no file. The one GitHub call it makes is
-`gh issue list`.
+It is **read-only**. It runs no git command and changes no file. The GitHub calls it makes are reads
+through `gh` (`issue list`, `issue view`, `pr list`, `pr view`); it never creates, edits, labels or closes anything.
 
 ## How it runs
 
@@ -57,6 +57,7 @@ runs it as `factory/bin/mcp`.
 | `brief_status` | where a brief stands: `draft`, `ready`, `approved` or `changed`, and whether issues may be created from it (`can_create_issues`, with the `reason` when not); the gate every issue creator must pass | `text` |
 | `approve_brief` | the brief with an approval marker bound to its content, `by` and the time; refuses a brief that is not complete. It stores nothing and is called only after the person explicitly approved. The marker detects later edits but does not authenticate: `by` is self-declared, and GitHub is the record of who approved | `text`, `by` (a GitHub login) |
 | `product_map` | how the product works today, from the reviewed map in `factory/product-map.md`: areas with statements labelled `confirmed` or `assumed`, who reviewed it and when, and its state (`missing`, `draft`, `reviewed`, `stale` after 90 days). Reads that one file; a file larger than 1 MiB counts as missing | none |
+| `handoff_drafts` | the issue texts for an approved brief, behind the gate: without `brief_issue` the brief issue draft (label `eminzo-brief`), with it one draft per deliverable in dependency order (label `eminzo-deliverable`, never `factory`) plus `estimate_input`; fails with the gate's `reason` when the brief is not approved. Stores and creates nothing: the Eminzo desktop creates the issues after the person confirms | `text`, `brief_issue`, `created` (`[{ id, issue }]`) |
 | `factory_config` | base, concurrency, rounds, auto-merge, spec review, providers, lanes, reviewers, local overrides (never prices) | none |
 | `factory_queue` | open `factory` issues no local job has taken, oldest first (GitHub, through `gh`) | none |
 
@@ -137,7 +138,8 @@ Only tools are offered. Batches are refused, and lines over 1 MiB are refused.
 | `factory/lib/state/history.js` | finished-job records for estimates: local merged jobs, plus the facts lines of merged PRs |
 | `factory/lib/state/estimate.js` | the estimate: matching levels, ranges, warnings and totals |
 | `factory/lib/state/github.js` | the queue, through `gh` |
+| `factory/lib/handoff.js` | the texts and markers of the brief issue and the deliverable issues (pure) |
 
-Tests: `test/mcp-protocol.test.js`, `test/mcp-schema.test.js`, `test/factory-state.test.js`, `test/factory-diagnosis.test.js`, `test/factory-estimate.test.js` and
-`test/mcp-golden.test.js`. The golden test asks known-answer questions through the real process. Add a
+Tests: `test/mcp-protocol.test.js`, `test/mcp-schema.test.js`, `test/factory-state.test.js`, `test/factory-diagnosis.test.js`, `test/factory-estimate.test.js`,
+`test/handoff.test.js` and `test/mcp-golden.test.js`. The golden test asks known-answer questions through the real process. Add a
 row there whenever Ask Eminzo learns a new kind of question.
