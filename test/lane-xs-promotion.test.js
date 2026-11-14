@@ -149,8 +149,8 @@ describe('P0-6: promotion to the normal lane', { concurrency: true }, () => {
   });
 
   test('the factory:xs label is created by bin/setup', () => {
-    const text = readFileSync(join(repo, 'factory/bin/setup'), 'utf8');
-    assert.match(text, /label create factory:xs /);
+    const text = readFileSync(join(repo, 'factory/lib/labels.js'), 'utf8');
+    assert.match(text, /name: 'factory:xs'/);
   });
 });
 

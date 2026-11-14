@@ -309,9 +309,11 @@ never interpret a displayed `$0.00` as verified Codex cost.
 
 <!-- rule: setup-command -->
 - `$eminzo-factory setup`: a required user-run command (the user types it in their session) before using the factory
-  in this repository. Run Git/GitHub preflight, `factory/bin/setup` to create/update the four
-  labels and then `factory/bin/setup-spec-review` to create/update `factory:spec-review`, without
-  changing issues. If `factory/project.md` is missing, `factory/bin/init` may
+  in this repository. Run Git/GitHub preflight, `factory/bin/setup` to create/update every label in
+  the engine's one label list (the factory labels, `factory:spec-review` and Ask Eminzo's
+  `eminzo-brief` and `eminzo-deliverable`; it tries all, reports each failure and exits non-zero),
+  without changing issues. `factory/bin/setup-spec-review` is the same script limited to
+  `factory:spec-review`. Run setup again after an update. If `factory/project.md` is missing, `factory/bin/init` may
   create its structural draft, but that is not sufficient setup. Analyze repository manifests,
   README/docs, source/module layout, tests, CI/build scripts, runtime config and conventions;
   then understand the repository as a functional product, not just a codebase: identify the

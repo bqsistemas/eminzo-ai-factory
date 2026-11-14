@@ -306,6 +306,8 @@ These were chosen to keep moving and are pending the owner's confirmation:
 - A brief with two approval markers is never trusted (`changed`).
 - The functional map is a committed markdown file at a fixed path, `factory/product-map.md`, reviewed by a person
   and stale after 90 days.
+- The labels `eminzo-brief` and `eminzo-deliverable` now come from `factory/bin/setup` (one list, `factory/lib/labels.js`),
+  like the factory's own; the desktop no longer has to create them at use time.
 - The approved brief becomes ONE issue labeled `eminzo-brief`; its body is the approved text exactly as approved
   plus the hidden line `eminzo:brief-issue`, and Eminzo never edits it afterwards (it is the approved record).
 - Each deliverable becomes ONE issue labeled `eminzo-deliverable`, never `factory`: the tech lead adds `factory`

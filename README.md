@@ -121,7 +121,7 @@ Restart Claude Code or Codex afterwards: a session loads its skills when it star
 
 ```text
 /eminzo-factory enable     # opens the chore/enable-factory pull request: merge it, then git pull
-/eminzo-factory setup      # creates the labels and fills factory/project.md
+/eminzo-factory setup      # creates or updates every label and fills factory/project.md
 ```
 
 **3. Every job:**
@@ -141,7 +141,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | Command | What it does |
 |---|---|
 | `/eminzo-factory enable` | Once per repository: opens the pull request that adds the factory files |
-| `/eminzo-factory setup` | Once per repository: the labels and `factory/project.md` |
+| `/eminzo-factory setup` | Once per repository, and again after an update: every label (the factory's and Ask Eminzo's) and `factory/project.md` |
 | `/eminzo-factory issue <n>` | Runs issue `<n>` now |
 | `/eminzo-factory <feature>` | Opens an issue for the feature and runs it |
 | `/eminzo-factory xs <request>` | The same, through the light lane |

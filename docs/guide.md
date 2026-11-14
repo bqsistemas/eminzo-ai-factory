@@ -346,8 +346,9 @@ whole `spec.md` with its SHA-256. Then:
   job back to the spec writer with your notes; the revised spec is posted again with its new hash.
 
 `run` never approves a spec: it reports `spec-review` jobs as waiting for you. A repo set up before
-this feature needs `/eminzo-factory setup` (or `factory/bin/setup-spec-review`) once to create the
-`factory:spec-review` label.
+this feature has no `factory:spec-review` label yet. Setup creates or updates every label (the
+factory's and Ask Eminzo's): run it again after an update, or let the desktop do it. The old
+`factory/bin/setup-spec-review` still works and creates only that label.
 
 ### Run mode and issue claims
 
