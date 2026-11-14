@@ -8,7 +8,8 @@
 //   ## Deliverables             - D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2
 //
 // Headings may be in English, Spanish or Portuguese (the repository's `language`); keys inside a deliverable line
-// stay in English so every language parses the same. Criteria ids (BC-n) are stable: each issue cut from a brief
+// stay in English so every language parses the same. The id of a criterion or deliverable may be bold, italic or in
+// backticks (`- **BC-1**: text`); it is read as the plain id and the text is kept as written. Criteria ids (BC-n) are stable: each issue cut from a brief
 // names the criteria it covers. Pure: no I/O.
 
 export const BRIEF_MARKER = '<!-- eminzo:brief v1 -->';
@@ -31,8 +32,12 @@ export const SECTIONS = Object.freeze([
 const LANGS = ['en', 'es', 'pt'];
 const PLACEHOLDER = Object.freeze({ en: '_To complete._', es: '_Por completar._', pt: '_A completar._' });
 const PLACEHOLDERS = new Set(Object.values(PLACEHOLDER));
-const CRITERION = /^-\s*(BC-\d+):\s*(\S.*)$/;
-const DELIVERABLE = /^-\s*(D\d+):\s*(.+)$/;
+// A line is a bullet (`-`, or `*`/`+` followed by a space) and an id that may be wrapped in balanced emphasis
+// (`**`, `__`, `*`, `_` or a backtick) with the colon just inside or just outside it: `BC-1:`, `**BC-1**:`, `**BC-1:**`.
+// Unbalanced forms such as `**BC-1: text` do not match, so they are reported rather than guessed.
+const lineOf = (id, rest) => new RegExp(`^(?:-\\s*|[*+]\\s+)(?:(\\*\\*|__|\\*|_|`+'`'+`)(${id})(?::\\1|\\1:)|(${id}):)\\s*${rest}$`);
+const CRITERION = lineOf('BC-\\d+', '(\\S.*)');
+const DELIVERABLE = lineOf('D\\d+', '(.+)');
 
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F]/;
 const BIDI = /[؜‎‏‪-‮⁦-⁩]/;
@@ -173,11 +178,11 @@ export function parseBrief(text) {
       for (const raw of content.split('\n').map((l) => l.trim()).filter((l) => l && !PLACEHOLDERS.has(l))) {
         if (key === 'acceptance') {
           const m = raw.match(CRITERION);
-          if (m) out.criteria.push({ id: m[1], text: m[2].trim() });
+          if (m) out.criteria.push({ id: m[2] ?? m[3], text: m[4].trim() });
           else out.badCriteria.push(raw);
         } else {
           const m = raw.match(DELIVERABLE);
-          if (m) out.deliverables.push(parseDeliverable(m[1], m[2]));
+          if (m) out.deliverables.push(parseDeliverable(m[2] ?? m[3], m[4]));
           else out.badDeliverables.push(raw);
         }
       }
@@ -220,7 +225,7 @@ export function validateBrief(brief) {
     if (criteria.has(c.id)) problems.push(`acceptance criterion ${c.id} appears twice`);
     criteria.add(c.id);
   }
-  for (const raw of brief.badCriteria) problems.push(`acceptance criterion line is not "- BC-n: text": "${raw}"`);
+  for (const raw of brief.badCriteria) problems.push(`Acceptance criterion could not be read: write it as "- BC-1: what a person can check". Line: "${raw}"`);
   const ids = new Set();
   for (const d of brief.deliverables) {
     if (ids.has(d.id)) problems.push(`deliverable ${d.id} appears twice`);
@@ -238,7 +243,7 @@ export function validateBrief(brief) {
     }
   }
   for (const cycle of cycles(brief.deliverables)) problems.push(`deliverables ${cycle} wait for each other`);
-  for (const raw of brief.badDeliverables) problems.push(`deliverable line is not "- Dn: title | size: s | risk: low | covers: BC-1": "${raw}"`);
+  for (const raw of brief.badDeliverables) problems.push(`Deliverable could not be read: write it as "- D1: title | size: s | risk: low | covers: BC-1". Line: "${raw}"`);
   for (const heading of brief.unknown) problems.push(`unknown section "${heading}"`);
   const hazards = brief.hazards ?? [];
   if (hazards.includes('comments')) problems.push('HTML comments are not allowed in a brief: remove "<!--"');

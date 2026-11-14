@@ -176,3 +176,13 @@ test('marker parsing is linear on hostile input', () => {
   parseDeliverableMarker('<!-- eminzo:deliverable v1 -->\n'.repeat(100_000));
   assert.ok(Date.now() - started < 2000);
 });
+
+test('a brief with bold ids is cut like a plain one: normalized ids, no stray ** in the issue bodies', () => {
+  const bold = BRIEF.replace('- BC-1: A', '- **BC-1**: A').replace('- BC-2:', '- **BC-2:**').replace('- D3:', '- **D3**:').replace('- D1:', '* __D1__:');
+  const drafts = deliverableIssueDrafts(approveBrief(bold, { by: 'ana-p', at: AT }), { briefIssue: 7, estimates: {}, issues: {} });
+  assert.deepEqual(drafts.map((d) => d.id), ['D3', 'D1', 'D2']);
+  const d3 = drafts[0];
+  assert.match(d3.body, /> BC-1: A reviewer sees only what is pending\./);
+  assert.equal(drafts[1].title, 'Remember the filter');
+  for (const d of drafts) assert.doesNotMatch(d.body, /\*\*|__/);
+});

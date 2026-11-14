@@ -74,7 +74,7 @@ Call `brief_template` with a short functional title and fill every section with 
 problem, for whom, expected value, how it works today, scope, out of scope, acceptance criteria, open questions
 and deliverables.
 
-- Acceptance criteria are behaviours a person can check by using the product: `- BC-1: ...`. Vague words
+- Acceptance criteria are behaviours a person can check by using the product: `- BC-1: ...` (write the id plain; a bold id is read too, an unclosed `**` is not). Vague words
   ("fast", "easy", "better") are not criteria; ask what would make them checkable.
 - Show the whole brief after each change and call `check_brief`. Explain its problems in plain words.
 

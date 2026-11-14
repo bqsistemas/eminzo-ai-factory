@@ -3,6 +3,7 @@
 // not authenticate (`by` is self-declared).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 import { APPROVAL_PATTERN, MAX_LINE, approveBrief, briefHash, briefStatus, canonicalBrief } from '../factory/lib/brief-approval.js';
 import { renderBrief } from '../factory/lib/brief.js';
@@ -168,4 +169,15 @@ test('canonicalBrief and briefStatus run in linear time on pathological input', 
   const blanks = `# Brief: x\n${'\n \t'.repeat(60_000)}x`;
   assert.ok(timed(() => canonicalBrief(blanks)) < 200, 'blank lines');
   assert.ok(timed(() => briefStatus(`# Brief: x\n${'<!-- eminzo:approved '.repeat(9_000)}`)) < 200, 'marker-like noise');
+});
+
+test('the hash is still computed over the brief text: a brief approved before bold ids were read stays approved', () => {
+  const bold = READY.replace('- BC-1:', '- **BC-1**:').replace('- D1:', '- **D1**:');
+  const marked = approveBrief(bold, WHO);
+  assert.match(marked, /^- \*\*BC-1\*\*: /m, 'the text is kept as written');
+  assert.match(marked, new RegExp(`sha256=${briefHash(bold, WHO)} `));
+  assert.equal(briefStatus(marked).state, 'approved');
+  // the hash of the plain text is exactly what it was: sha256(canonical text + "\n" + by + "\n" + at)
+  assert.equal(briefHash(READY, WHO), createHash('sha256').update(`${canonicalBrief(READY)}\n${WHO.by}\n${WHO.at}`, 'utf8').digest('hex'));
+  assert.notEqual(briefHash(bold, WHO), briefHash(READY, WHO), 'the hash binds the text, not the normalized ids');
 });

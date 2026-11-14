@@ -82,6 +82,12 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 
 - Headings may be in English, Spanish or Portuguese (the repository's `language`); the keys inside a deliverable
   line stay in English.
+- A criterion or deliverable line starts with `-` (or `*`, `+`). Its id may be bold, italic or in backticks, with the
+  colon inside or outside: `- BC-1: text`, `- **BC-1**: text`, `- **D1:** title | ...`, `` - `BC-1`: text ``. It is read
+  as the plain id and the text stays as written. Unbalanced forms (`- **BC-1: text`) are reported, not guessed:
+  "Acceptance criterion could not be read: write it as "- BC-1: what a person can check"" and "Deliverable could not be
+  read: write it as "- D1: title | size: s | risk: low | covers: BC-1"", each followed by the line. Approval hashes
+  are over the brief text, so emphasis is part of what was approved.
 - Criteria ids (`BC-n`) are stable: each issue cut from the brief names the criteria it covers.
 - `check_brief` lists what blocks approval: a missing section, a duplicate or malformed criterion, a deliverable
   with a bad size or risk, a criterion or deliverable that does not exist, deliverables waiting for each other. It

@@ -69,13 +69,40 @@ test('validateBrief names every blocking problem', () => {
     'section "Scope" is missing or empty',
     'section "Out of scope" is missing or empty',
     'acceptance criterion BC-1 appears twice',
-    'acceptance criterion line is not "- BC-n: text": "- criterion without id"',
+    'Acceptance criterion could not be read: write it as "- BC-1: what a person can check". Line: "- criterion without id"',
     'deliverable D1: size must be xs, s, m or l',
     'deliverable D1: covers BC-9, which is not an acceptance criterion',
     'deliverable D2: waits for D3, which is not a deliverable',
-    'deliverable line is not "- Dn: title | size: s | risk: low | covers: BC-1": "not a deliverable line"',
+    'Deliverable could not be read: write it as "- D1: title | size: s | risk: low | covers: BC-1". Line: "not a deliverable line"',
     'unknown section "Mystery"',
   ]);
+});
+
+const withLines = (criteria, deliverables) => parseBrief(renderBrief({ ...BRIEF, criteria: [], deliverables: [] }, 'en')
+  .replace(/(## Acceptance criteria\n\n)[^]*?(\n\n## Deliverables\n\n)[^]*$/, `$1${criteria.join('\n')}$2${deliverables.join('\n')}\n`));
+
+test('an emphasized id and colon is read as the plain id, and the text is kept as written', () => {
+  const ids = ['**BC-1**:', '**BC-1:**', '*BC-1*:', '*BC-1:*', '__BC-1__:', '_BC-1_:', '`BC-1`:', '`BC-1:`', 'BC-1:'];
+  for (const bullet of ['-', '*', '+']) {
+    for (const id of ids) {
+      const dId = id.replace('BC-1', 'D1');
+      const b = withLines([`${bullet} ${id} La página abre **rápido**.`], [`${bullet} ${dId} Encabezado | size: s | risk: low | covers: BC-1`]);
+      assert.deepEqual(b.criteria, [{ id: 'BC-1', text: 'La página abre **rápido**.' }], `${bullet} ${id}`);
+      assert.deepEqual(b.deliverables, [{ id: 'D1', title: 'Encabezado', size: 's', risk: 'low', covers: ['BC-1'], after: [] }], `${bullet} ${dId}`);
+      assert.deepEqual(validateBrief(b).problems.filter((p) => /could not be read/.test(p)), []);
+    }
+  }
+});
+
+test('unbalanced or odd emphasis is reported, never guessed', () => {
+  const odd = ['**BC-1: text', 'BC-1**: text', '**BC-1*: text', '*BC-1_: text', '**BC-1** text', '***BC-1***: text'];
+  for (const o of odd) {
+    const b = withLines([`- ${o}`], [`- ${o.replace('BC-1', 'D1')} | size: s | risk: low | covers: BC-1`]);
+    assert.deepEqual(b.criteria, [], o);
+    assert.deepEqual(b.deliverables, [], o);
+    assert.deepEqual(b.badCriteria, [`- ${o}`]);
+  }
+  assert.equal(withLines(['*BC-1*: text without a bullet'], []).criteria.length, 0);
 });
 
 test('validateBrief warns about what is legal but worth a second look', () => {
