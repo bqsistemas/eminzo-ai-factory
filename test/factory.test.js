@@ -71,13 +71,13 @@ test('AC-8: checks.sh and every factory/bin script are executable; checks.sh run
   exec('factory/checks.sh');
   assert.match(read('factory/checks.sh'), /^npm test\b/m);
   const bins = readdirSync(join(repo, 'factory/bin'));
-  assert.deepEqual(bins.sort(), ['approve', 'dashboard', 'ensure-output', 'gate', 'init', 'job', 'nudge', 'profile', 'protect-tests', 'route', 'selfcheck', 'setup', 'setup-spec-review', 'visual']);
+  assert.deepEqual(bins.sort(), ['approve', 'dashboard', 'ensure-output', 'gate', 'init', 'job', 'mcp', 'nudge', 'profile', 'protect-tests', 'route', 'selfcheck', 'setup', 'setup-spec-review', 'visual']);
   for (const bin of bins) {
     exec(`factory/bin/${bin}`);
     assert.ok(statSync(join(repo, 'factory/bin', bin)).isFile());
     assert.match(read(`factory/bin/${bin}`), /^#!\/bin\/sh\n/, `${bin} is a sh script`);
   }
-  for (const name of ['job', 'gate', 'route', 'nudge', 'dashboard', 'init']) {
+  for (const name of ['job', 'gate', 'route', 'nudge', 'dashboard', 'init', 'mcp']) {
     assert.equal(
       read(`factory/bin/${name}`),
       `#!/bin/sh\nexec node "$(dirname "$0")/../lib/${name}.js" "$@"\n`,

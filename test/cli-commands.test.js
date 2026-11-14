@@ -7,10 +7,11 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { build } from '../cli/build.mjs';
+import { fakeAgentClis } from './helpers/fake-agent-clis.js';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const bin = join(repo, 'cli/bin/eminzo.js');
@@ -30,7 +31,10 @@ function sandbox() {
   const dir = mkdtempSync(join(tmpdir(), 'eminzo-cmd-'));
   const home = join(dir, 'home');
   mkdirSync(home);
-  const env = { ...process.env, ...GIT_ENV, HOME: home, EMINZO_DIST: dist };
+  // Fake claude and codex first on PATH: install registers its MCP server through them, never through a real one.
+  const env = { ...process.env, ...GIT_ENV, HOME: home, EMINZO_DIST: dist, PATH: `${fakeAgentClis(dir)}${delimiter}${process.env.PATH}` };
+  delete env.CLAUDE_CONFIG_DIR;
+  delete env.CODEX_HOME;
   delete env.EMINZO_ENGINE;
   delete env.FACTORY_ROOT;
   const run = (args, { cwd = dir, extra = {} } = {}) => spawnSync(process.execPath, [bin, ...args], { cwd, env: { ...env, ...extra }, encoding: 'utf8' });
@@ -122,7 +126,7 @@ test('install writes the adapters under HOME, is idempotent, and records what it
   }
   const manifest = JSON.parse(readFileSync(join(t.home, '.eminzo/install.json'), 'utf8'));
   assert.equal(manifest.version, version);
-  assert.equal(manifest.files.length, 18);
+  assert.equal(manifest.files.length, 20);
 
   const again = t.run(['install']);
   assert.equal(again.status, 0, again.stderr);
@@ -354,4 +358,25 @@ test('eminzo selfcheck <id> is `job <id> selfcheck`; eminzo protect-tests is the
   assert.equal(denied.status, 2);
   assert.equal(denied.stderr, 'protected test; the gate fails the round\n', 'no engine-range warning before the reason');
   assert.equal(hook(join(worktree, 'src/a.js')).status, 0);
+});
+
+test('eminzo mcp serves the read-only factory tools on stdio and stops when stdin closes; --help says how to register it', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  const lines = [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } } },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'factory_overview', arguments: {} } },
+  ].map((m) => JSON.stringify(m)).join('\n');
+  const res = spawnSync(process.execPath, [bin, 'mcp'], { cwd: root, env: t.env, input: `${lines}\n`, encoding: 'utf8' });
+  assert.equal(res.status, 0, res.stderr);
+  const [init, call] = res.stdout.trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(init.result.serverInfo.name, 'eminzo');
+  assert.equal(init.result.serverInfo.version, version, 'the server reports the installed engine version');
+  assert.equal(call.result.isError, false);
+  assert.equal(call.result.structuredContent.summary, 'No jobs on this machine yet.');
+  const help = t.run(['mcp', '--help'], { cwd: root });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /claude mcp add --scope user eminzo -- eminzo mcp/);
+  assert.match(t.run(['help']).stdout, /eminzo mcp\b/);
 });

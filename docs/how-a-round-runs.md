@@ -50,6 +50,11 @@ The engine runs your `factory/checks.sh` with two variables:
   - the decision;
   - the engine version.
 
+  The section ends with one hidden line, `<!-- factory:facts {...} -->`, holding the job's facts as JSON:
+  lane, size, risk, surfaces, round, start time, time it entered approve, known cost and the approval decision. It carries no
+  free text. `factory/jobs` stays on the machine that ran the job; this line is how the rest of the team,
+  and Ask Eminzo's estimates, can learn from finished jobs (`factory/lib/record-facts.js` parses it).
+
   The engine updates only that section, and only when the PR is open.
 - **The engine version.** `job.json` records `engine_version` when the job starts and at every round.
 - **Lessons.** `decision.md` ends with `## Lessons`; `eminzo job lessons` turns repeated ones into a pull request for `factory/project.md`.

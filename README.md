@@ -111,7 +111,7 @@ Every role is a plain file you can read with `eminzo show roles/<role>.md`, and 
 
 ```sh
 npm i -g @eminzo/factory   # the eminzo command
-eminzo install             # the eminzo-factory skill and the eight agents, for Claude Code and Codex
+eminzo install             # the eminzo-factory and eminzo-product skills, the eight agents and the eminzo MCP server, for Claude Code and Codex
 eminzo doctor              # checks Node, git, gh, the PATH and the installed files
 ```
 
@@ -121,7 +121,7 @@ Restart Claude Code or Codex afterwards: a session loads its skills when it star
 
 ```text
 /eminzo-factory enable     # opens the chore/enable-factory pull request: merge it, then git pull
-/eminzo-factory setup      # creates the labels and fills factory/project.md
+/eminzo-factory setup      # creates or updates every label and fills factory/project.md
 ```
 
 **3. Every job:**
@@ -141,7 +141,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | Command | What it does |
 |---|---|
 | `/eminzo-factory enable` | Once per repository: opens the pull request that adds the factory files |
-| `/eminzo-factory setup` | Once per repository: the labels and `factory/project.md` |
+| `/eminzo-factory setup` | Once per repository, and again after an update: every label (the factory's and Ask Eminzo's) and `factory/project.md` |
 | `/eminzo-factory issue <n>` | Runs issue `<n>` now |
 | `/eminzo-factory <feature>` | Opens an issue for the feature and runs it |
 | `/eminzo-factory xs <request>` | The same, through the light lane |
@@ -155,8 +155,8 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 
 | Command | What it does |
 |---|---|
-| `eminzo install [--dry-run] [--force]` | Installs the skill and agents for Claude Code and Codex in your home folder |
-| `eminzo uninstall [--dry-run]` | Removes what `install` wrote (files you changed are kept) |
+| `eminzo install [--dry-run] [--force] [--no-mcp]` | Installs the skill and agents for Claude Code and Codex in your home folder and registers the `eminzo` MCP server in both; it lists everything it adds |
+| `eminzo uninstall [--dry-run]` | Removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | Checks the machine and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | The same as `/eminzo-factory enable`, from a terminal |
 | `eminzo dashboard [port]` | Serves the dashboard of the current repository (port 8000 by default) |
@@ -193,7 +193,7 @@ Team settings live in `factory/config.json`; personal ones go in the gitignored 
 | `auto_merge` | `true` | Merge approved pull requests after a second gate |
 | `run_mode` | `own` | `queue` makes `run` also start every open `factory` issue |
 | `spec_review` | `false` | Stop after the spec for your approval (`true`, or a list of risks) |
-| `default_provider` | `claude` | `claude` or `codex` |
+| `default_provider` | `claude` | `claude` or `codex`, for jobs made without `--provider` (each skill names its own: `/eminzo-factory` makes Claude jobs, `$eminzo-factory` Codex jobs) |
 | `protected_tests` | `[]` | Tests the builder cannot edit |
 
 Routing, models, lanes and prices are in the same file. See the [user guide](docs/guide.md) for spec review, run mode and issue claims.
@@ -297,6 +297,8 @@ A failed gate sends the job back to the builder for another round. After `max_ro
 | [User guide](docs/guide.md) | Install, enable, every command, updating, removing and troubleshooting |
 | [How a round runs](docs/how-a-round-runs.md) | Focused and full checks, the builder's plan, review policy and what each round leaves |
 | [Discord notifications](docs/notifications.md) | Events, message format, redaction and delivery rules |
+| [eminzo mcp](docs/mcp.md) | The factory's state as read-only MCP tools for Claude Code, Codex and Ask Eminzo |
+| [The product stage](docs/product-stage.md) | From an idea to an approved brief and estimated deliverables, before any issue (Ask Eminzo) |
 | [Codex](docs/codex.md) | How the Codex adapter works (in Spanish) |
 | [Contributing](CONTRIBUTING.md) | Where things live in the engine and the rules the loop keeps |
 

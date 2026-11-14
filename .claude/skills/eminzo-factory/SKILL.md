@@ -81,8 +81,8 @@ factory/
   bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
   bin/init [review]     writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
-  bin/setup             creates the GitHub labels (`/eminzo-factory setup` runs it)
-  bin/setup-spec-review creates the factory:spec-review label (`/eminzo-factory setup` runs it after bin/setup)
+  bin/setup             creates or updates every GitHub label in lib/labels.js, the one list (`/eminzo-factory setup` runs it)
+  bin/setup-spec-review creates only factory:spec-review; setup already creates it, kept for older docs
   roles/<role>.md       the role bodies, shared by Claude and Codex
   templates/project.md  the project.md template (required sections)
   board.json            all job.json files; the dashboard polls it
@@ -106,9 +106,11 @@ developer's spec review).
   `/eminzo-factory approve-spec` and `/eminzo-factory revise-spec`
   and tell the user to run `/eminzo-factory setup` in this terminal. Do not run it silently for them.
 - Setup runs the normal Git/GitHub preflight, `factory/bin/setup`, which creates or updates
-  the four labels (`factory`, `factory:needs-info`, `factory:needs-human`, `factory:xs`), and then
-  `factory/bin/setup-spec-review`, which creates or updates `factory:spec-review`, without
-  changing issues. If `factory/project.md` is missing, run `factory/bin/init` only to create its
+  every label in the engine's one label list (`factory`, `factory:needs-info`,
+  `factory:needs-human`, `factory:xs`, `factory:spec-review` and Ask Eminzo's `eminzo-brief` and
+  `eminzo-deliverable`), without changing issues. It tries every label, reports each failure and exits non-zero.
+  Run it again after an update: it also adds labels that did not exist before.
+  `factory/bin/setup-spec-review` is the same script limited to `factory:spec-review`. If `factory/project.md` is missing, run `factory/bin/init` only to create its
   structural draft; that script is deterministic and shallow, so it is **not** the finished setup.
 - Then the LLM must analyze the repository and create or refresh `factory/project.md` using
   `factory/templates/project.md` as the required structure. Inspect evidence from manifests,
@@ -134,7 +136,7 @@ developer's spec review).
   `factory/config.json` is `"queue"`; with `"own"` (the default when `run_mode` is missing) a new
   issue enters only through `issue <n>`, `<feature>` or `xs <request>`.
 - `/eminzo-factory issue <n>`: run issue `<n>` now (it must be open and labeled `factory`).
-  `factory/bin/job new <n>` claims the issue when it creates the job: it assigns it to the
+  `factory/bin/job new <n> --provider claude` claims the issue when it creates the job: it assigns it to the
   `gh` user, and refuses when someone else is assigned or `factory/<id>` already exists on the
   remote of `base`. A refusal stops the command: show its reason to the user.
 - `/eminzo-factory <feature>`: write the request to a temp file, run
@@ -203,7 +205,7 @@ the next `/eminzo-factory run` moves the job to `merged`.
    command: tell the user. With `own`, skip step 1: `run` takes no new issue and applies
    steps 2-5 to every job in `factory/jobs/`. With `queue`, run step 1 first.
 1. Only with `queue`: `gh issue list --label factory --state open --json number --limit 100`, then
-   `factory/bin/job new <n>` for each issue. It prints the job id and is idempotent,
+   `factory/bin/job new <n> --provider claude` for each issue. It prints the job id and is idempotent,
    so existing jobs keep theirs. A refusal means the issue isn't open or labeled, is
    assigned to someone else, or already has its `factory/<id>` branch on the remote: skip it.
 2. PR checks (both modes): for every `needs-info` job try `job <id> to intake`. For every job in

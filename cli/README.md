@@ -48,14 +48,24 @@ install it under the Node version that terminal uses).
 ### 3. Install the skill and agents (once per machine)
 
 ```sh
-eminzo install --dry-run   # optional: lists what it would write
+eminzo install --dry-run   # optional: lists what it would write and register
 eminzo install
 ```
 
-It writes the `eminzo-factory` skill and the eight factory agents for both tools:
-`~/.claude/skills/eminzo-factory/`, `~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`
+It writes the `eminzo-factory` skill, the `eminzo-product` skill (the product stage, see
+[The product stage](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/product-stage.md)) and the eight
+factory agents for both tools: `~/.claude/skills/eminzo-factory/`, `~/.claude/skills/eminzo-product/`,
+`~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`, `~/.agents/skills/eminzo-product/`
 and `~/.codex/agents/eminzo-*.toml`, and records them in `~/.eminzo/install.json`. It never
 overwrites a file it did not write or that you changed (it names each one; `--force` overwrites).
+
+It also registers the `eminzo` MCP server (the factory's read-only tools, see
+[eminzo mcp](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/mcp.md)) in both tools, with their own
+commands: `claude mcp add --scope user eminzo -- eminzo mcp` and `codex mcp add eminzo -- eminzo mcp`. Only that
+entry is added; the rest of `~/.claude.json` and `~/.codex/config.toml` is left as it was. An `eminzo` entry you set
+up yourself is kept, a tool that is not installed is skipped with the command to run later, and `--no-mcp` skips
+the registration. Before it changes anything, `install` lists what it puts on the machine, and every file and
+entry it adds is printed.
 
 Then close and reopen Claude Code (or Codex): a session loads its skills when it starts.
 
@@ -164,7 +174,7 @@ git push                   # or open a pull request if your default branch is pr
 ### 10. Day to day
 
 Every command is listed in "Command reference" below. Personal settings that do not affect the team
-(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`)
+(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`, `discovery`)
 go in `factory/config.local.json`, which is gitignored.
 
 ### Other developers of the same repository
@@ -187,7 +197,7 @@ engine refuses with `engine 0.2.0 does not satisfy "0.1.x" in factory/config.jso
 
 ### Removing it
 
-`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept), and
+`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept) and the `eminzo` MCP entries it registered (one you added yourself is kept), and
 `npm rm -g @eminzo/factory` removes the command. To remove the factory from a repository, delete
 `factory/config.json`, `factory/checks.sh` and `factory/project.md`, the factory lines in
 `.gitignore` and `Bash(eminzo:*)` in `.claude/settings.json`.
@@ -254,11 +264,12 @@ reach the builder.
 
 | Command | What it does |
 |---|---|
-| `eminzo install [--dry-run] [--force]` | installs the skill and agents for Claude Code and Codex in your home folder |
-| `eminzo uninstall [--dry-run]` | removes what `install` wrote (files you changed are kept) |
+| `eminzo install [--dry-run] [--force] [--no-mcp]` | installs the skill and agents for Claude Code and Codex in your home folder and registers the `eminzo` MCP server in both; it lists everything it adds |
+| `eminzo uninstall [--dry-run]` | removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | checks Node, git, gh, the PATH, the installed files and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | the same as `/eminzo-factory enable`, from a terminal |
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
+| `eminzo mcp` | the factory's state (jobs, rounds, waits, cost, queue) as read-only tools for Claude Code, Codex and the desktop's Ask Eminzo, over stdin/stdout; see [eminzo mcp](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/mcp.md) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
 | `eminzo job lessons [--last N]` | collects the `## Lessons` of the last N job decisions (default 20), drops duplicates (case and punctuation ignored), writes the 15 most repeated into `## Things the builder gets wrong` of `factory/project.md` on a branch and opens a PR for a human to merge; the PR touches only `project.md` |
 | `eminzo job metrics [--last N] [--json]` | over the last N jobs (default 20): the `GATE: PASS` rate in round 1 and rounds per job (median), both over finished jobs only (`merged` or `rejected`), the `CHANGES` rate per lens, minutes per kind of work (from `time_by_kind` when a job has it) and repeated lessons; `--json` prints the same as JSON. The dashboard shows it as a collapsible table (`board.json` carries it as `metrics`) |
@@ -305,6 +316,7 @@ engine's source repository) keeps running that engine; `eminzo` hands the comman
 ```
 eminzo show roles/<role>.md | templates/<file>   print a role or template of the engine
 eminzo dashboard [port]                          the dashboard for the current repository
+eminzo mcp [--help]                              read-only factory tools for agents (MCP on stdin/stdout)
 eminzo --version | help
 ```
 

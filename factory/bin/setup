@@ -1,9 +1,23 @@
 #!/bin/sh
-# Creates (or updates) the four GitHub labels the factory uses. Run once per repo.
-# FACTORY_GH overrides the gh binary (tests use a fake).
+# Creates (or updates) every GitHub label the repository uses, from the one list in factory/lib/labels.js:
+# the factory's labels and Ask Eminzo's. Safe to run again (--force); run it again after an update.
+# Optional arguments limit it to those label names. Every label is tried; each failure is reported and the exit code is 1.
+# FACTORY_GH overrides the gh binary (tests use a fake). GH_REPO, when set, makes gh act on that repository.
 set -e
 GH="${FACTORY_GH:-gh}"
-"$GH" label create factory --color 1d76db --description "Build this issue with the software factory" --force
-"$GH" label create factory:needs-info --color fbca04 --description "Factory intake is waiting for the issue author" --force
-"$GH" label create factory:needs-human --color d93f0b --description "Factory escalated this job to a human" --force
-"$GH" label create factory:xs --color 0e8a16 --description "Ask for the XS lane: the factory still checks the criteria and promotes on the first failure" --force
+LABELS="$(node "$(dirname "$0")/../lib/labels.js" "$@")"
+TAB="$(printf '\t')"
+failed=""
+while IFS="$TAB" read -r name color description; do
+  [ -n "$name" ] || continue
+  if ! "$GH" label create "$name" --color "$color" --description "$description" --force; then
+    echo "setup: could not create label $name" >&2
+    failed="$failed $name"
+  fi
+done <<EOF_LABELS
+$LABELS
+EOF_LABELS
+if [ -n "$failed" ]; then
+  echo "setup: failed labels:$failed" >&2
+  exit 1
+fi

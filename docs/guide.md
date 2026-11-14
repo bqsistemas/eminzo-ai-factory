@@ -45,14 +45,24 @@ install it under the Node version that terminal uses).
 ### 3. Install the skill and agents (once per machine)
 
 ```sh
-eminzo install --dry-run   # optional: lists what it would write
+eminzo install --dry-run   # optional: lists what it would write and register
 eminzo install
 ```
 
-It writes the `eminzo-factory` skill and the eight factory agents for both tools:
-`~/.claude/skills/eminzo-factory/`, `~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`
+It writes the `eminzo-factory` skill, the `eminzo-product` skill (the product stage, see
+[The product stage](product-stage.md)) and the eight
+factory agents for both tools: `~/.claude/skills/eminzo-factory/`, `~/.claude/skills/eminzo-product/`,
+`~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`, `~/.agents/skills/eminzo-product/`
 and `~/.codex/agents/eminzo-*.toml`, and records them in `~/.eminzo/install.json`. It never
 overwrites a file it did not write or that you changed (it names each one; `--force` overwrites).
+
+It also registers the `eminzo` MCP server (the factory's read-only tools, see
+[eminzo mcp](mcp.md)) in both tools, with their own
+commands: `claude mcp add --scope user eminzo -- eminzo mcp` and `codex mcp add eminzo -- eminzo mcp`. Only that
+entry is added; the rest of `~/.claude.json` and `~/.codex/config.toml` is left as it was. An `eminzo` entry you set
+up yourself is kept, a tool that is not installed is skipped with the command to run later, and `--no-mcp` skips
+the registration. Before it changes anything, `install` lists what it puts on the machine, and every file and
+entry it adds is printed.
 
 Then close and reopen Claude Code (or Codex): a session loads its skills when it starts.
 
@@ -161,7 +171,7 @@ git push                   # or open a pull request if your default branch is pr
 ### 10. Day to day
 
 Every command is listed in "Command reference" below. Personal settings that do not affect the team
-(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`)
+(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`, `discovery`)
 go in `factory/config.local.json`, which is gitignored.
 
 ### Other developers of the same repository
@@ -184,7 +194,7 @@ engine refuses with `engine 0.2.0 does not satisfy "0.1.x" in factory/config.jso
 
 ### Removing it
 
-`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept), and
+`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept) and the `eminzo` MCP entries it registered (one you added yourself is kept), and
 `npm rm -g @eminzo/factory` removes the command. To remove the factory from a repository, delete
 `factory/config.json`, `factory/checks.sh` and `factory/project.md`, the factory lines in
 `.gitignore` and `Bash(eminzo:*)` in `.claude/settings.json`.
@@ -336,8 +346,9 @@ whole `spec.md` with its SHA-256. Then:
   job back to the spec writer with your notes; the revised spec is posted again with its new hash.
 
 `run` never approves a spec: it reports `spec-review` jobs as waiting for you. A repo set up before
-this feature needs `/eminzo-factory setup` (or `factory/bin/setup-spec-review`) once to create the
-`factory:spec-review` label.
+this feature has no `factory:spec-review` label yet. Setup creates or updates every label (the
+factory's and Ask Eminzo's): run it again after an update, or let the desktop do it. The old
+`factory/bin/setup-spec-review` still works and creates only that label.
 
 ### Run mode and issue claims
 

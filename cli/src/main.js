@@ -7,8 +7,10 @@ import { CliError, VERSION, distDir, engineFolder, homeDir } from './paths.js';
 const HELP = `eminzo ${VERSION}: the Eminzo software factory engine
 
 Once per machine:
-  eminzo install [--dry-run] [--force]   install the Claude Code and Codex skill and agents in your home folder
-  eminzo uninstall [--dry-run]           remove the files eminzo install wrote (changed files are kept)
+  eminzo install [--dry-run] [--force] [--no-mcp]
+                                         install the Claude Code and Codex skill and agents in your home folder,
+                                         and register the "eminzo" MCP server in both (shows everything it does)
+  eminzo uninstall [--dry-run]           remove what eminzo install added (changed files and others' entries are kept)
   eminzo doctor [--json]                 check node, git, gh, the installed adapters and this repository
 
 Once per repository (or /eminzo-factory enable in Claude Code, $eminzo-factory enable in Codex):
@@ -20,6 +22,9 @@ Day to day, in Claude Code: /eminzo-factory setup | run | issue <n> | rework <n>
 Engine commands (the skill and agents call these; they run on the repository of the current directory):
   eminzo job | gate | approve | route | visual | nudge | ensure-output | protect-tests | dashboard | init | setup | setup-spec-review | profile
   eminzo selfcheck <job-id>              the builder's check before READY (same as: eminzo job <job-id> selfcheck)
+
+Ask Eminzo (read-only tools for Claude Code, Codex and the desktop):
+  eminzo mcp [--help]                    the factory's state as an MCP server on stdin/stdout
 
 Other:
   eminzo show roles/<role>.md | templates/<file>   print a role or template that ships with the engine
@@ -60,14 +65,14 @@ export async function main(argv, { env = process.env, cwd = process.cwd() } = {}
     const home = homeDir(env);
     switch (command) {
       case 'install': {
-        const f = flags(args, ['--dry-run', '--force']);
+        const f = flags(args, ['--dry-run', '--force', '--no-mcp']);
         const { install } = await import('./install.js');
-        return install({ dist: distDir(env), version: VERSION, home, dryRun: f['--dry-run'], force: f['--force'] });
+        return install({ dist: distDir(env), version: VERSION, home, env, dryRun: f['--dry-run'], force: f['--force'], mcp: !f['--no-mcp'] });
       }
       case 'uninstall': {
         const f = flags(args, ['--dry-run']);
         const { uninstall } = await import('./install.js');
-        return uninstall({ home, dryRun: f['--dry-run'] });
+        return uninstall({ home, env, dryRun: f['--dry-run'] });
       }
       case 'doctor': {
         const f = flags(args, ['--json']);
