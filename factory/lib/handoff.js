@@ -12,9 +12,10 @@
 import { fenceOf, briefStatus, canonicalBrief, stripEnd } from './brief-approval.js';
 import { BRIEF_MARKER, parseBrief } from './brief.js';
 import { humanMinutes } from './state/estimate.js';
+import { BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL } from './labels.js';
 
-export const BRIEF_ISSUE_LABEL = 'eminzo-brief';
-export const DELIVERABLE_LABEL = 'eminzo-deliverable';
+// The label names live in labels.js, the one list `factory/bin/setup` creates from.
+export { BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL };
 export const MAX_TITLE = 120;
 /** GitHub rejects an issue body above 65 536 characters. */
 export const MAX_BODY = 65_000;

@@ -309,7 +309,7 @@ test('AC-6: spec-review follows spec in STAGES, with its three transitions and g
   assert.deepEqual(pipeline, graph, 'factory/pipeline.json is regenerated');
 });
 
-test('AC-6: setup-spec-review creates the label with --force, --color and --description; setup keeps its four labels', () => {
+test('AC-6: setup-spec-review creates the label with --force, --color and --description; setup creates it too', () => {
   const dir = mkdtempSync(join(tmpdir(), 'factory-setup-spec-review-'));
   const log = join(dir, 'log');
   const gh = join(dir, 'gh');
@@ -327,5 +327,5 @@ test('AC-6: setup-spec-review creates the label with --force, --color and --desc
   res = spawnSync(join(repo, 'factory/bin/setup'), [], { env, encoding: 'utf8' });
   assert.equal(res.status, 0, res.stderr);
   assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n').map((l) => l.split(' ')[2]),
-    ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs']);
+    ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs', 'factory:spec-review', 'eminzo-brief', 'eminzo-deliverable']);
 });

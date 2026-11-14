@@ -28,7 +28,7 @@ Releases follow [docs/releasing.md](docs/releasing.md). The one rule to remember
 | `factory/bin/route` | Prints the builder and reviewer models for a job's `intake.md`. |
 | `factory/bin/approve` | The deterministic approver: `approve`, `escalate: <reason>` or `inconclusive: <reasons>` (then the LLM approver runs). |
 | `factory/bin/nudge` | The builder's checks and Stop hook: runs `checks.sh` in the worktree and remembers a pass for the same files (`nudge.json`), so it never runs twice on one tree. Advisory; the gate always runs the checks itself. |
-| `factory/bin/setup` | Creates the four GitHub labels; `/eminzo-factory setup` and `$eminzo-factory setup` run it. |
+| `factory/bin/setup` | Creates or updates every GitHub label in `factory/lib/labels.js` (the one list, Ask Eminzo's included); `/eminzo-factory setup` and `$eminzo-factory setup` run it. |
 | `factory/bin/init` | Writes a first `factory/project.md` from the repo when it is missing; never overwrites. |
 | `factory/bin/dashboard` | Serves the dashboard with Node (no dependencies), on loopback. |
 | `factory/templates/project.md` | The `project.md` template: Snapshot, Stack, Commands, Module map, UI contract, Conventions. |
