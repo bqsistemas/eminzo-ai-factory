@@ -359,8 +359,11 @@ for tools such as the Eminzo desktop app. The exit status is the same as without
 - A failed check: `{ "ok": false, "problems": [{ "code": "dirty", "message": "..." }] }` (codes: `not-git`,
   `install-in-progress`, `bad-branch`, `dirty`, `not-default-branch`, `ignored-paths`, `no-remote`,
   `not-github`, `gh-auth`, `node-version`, `no-default-branch`, `empty-repo`).
-  `empty-repo` (no commits locally or on origin) also carries `commands`: the exact lines that give the
-  repository its first commit. The plain-text output prints them indented after the message.
+  `empty-repo` also carries `commands`. With no commit at all it says so and gives the lines that make the first
+  one (`[ -e README.md ] || echo "# <name>" > README.md`, add, commit, `git push -u origin <branch>`: an existing
+  README.md is never overwritten). With commits here but none on GitHub it says "GitHub has no commits for this
+  repository yet: push your branch, then enable the factory." and gives only `git push -u origin <branch>`. The
+  remote is asked with `git ls-remote` under a 20 second limit and no prompt. The plain-text output prints them indented after the message.
 - Any other refusal or failure: `{ "ok": false, "error": "..." }`.
 
 ## Building the package (this repository)

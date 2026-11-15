@@ -138,7 +138,8 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
   // Origin has no branches: gh says the repository is empty, or ls-remote lists no heads.
   const remoteIsEmpty = () => {
     if (firstLine(run(gh, ['repo', 'view', '--json', 'isEmpty', '-q', '.isEmpty']).stdout) === 'true') return true;
-    const heads = git('ls-remote', '--heads', 'origin');
+    // Never wait for a person or a network: no prompt, and a hung remote is not an empty one.
+    const heads = run('git', ['ls-remote', '--heads', 'origin'], { env: { ...env, GIT_TERMINAL_PROMPT: '0' }, timeout: 20_000, killSignal: 'SIGKILL' });
     return heads.code === 0 && heads.stdout.trim() === '';
   };
   const problems = preflight(facts);
@@ -146,16 +147,23 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     const current = firstLine(git('symbolic-ref', '--short', 'HEAD').stdout);
     const ref = SAFE_REF.test(current) && !current.includes('..') ? current : 'main';
     const folder = basename(root);
-    problems.push({
-      code: 'empty-repo',
-      message: 'This repository has no commits yet. Push a first commit to GitHub (for example a README), then enable the factory.',
-      commands: [
-        `echo "# ${SAFE_TITLE.test(folder) ? folder : 'README'}" > README.md`,
-        'git add README.md',
-        'git commit -m "chore: initial commit"',
-        `git push -u origin ${ref}`,
-      ],
-    });
+    // Two different cases: a repository with no commit at all, and one that has commits here but none on GitHub yet.
+    problems.push(hasCommits
+      ? {
+        code: 'empty-repo',
+        message: 'GitHub has no commits for this repository yet: push your branch, then enable the factory.',
+        commands: [`git push -u origin ${ref}`],
+      }
+      : {
+        code: 'empty-repo',
+        message: 'This repository has no commits yet. Push a first commit to GitHub (for example a README), then enable the factory.',
+        commands: [
+          `[ -e README.md ] || echo "# ${SAFE_TITLE.test(folder) ? folder : 'README'}" > README.md`,
+          'git add README.md',
+          'git commit -m "chore: initial commit"',
+          `git push -u origin ${ref}`,
+        ],
+      });
   } else if (!defaultBranch && facts.remoteUrl) {
     problems.push({ code: 'no-default-branch', message: 'The default branch of origin is unknown (no origin/HEAD and gh could not tell). Run "git remote set-head origin --auto" and try again.' });
   }

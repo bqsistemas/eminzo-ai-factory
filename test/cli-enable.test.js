@@ -285,7 +285,7 @@ esac
 }
 
 const commandsFor = (name, branch) => [
-  `echo "# ${name}" > README.md`,
+  `[ -e README.md ] || echo "# ${name}" > README.md`,
   'git add README.md',
   'git commit -m "chore: initial commit"',
   `git push -u origin ${branch}`,
@@ -308,22 +308,28 @@ test('enable uses the current branch name in the empty-repo commands', () => {
   assert.deepEqual(out.problems[0].commands, commandsFor('shop', 'trunk'));
 });
 
-test('enable with local commits and an empty remote reports empty-repo (gh says isEmpty)', () => {
+const PUSH_ONLY = 'GitHub has no commits for this repository yet: push your branch, then enable the factory.';
+
+test('enable with local commits and an empty remote says to push the branch, and never suggests touching README.md (gh says isEmpty)', () => {
   const t = setupEmpty({ commit: true });
   const out = JSON.parse(t.run(['--json']).stdout);
   assert.deepEqual(out.problems.map((p) => p.code), ['empty-repo']);
+  assert.equal(out.problems[0].message, PUSH_ONLY);
+  assert.deepEqual(out.problems[0].commands, ['git push -u origin main']);
 });
 
-test('enable with local commits and an empty remote reports empty-repo (ls-remote, gh unhelpful)', () => {
+test('enable with local commits and an empty remote says to push the branch (ls-remote, gh unhelpful)', () => {
   const t = setupEmpty({ commit: true, ghEmpty: false });
   const out = JSON.parse(t.run(['--json']).stdout);
   assert.deepEqual(out.problems.map((p) => p.code), ['empty-repo']);
+  assert.equal(out.problems[0].message, PUSH_ONLY);
+  assert.deepEqual(out.problems[0].commands, ['git push -u origin main']);
 });
 
 test('enable falls back to README when the folder name is not a safe file title', () => {
   const t = setupEmpty({ name: 'my shop;rm' });
   const out = JSON.parse(t.run(['--json']).stdout);
-  assert.equal(out.problems[0].commands[0], 'echo "# README" > README.md');
+  assert.equal(out.problems[0].commands[0], '[ -e README.md ] || echo "# README" > README.md');
 });
 
 test('enable prints the empty-repo commands as an indented block after the message', () => {
