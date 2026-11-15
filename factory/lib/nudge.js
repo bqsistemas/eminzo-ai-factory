@@ -108,14 +108,17 @@ function main(args = []) {
   // A focused pass also needs the base it was made against: after the base moves the diff is another one.
   const focusedOk = () => {
     try {
-      return typeof last.base === 'string' && last.base === mergeBase(job.worktree, baseRef(loadConfig(root)).base);
+      return scopeBase(root, job) === last.base;
     } catch {
       return false;
     }
   };
+  // A stamp that records a base ran the checks against it: another merge-base is another scope. Stamps
+  // from before the scope existed have none and ran everything, so they still count for a full caller.
+  const sameScope = () => (last?.base === undefined ? last?.mode !== 'focused' : focusedOk());
   // Full callers accept only a full pass (no mode = recorded before modes existed); anything else re-runs.
   const fullPass = last?.mode === undefined || last.mode === 'full';
-  const passed = fullPass || (!wantFull && last.mode === 'focused' && focusedOk());
+  const passed = (fullPass || (!wantFull && last.mode === 'focused')) && sameScope();
   if (tree && last?.tree === tree && last.inputs === inputs && passed) {
     process.stderr.write(`factory nudge: the checks already passed for this tree (${tree.slice(0, 12)}); not running them again.\n`);
     return 0;
@@ -187,19 +190,30 @@ function focusedOptions(root, job) {
   }
 }
 
+/** What FACTORY_BASE is for this job's checks: where its branch left the base, or null (a job that fixes the base, or no merge-base). */
+function scopeBase(root, job) {
+  if (job.base_fix) return null;
+  return mergeBase(job.worktree, baseRef(loadConfig(root)).base);
+}
+
 function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inputs, childFile }) {
   const focus = wantFull ? { options: {}, cleanup() {} } : focusedOptions(root, job);
   const mode = focus.options.mode ?? 'full';
   let result;
+  let scopeBaseSha = null;
   try {
-    result = runChecks(root, job.worktree, { ...focus.options, ...(childFile ? { pidFile: childFile } : {}) });
+    scopeBaseSha = scopeBase(root, job);
+  } catch { /* no config or no base: everything runs */ }
+  try {
+    // FACTORY_BASE only: the nudge also sees uncommitted and untracked files, so there is no head to name.
+    result = runChecks(root, job.worktree, { ...focus.options, scope: { base: scopeBaseSha ?? undefined }, ...(childFile ? { pidFile: childFile } : {}) });
   } finally {
     focus.cleanup();
   }
   const { code, output } = result;
   if (code === 0) {
     bestEffort(() => (tree
-      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, ...(mode === 'focused' ? { base: focus.base } : {}), at: new Date().toISOString(), runs })}\n`)
+      ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, base: scopeBaseSha, at: new Date().toISOString(), runs })}\n`)
       : writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`)));
     return 0;
   }

@@ -6,7 +6,7 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
-import { checksInputs, headSha } from './check-stamp.js';
+import { checksInputs, headSha, mergeBase } from './check-stamp.js';
 import { withImplied } from './intake.js';
 import { projectMapLines, projectMapStatus } from './project-map.js';
 import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
@@ -51,6 +51,8 @@ export function runVisualCheck(root, config, job, checksFile) {
   return { status: 'ERROR', text: `VISUAL: ERROR\n\nReason: ${reason}\n`, reason };
 }
 
+const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
+
 /**
  * Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved.
  * With `pidFile`, the shell writes its PID there first (the same process then runs checks.sh), so a
@@ -58,12 +60,20 @@ export function runVisualCheck(root, config, job, checksFile) {
  * The checks see FACTORY_CHECK_MODE: `full` unless the caller passes mode `focused` together with
  * `changedFiles` (the absolute path of a file listing the changed paths, one per line), which
  * becomes FACTORY_CHANGED_FILES. Whatever the environment already holds for either variable is
- * dropped, so the gate and the merge always run full.
+ * dropped.
+ * `scope` says what the job touched, for a checks.sh that checks only that: `scope.base` (the commit
+ * the job's branch left the base at) becomes FACTORY_BASE and `scope.head` (the commit under test)
+ * becomes FACTORY_HEAD. Each is set only from a full-length hex sha; inherited values are always
+ * dropped, and without a scope every project is checked.
  */
-export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles } = {}) {
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope } = {}) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT; // a gate started from a test run must not report into it
   delete env.FACTORY_CHANGED_FILES;
+  delete env.FACTORY_BASE;
+  delete env.FACTORY_HEAD;
+  if (isSha(scope?.base)) env.FACTORY_BASE = scope.base;
+  if (isSha(scope?.head)) env.FACTORY_HEAD = scope.head;
   const focused = mode === 'focused' && typeof changedFiles === 'string';
   env.FACTORY_CHECK_MODE = focused ? 'focused' : 'full';
   if (focused) env.FACTORY_CHANGED_FILES = changedFiles;
@@ -106,7 +116,9 @@ export function gate(root, job, outFile) {
   const head = headSha(job.worktree);
   const inputs = checksInputs(root);
   const started = Date.now();
-  const checks = runChecks(root, job.worktree);
+  // A job that fixes the base is judged on everything: its goal is the whole base.
+  const checksBase = job.base_fix ? null : mergeBase(job.worktree, base);
+  const checks = runChecks(root, job.worktree, { scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
   const spanMs = Date.now() - started;
   const guard = protectedChanges(job.worktree, base, config.protected_tests ?? []);
   const visual = checks.code === 0 ? runVisualCheck(root, config, job, outFile) : null;
@@ -127,6 +139,7 @@ export function gate(root, job, outFile) {
     '',
     `Checks exit code: ${checks.code}`,
     `Tested head: ${head ?? 'unknown'}`,
+    `Checks base: ${checksBase ?? 'none'}`,
     `Checks inputs: ${inputs}`,
     `Protected test violations: ${violations.length ? '' : 'none'}`,
     ...violations.map((v) => `- ${v}`),

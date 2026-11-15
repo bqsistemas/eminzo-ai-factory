@@ -4,16 +4,20 @@ What a builder, its reviewers and the approver do in one round, and what each le
 
 ### Checks: focused and full
 
-The engine runs your `factory/checks.sh` with two variables:
+The engine runs your `factory/checks.sh` with these variables:
 
 | Variable | Value |
 |---|---|
 | `FACTORY_CHECK_MODE` | `focused` for the builder's own `nudge <id>`; `full` for `nudge <id> --full`, the Claude Stop hook, the gate and the merge |
 | `FACTORY_CHANGED_FILES` | in focused mode, a file with one changed path per line (against the merge-base with the job's base) |
+| `FACTORY_BASE` | the commit the job's branch left the base at (the merge-base). Set for the gate, the merge and the nudge, so a `checks.sh` can check only the projects the job touched. Not set for a job that fixes the base (`factory:base-fix`) or when you run `checks.sh` by hand: then everything runs |
+| `FACTORY_HEAD` | the commit under test: the tested head for the gate, the merge commit for the merge. Not set for the nudge, which also sees uncommitted files |
+
+The gate report names the first one as `Checks base: <sha>|none`. Values already in the environment are dropped, and each variable is set only from a full commit sha.
 
 - **Ignoring the variables is safe.** A `checks.sh` that ignores them runs everything, as before.
 - **The template.** `setup` writes one per stack (`factory/templates/checks/<stack>.sh`: Node, Go, Python, Rust, Ruby, Maven, Gradle) that narrows only when that is reliable and otherwise runs everything.
-- **The safety net.** A focused pass is never reused by a full caller, so the gate always runs everything.
+- **The safety net.** A focused pass is never reused by a full caller, and a nudge pass is reused only for the same merge-base. The gate and the merge run the job's scope: everything for a `checks.sh` that ignores `FACTORY_BASE`, the affected projects for one that reads it.
 - **Cap.** At most `checks.max_runs_per_round` check runs per round (default 6). Past it the nudge exits 2 with `cap reached: write build.md with what is still failing`.
 - **Flaky checks.** A check that fails and then passes with no code change goes to `build.md` `## Flaky` (`command | error`) instead of being fixed in the job.
 
