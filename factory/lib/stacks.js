@@ -63,6 +63,61 @@ export function scriptCommand(pm, name) {
   return name === 'start' || name === 'test' ? `${pm} ${name}` : `${pm} run ${name}`;
 }
 
+/** The monorepo tool of a node repo: Nx wins over Turborepo; null for neither. */
+export const monorepoOf = (repo) => (has(repo.files, 'nx.json') ? 'nx' : has(repo.files, 'turbo.json') ? 'turbo' : null);
+
+/** How the package manager runs a binary the repo already installed (never one that has to be downloaded: no `bunx`, no `npx` without `--no-install`). */
+export function execCommand(pm, bin) {
+  if (pm === 'pnpm') return `pnpm exec ${bin}`;
+  if (pm === 'yarn') return `yarn ${bin}`;
+  if (pm === 'bun') return `bun run ${bin}`;
+  return `npx --no-install ${bin}`;
+}
+
+const TARGETS = ['lint', 'typecheck', 'test'];
+
+/** Which of lint, typecheck and test the monorepo tool can run: Turborepo's tasks (v2) or pipeline (v1), Nx's root package.json scripts. */
+function monorepoTargets(tool, { packageJson, read }) {
+  const scripts = packageJson?.scripts ?? {};
+  const fromScripts = () => TARGETS.filter((n) => Object.hasOwn(scripts, n));
+  if (tool !== 'turbo') return fromScripts();
+  let tasks;
+  try {
+    const json = JSON.parse(read('turbo.json'));
+    tasks = json?.tasks ?? json?.pipeline;
+  } catch {
+    return fromScripts(); // turbo.json with comments is not plain JSON
+  }
+  return tasks && typeof tasks === 'object' ? TARGETS.filter((n) => Object.hasOwn(tasks, n)) : fromScripts();
+}
+
+/** The affected-only script for an Nx or Turborepo workspace, or null when it has no `test` target (today's node script then). */
+function affectedScript(tool, repo) {
+  const targets = monorepoTargets(tool, repo);
+  if (!targets.includes('test')) return null;
+  const list = targets.join(' ');
+  const exec = execCommand(packageManager(repo.files), tool === 'nx' ? 'nx' : 'turbo');
+  const text = template('checks/node-affected.sh');
+  const fill = tool === 'nx'
+    ? { WORKSPACE: 'Nx workspace: only the projects a job changed and the projects that depend on them.', UNIT: 'project', ALL: `${exec} run-many -t ${list}`, SINCE: `${exec} affected -t ${list} --base="$BASE"`, RANGE: `${exec} affected -t ${list} --base="$BASE" --head="$HEAD"` }
+    : { WORKSPACE: 'Turborepo workspace: only the packages a job changed and the packages that depend on them.', UNIT: 'package', ALL: `${exec} run ${list}`, SINCE: `${exec} run ${list} --filter="...[$BASE]"`, RANGE: `${exec} run ${list} --filter="...[$BASE...$HEAD]"` };
+  return text.replace(/@(WORKSPACE|UNIT|ALL|SINCE|RANGE)@/g, (_, key) => fill[key]);
+}
+
+/**
+ * The command that installs the dependencies in a fresh checkout, from the lockfile (node only, the
+ * same precedence as `packageManager`), or null: the other stacks resolve from caches every worktree shares.
+ * `files` are the repo root entries.
+ */
+export function prepareCommand(files) {
+  if (!has(files, 'package.json')) return null;
+  const pm = packageManager(files);
+  if (pm === 'bun') return 'bun install --frozen-lockfile';
+  if (pm === 'pnpm') return 'pnpm install --frozen-lockfile --prefer-offline';
+  if (pm === 'yarn') return has(files, '.yarnrc.yml') ? 'yarn install --immutable' : 'yarn install --frozen-lockfile --prefer-offline';
+  return has(files, 'package-lock.json') || has(files, 'npm-shrinkwrap.json') ? 'npm ci --prefer-offline --no-audit --no-fund' : 'npm install --no-audit --no-fund';
+}
+
 /** A Markdown code span that tolerates backticks inside. */
 export const span = (text) => (text.includes('`') ? `\`\` ${text} \`\`` : `\`${text}\``);
 
@@ -112,6 +167,9 @@ function nodeScript(text, { files, packageJson }) {
 export function checksFor(repo) {
   const stack = detectStack(repo);
   if (stack === NONE) return { stack, script: template('checks.sh') };
+  const tool = stack === 'node' ? monorepoOf(repo) : null;
+  const affected = tool ? affectedScript(tool, repo) : null;
+  if (affected) return { stack, script: affected };
   const text = template(`checks/${stack}.sh`);
   const script = stack === 'node' ? nodeScript(text, repo) : stack === 'gradle' && !has(repo.files, 'gradlew') ? text.replace(/^(?!#).*$/gm, (line) => line.replaceAll('./gradlew', 'gradle')) : text;
   return { stack, script };

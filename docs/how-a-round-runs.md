@@ -16,7 +16,7 @@ The engine runs your `factory/checks.sh` with these variables:
 The gate report names the first one as `Checks base: <sha>|none`. Values already in the environment are dropped, and each variable is set only from a full commit sha.
 
 - **Ignoring the variables is safe.** A `checks.sh` that ignores them runs everything, as before.
-- **The template.** `setup` writes one per stack (`factory/templates/checks/<stack>.sh`: Node, Go, Python, Rust, Ruby, Maven, Gradle) that narrows only when that is reliable and otherwise runs everything.
+- **The template.** `setup` writes one per stack (`factory/templates/checks/<stack>.sh`: Node, Go, Python, Rust, Ruby, Maven, Gradle) that narrows only when that is reliable and otherwise runs everything. For an Nx or Turborepo workspace it writes `factory/templates/checks/node-affected.sh` instead: `nx affected` or `turbo run --filter=...[base]` over the `lint`, `typecheck` and `test` targets the repo has, using `FACTORY_BASE` and `FACTORY_HEAD`. `factory/bin/init checks` proposes it for an existing `checks.sh` and never overwrites it.
 - **The safety net.** A focused pass is never reused by a full caller, and a nudge pass is reused only for the same merge-base. The gate and the merge run the job's scope: everything for a `checks.sh` that ignores `FACTORY_BASE`, the affected projects for one that reads it.
 - **Cap.** At most `checks.max_runs_per_round` check runs per round (default 6). Past it the nudge exits 2 with `cap reached: write build.md with what is still failing`.
 - **Flaky checks.** A check that fails and then passes with no code change goes to `build.md` `## Flaky` (`command | error`) instead of being fixed in the job.

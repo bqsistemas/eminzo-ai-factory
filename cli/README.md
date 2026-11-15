@@ -268,6 +268,7 @@ reach the builder.
 | `eminzo uninstall [--dry-run]` | removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | checks Node, git, gh, the PATH, the installed files and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | the same as `/eminzo-factory enable`, from a terminal |
+| `eminzo init checks` | writes `factory/checks.sh` when it is missing; in an Nx or Turborepo repo whose file checks every project, prints the affected-only script as a `suggestion:` and never overwrites |
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
 | `eminzo mcp` | the factory's state (jobs, rounds, waits, cost, queue) as read-only tools for Claude Code, Codex and the desktop's Ask Eminzo, over stdin/stdout; see [eminzo mcp](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/mcp.md) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |

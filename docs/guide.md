@@ -117,6 +117,10 @@ Before merging, check two files:
   It is detected from your stack (`npm`/`pnpm`/`yarn test`, `go test ./...`, `cargo test`,
   `python -m pytest`, `mvn test`, `./gradlew test`). When nothing was detected it is a placeholder that
   checks nothing: replace it with your test, lint and typecheck commands.
+  In an Nx or Turborepo workspace it checks only the projects a job changed and the ones that depend
+  on them (it reads `FACTORY_BASE` and `FACTORY_HEAD`, see How a round runs). A repository that
+  already has a `checks.sh` keeps it: `eminzo init checks` prints the affected-only script as a
+  suggestion and never overwrites the file.
 - `factory/config.json`:
   - `language` is `"es"` by default: the agents write their issue comments, specs and reviews in it.
     Use `"en"` (or `"pt"`) if your team works in another language.
@@ -265,6 +269,7 @@ reach the builder.
 | `eminzo uninstall [--dry-run]` | removes what `install` wrote (files you changed are kept) |
 | `eminzo doctor` | checks Node, git, gh, the PATH, the installed files and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | the same as `/eminzo-factory enable`, from a terminal |
+| `eminzo init checks` | writes `factory/checks.sh` when it is missing; when it exists in an Nx or Turborepo repo that checks every project, prints the affected-only script as a `suggestion:` and leaves the file byte-identical |
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
 | `eminzo job lessons [--last N]` | collects the `## Lessons` of the last N job decisions (default 20), drops duplicates (case and punctuation ignored), writes the 15 most repeated into `## Things the builder gets wrong` of `factory/project.md` on a branch and opens a PR for a human to merge; the PR touches only `project.md` |

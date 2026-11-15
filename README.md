@@ -169,6 +169,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `eminzo uninstall [--dry-run]` | Removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | Checks the machine and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | The same as `/eminzo-factory enable`, from a terminal |
+| `eminzo init checks` | Writes `factory/checks.sh` when it is missing; in an Nx or Turborepo repo whose file checks every project, prints the affected-only script as a suggestion and never overwrites |
 | `eminzo dashboard [port]` | Serves the dashboard of the current repository (port 8000 by default) |
 | `eminzo job summary` | One line per job (issue, stage, cost, time) and the total |
 | `eminzo job metrics [--last N] [--json]` | Gate pass rate, rounds per job, review changes and time over the last jobs |
@@ -298,7 +299,7 @@ By default, yes: `auto_merge` is on, and an approved pull request merges after a
 <details>
 <summary><strong>Which stacks does it support?</strong></summary>
 
-Any stack. `factory/checks.sh` holds your repository's own checks, so the gate runs whatever your project already runs. `setup` writes a template for Node, Go, Python, Rust, Ruby, Maven and Gradle.
+Any stack. `factory/checks.sh` holds your repository's own checks, so the gate runs whatever your project already runs. `setup` writes a template for Node, Go, Python, Rust, Ruby, Maven and Gradle. In an Nx or Turborepo workspace the generated script checks only the projects a job changed and their dependents.
 </details>
 
 <details>
