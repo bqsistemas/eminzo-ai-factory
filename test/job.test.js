@@ -128,6 +128,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     assert.equal(job.round, 2);
     assert.deepEqual(job.history, [{ gate: 'FAIL', reviews: {} }]);
 
+    t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     t.write(id, 'round-2/checks.md', 'GATE: PASS\n');
     ok(t, await t.job(id, 'to', 'review'));
@@ -145,6 +146,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     assert.equal(job.round, 3);
     assert.deepEqual(job.history[1], { gate: 'PASS', reviews: { code: 'CHANGES' } });
 
+    t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     t.write(id, 'round-3/checks.md', 'GATE: PASS\n');
     ok(t, await t.job(id, 'to', 'review'));
@@ -204,6 +206,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     await toGate(t, id);
     t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
     ok(t, await t.job(id, 'to', 'build'));
+    t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await gateToApprove(t, id); // round 2
 

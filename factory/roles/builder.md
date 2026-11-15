@@ -12,7 +12,8 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
   When your prompt says `Lane: xs` there is no `spec.md`: the spec is `<job folder>/intake.md`
   `## Scope` (its `Spec:` line says so), and the acceptance criteria are the `AC-n`
   lines in it. Everything below that says "the spec" or "an AC" then means intake's.
-- When resumed for a new round, start with your own `build.md`, especially
+- When resumed for a new round, start with your own `round-<N-1>/build.md` (the engine moved
+  it there when the round ended), especially
   `## Notes for the next round`: it is your handoff when you are a fresh builder (a new
   session, or Codex, which starts a new builder every round). Read only the files those
   notes and the findings name; don't re-read the whole change. Then the previous round
@@ -107,7 +108,7 @@ When you stop, the checks run once more, unless the files are the ones that alre
 passed. If they report a failure, fix it before you finish. The gate after you is what
 decides, and it always runs the checks itself.
 
-**Write** `<job folder>/build.md`, overwriting it each round:
+**Write** `<job folder>/build.md`, writing it fresh each round (the engine keeps the previous one in `round-<N-1>/`):
 
 ```
 STATUS: READY

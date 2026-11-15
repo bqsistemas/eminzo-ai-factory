@@ -25,6 +25,7 @@ The engine runs your `factory/checks.sh` with two variables:
   - `## Risks`
   - `## Proof`: the test for each AC
 - **Self-check.** Before `STATUS: READY` it runs `selfcheck` (see the command reference).
+- **build.md across rounds.** `build.md` lives in the job folder while its round runs. When the job goes back to build (a failed gate, a review with `CHANGES`, a rework), the engine moves it to `round-<n>/build.md`, so the next builder reads its handoff (`## Notes for the next round`) there and the job never loses it. The dashboard lists it as `round-<n>/build.md`.
 - **What review-code checks.** That the diff matches the plan, or that `build.md` explains why it does not.
 
 ### Review policy (optional)

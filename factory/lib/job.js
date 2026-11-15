@@ -36,9 +36,9 @@
 // Issue and comment text is attacker-controlled. It reaches agents only as
 // "> "-quoted data in issue.md, and gh gets every text through --body-file.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { STAGE_COLUMNS, formatDuration, costAvailable, costLabel } from '../activity.js';
 import { codexJobCost, jobCostBreakdown, orchestratorCost, readAgentTranscripts, readCodexRollouts } from './cost.js';
@@ -493,7 +493,28 @@ function setIntake(job, { decision, rescoped, risk, surfaces, size }) {
   job.intake = { decision, rescoped, risk, surfaces, ...(size ? { size } : {}) };
 }
 
-function nextRound(job) {
+/**
+ * The build.md of the round that ends moves to round-<n>/build.md, so the next builder reads it there and
+ * the job never sits without one. A symlink is left alone (never followed); an existing round-<n>/build.md
+ * is the same round's file and is replaced. A round folder that is not a real directory is not used.
+ */
+function keepBuild(c, job) {
+  const from = file(c, job, 'build.md');
+  let st;
+  try { st = lstatSync(from); } catch { return; }
+  if (!st.isFile()) return;
+  const folder = file(c, job, `round-${job.round}`);
+  try {
+    if (!lstatSync(folder).isDirectory()) return; // a symlink or a file in its place: leave build.md alone
+  } catch {
+    mkdirSync(folder, { recursive: true });
+  }
+  const to = join(folder, 'build.md');
+  renameSync(from, to);
+}
+
+function nextRound(c, job) {
+  keepBuild(c, job);
   job.history.push({ gate: job.gate, reviews: job.reviews, ...(Object.keys(job.carried ?? {}).length ? { carried: job.carried } : {}) });
   job.round += 1;
   job.engine_version = engineVersion();
@@ -1135,7 +1156,7 @@ function promote(c, id) {
   job.lane = 'normal';
   job.promoted_from = 'xs';
   delete job.lane_reason;
-  nextRound(job);
+  nextRound(c, job);
   clearDecision(c, job);
   delete job.approve_entered;
   job.stage = 'spec';
@@ -1378,7 +1399,7 @@ export const TRANSITIONS = {
     assertNotXs(job, 'a failed gate');
     if (!(job.round < job.max_rounds)) throw new Refused(`round ${job.round} is the last round (max_rounds ${job.max_rounds})`);
     job.gate = 'FAIL';
-    nextRound(job);
+    nextRound(c, job);
     clearDecision(c, job);
   },
   'review>build'(c, job) {
@@ -1387,7 +1408,7 @@ export const TRANSITIONS = {
     assertNotXs(job, 'a review that asked for CHANGES');
     if (!(job.round < job.max_rounds)) throw new Refused(`round ${job.round} is the last round (max_rounds ${job.max_rounds})`);
     job.reviews = ran;
-    nextRound(job);
+    nextRound(c, job);
     clearDecision(c, job);
   },
   'review>approve'(c, job) {
@@ -1445,7 +1466,7 @@ export const TRANSITIONS = {
     writeAtomic(file(c, job, `round-${job.round}/review-human.md`), text);
     job.max_rounds = job.round + 2;
     job.reviews = { ...job.reviews, human: 'CHANGES' };
-    nextRound(job);
+    nextRound(c, job);
     job.decision = null;
     job.note = 'rework requested';
     removeLabel(c, job, LABEL.needsHuman);

@@ -87,6 +87,7 @@ factory/
   templates/project.md  the project.md template (required sections)
   board.json            all job.json files; the dashboard polls it
   jobs/<id>/            job.json issue.md intake.md spec.md spec-review-notes.md plan.md build.md decision.md merge-checks.md
+                        (build.md is the current round's; a finished round's is round-N/build.md)
                         round-N/checks.md round-N/review-<lens>.md round-N/review-human.md
 <repo>/.worktrees/<id>/ the job's worktree on branch factory/<id>
 ```
@@ -262,7 +263,10 @@ the next `/eminzo-factory run` moves the job to `merged`.
 
 <!-- rule: delete-stale-output -->
 - Before spawning, delete that agent's old output, so a missing file always means the
-  agent failed.
+  agent failed. Exception: `build.md`. Do not delete `build.md` yourself when a round changes: the
+  engine moves it into `round-<n>/` (the round that ends) when the job goes back to build, so the
+  next builder reads it there. The one `build.md` you may delete is the current round's own
+  malformed file, before a retry in that same round.
 
 | Agent | File | First line |
 |---|---|---|
@@ -339,8 +343,8 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
 - **build**: the builder is one named agent per job, `eminzo-builder-<id>`, with
   `model` = `agents.builder`.
   - Round 1, or a new session: spawn `eminzo-builder` with `name: "eminzo-builder-<id>"` and the
-    prompt above plus `First build.` (or `Resume: read build.md (## Notes for the next round)
-    and round-<round - 1>/ first.` when `round` > 1).
+    prompt above plus `First build.` (or `Resume: read round-<round - 1>/build.md (## Notes for the next round)
+    and the rest of round-<round - 1>/ first.` when `round` > 1).
   <!-- rule: overlap-wait -->
   - **Overlap.** Before the first build of a job (round 1, or round 2 of a promoted job), run
     `factory/bin/job <id> overlap`. `wait: <id> (<files>)` means a job ahead of this one changes
@@ -349,12 +353,13 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     Only exact paths in the spec's `## Design` (intake's `## Scope` in lane xs) count.
   <!-- rule: builder-handoff -->
   - **Handoff.** The builder ends every `build.md` with `## Notes for the next round` (files it
-    changed and why, decisions not to undo, anything deferred). A fresh builder for a later
-    round reads those notes and the findings first, and opens only the files they name.
+    changed and why, decisions not to undo, anything deferred). When a round ends the engine moves
+    it to `round-<n>/build.md`. A fresh builder for a later round reads those notes
+    (`round-<round - 1>/build.md`) and the findings first, and opens only the files they name.
   - Later rounds in the same session: resume it with `SendMessage` to
     `eminzo-builder-<id>`: `Round <round - 1> needs changes. Read
-    factory/jobs/<id>/round-<round - 1>/, fix every finding, run the checks, commit,
-    push and rewrite build.md.`
+    factory/jobs/<id>/round-<round - 1>/ (your previous build.md is there now), fix every
+    finding, run the checks, commit, push and write a new build.md.`
   <!-- rule: spec-amendment -->
   - **Spec amendment.** (Lane xs has no spec to amend: there `invalid`, `unverified` and
     `needed` run `job <id> promote`, and `escalate` still goes to `needs-human`.) When `build.md` says `STATUS: READY`, run `factory/bin/job <id> amend`

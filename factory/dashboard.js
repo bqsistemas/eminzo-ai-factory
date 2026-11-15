@@ -149,7 +149,7 @@ async function poll() {
 // --- drawer -----------------------------------------------------------------
 
 function filesOf(job) {
-  // Allowlisted Markdown artifacts: issue.md, intake.md, spec.md, plan.md, build.md, checks.md, reviews, decision.md, and merge-checks.md.
+  // Allowlisted Markdown artifacts: issue.md, intake.md, spec.md, plan.md, build.md (and round-N/build.md of finished rounds), checks.md, reviews, decision.md, and merge-checks.md.
   return artifactFiles(job);
 }
 

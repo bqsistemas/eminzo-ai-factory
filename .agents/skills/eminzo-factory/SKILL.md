@@ -41,7 +41,9 @@ local jobs; it drains the queue only with `run_mode: "queue"` (see **run** under
 - Each worker writes exactly its assigned artifact (`intake.md`, `spec.md`,
   `build.md`, `round-N/review-*.md` or `decision.md`) and replies with its first
   line. Delete stale output before starting a new round (except `spec.md` in
-  `Mode: amend`, which is edited in place).
+  `Mode: amend`, which is edited in place; and `build.md`: do not delete `build.md`
+  yourself when a round changes, because the engine moves it into `round-<n>/` then. The one
+  `build.md` you may delete is the current round's own malformed file, before a retry in that round).
   <!-- rule: delete-stale-output -->
   <!-- rule: own-file-only -->
 <!-- rule: ux-opt-in -->
@@ -132,8 +134,8 @@ Use the scripts for every transition. The stage contract is:
    with `needs-human` (in lane xs, run `job <id> promote` instead). In lane xs, `to gate`
    also checks the xs limits in the branch diff (at most 2 non-test files, none added or
    deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
-   Codex starts a fresh builder every round: for round > 1 add `Resume: read build.md
-   (## Notes for the next round) and round-<round - 1>/ first.` to its prompt.
+   Codex starts a fresh builder every round: for round > 1 add `Resume: read round-<round - 1>/build.md
+   (## Notes for the next round) and the rest of round-<round - 1>/ first.` to its prompt.
    <!-- rule: overlap-wait -->
    - **Overlap.** Before the first build of a job (round 1, or round 2 of a promoted job), run
      `factory/bin/job <id> overlap`. `wait: <id> (<files>)` means a job ahead of this one changes
@@ -142,8 +144,9 @@ Use the scripts for every transition. The stage contract is:
      Only exact paths in the spec's `## Design` (intake's `## Scope` in lane xs) count.
    <!-- rule: builder-handoff -->
    - **Handoff.** The builder ends every `build.md` with `## Notes for the next round` (files it
-     changed and why, decisions not to undo, anything deferred). A fresh builder for a later
-     round reads those notes and the findings first, and opens only the files they name.
+     changed and why, decisions not to undo, anything deferred). When a round ends the engine moves
+     it to `round-<n>/build.md`. A fresh builder for a later round reads those notes
+     (`round-<round - 1>/build.md`) and the findings first, and opens only the files they name.
 5. **gate**: run `factory/bin/gate <id>`. A failure returns to build with the
    check log (in lane xs: `job <id> promote`); a pass moves to review. Never spawn reviews before this step.
    <!-- rule: round-context -->

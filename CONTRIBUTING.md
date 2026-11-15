@@ -35,7 +35,7 @@ Releases follow [docs/releasing.md](docs/releasing.md). The one rule to remember
 | `factory/lib/*.js` | The scripts' code (Node 20 ESM, no dependencies), imported by the tests. |
 | `factory/project.md` | Language, test command, and conventions. Every agent reads it. |
 | `factory/board.json` | Every `job.json`; the dashboard polls it. |
-| `factory/jobs/<id>/` | `job.json`, `issue.md`, `intake.md`, `spec.md`, `build.md`, `round-N/checks.md`, `round-N/review-*.md`, `decision.md`, `merge-checks.md`. |
+| `factory/jobs/<id>/` | `job.json`, `issue.md`, `intake.md`, `spec.md`, `build.md` (the engine moves it to `round-N/build.md` when the next round starts), `round-N/checks.md`, `round-N/review-*.md`, `decision.md`, `merge-checks.md`. |
 | `.worktrees/<id>/` | The job's git worktree on branch `factory/<id>`, from `origin/main`. Job IDs use the GitHub issue number; ports are allocated locally from the next available job sequence. |
 
 `board.json`, `jobs/`, and `.worktrees/` are local runtime state and are gitignored.

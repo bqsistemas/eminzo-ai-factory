@@ -193,6 +193,8 @@ Todos los agentes comparten unas reglas:
 - **Entrega:** `build.md`, con los cambios, la tabla de criterios con sus tests,
   el resultado de las comprobaciones, el número del PR y los commits. La primera
   línea es `STATUS: READY` o, si la spec no se puede cumplir, `STATUS: BLOCKED`.
+  Cuando el job pasa a una ronda nueva, el motor mueve ese `build.md` a
+  `round-N/build.md`: el builder de la ronda siguiente lo lee ahí.
 - **No puede:** subir a `main`, forzar la subida, mergear, marcar el PR como
   listo ni tocar los tests protegidos de la fábrica.
 
