@@ -55,9 +55,16 @@ const CHECKS_TIMEOUT_MINUTES = 30;
 const FAIL_TTL_MS = 60 * 60 * 1000; // a FAIL may be a flaky or environment-only failure: it holds jobs for an hour, not for ever
 const EMPTY_LOCK_MS = 60 * 1000;
 const FETCH_TTL_MS = 60 * 1000;
+const LOCK_MARGIN_MS = 10 * 60 * 1000;
 // Secrets of the machine that neither the prepare step nor checks.sh of the base check may inherit. Registry tokens such as
 // NPM_TOKEN stay: an install may need them.
 const SECRET_ENV = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'FACTORY_DISCORD_WEBHOOK_URL'];
+
+/** How long checks.sh may run in the base check, in minutes. */
+const checksTimeoutMinutes = (config) => {
+  const minutes = Number(config?.checks?.base_timeout_minutes);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : CHECKS_TIMEOUT_MINUTES;
+};
 
 const envNumber = (name, fallback) => {
   const n = Number(process.env[name]);
@@ -160,21 +167,29 @@ const alive = (pid) => {
  * old its lock is: the checks and the prepare step have a timeout, so a live pid is a check that is still running. An empty or
  * unreadable file is a holder that died while writing it: it ages out after a minute by its mtime.
  */
-function lockStaleness(file) {
+function lockStaleness(file, maxAgeMs) {
   try {
     const st = lstatSync(file);
     if (!st.isFile()) return { stale: true, ino: st.ino }; // a link or a folder is never a lock this engine wrote
     let held = null;
     try { held = JSON.parse(readFileSync(file, 'utf8')); } catch { /* empty or half written */ }
     if (!Number.isInteger(held?.pid)) return { stale: Date.now() - st.mtimeMs > EMPTY_LOCK_MS, ino: st.ino };
-    return { stale: !alive(held.pid), ino: st.ino, pid: held.pid };
+    // A live pid can be a different process that reused the number: the holder's own run is bounded by its timeouts, so a lock older
+    // than that (plus a margin) is over whatever the pid says.
+    const started = Date.parse(held.started);
+    const tooOld = Number.isFinite(started) && Date.now() - started > maxAgeMs;
+    return { stale: !alive(held.pid) || tooOld, ino: st.ino, pid: held.pid };
   } catch {
     return { stale: false };
   }
 }
 
+/** The oldest a live holder's lock may be: its prepare timeout plus its checks timeout plus a margin. */
+const lockAge = (config) => envNumber('FACTORY_BASE_PREPARE_TIMEOUT_MS', PREPARE_TIMEOUT_MS) + checksTimeoutMinutes(config) * 60 * 1000 + LOCK_MARGIN_MS;
+const defaultLockAge = () => lockAge(null);
+
 /** Takes factory/jobs/.base/lock, waiting for a live holder. @returns {{ok: true, release: () => void}|{ok: false, reason: string}} */
-function takeLock(dir, waitMs, pollMs) {
+function takeLock(dir, waitMs, pollMs, maxAgeMs = defaultLockAge()) {
   const file = join(dir, 'lock');
   const deadline = Date.now() + waitMs;
   for (;;) {
@@ -184,7 +199,7 @@ function takeLock(dir, waitMs, pollMs) {
     } catch (err) {
       if (err.code !== 'EEXIST') return { ok: false, reason: `cannot take the lock: ${err.message}` };
     }
-    const judged = lockStaleness(file);
+    const judged = lockStaleness(file, maxAgeMs);
     if (judged.stale) {
       // Take over only the file that was judged: the same inode before and after the rename, or give it back and give up.
       const away = `${file}.stale.${process.pid}`;
@@ -406,7 +421,7 @@ export function checkBase(root, { job = null, scope = null, fresh = false, byHan
   const hit = cached();
   if (hit) return { ...hit, fromCache: true };
 
-  const lock = takeLock(dir, envNumber('FACTORY_BASE_LOCK_WAIT_MS', 20 * 60 * 1000), envNumber('FACTORY_BASE_LOCK_POLL_MS', 2000));
+  const lock = takeLock(dir, envNumber('FACTORY_BASE_LOCK_WAIT_MS', 20 * 60 * 1000), envNumber('FACTORY_BASE_LOCK_POLL_MS', 2000), lockAge(config));
   if (!lock.ok) return unknown(lock.reason, sha, { key });
   try {
     const again = cached(); // another check may have answered while this one waited
@@ -458,8 +473,7 @@ function runCheck(root, dir, { base, config, prepare, wanted, identity }) {
   }
 
   const started = Date.now();
-  const minutes = Number(config?.checks?.base_timeout_minutes);
-  const limit = Number.isFinite(minutes) && minutes > 0 ? minutes : CHECKS_TIMEOUT_MINUTES;
+  const limit = checksTimeoutMinutes(config);
   const checks = runChecks(root, checkout.path, { trace: true, timeoutMs: limit * 60 * 1000, dropEnv: SECRET_ENV, dropFactoryEnv: true, ...(wanted ? { scope: wanted } : {}) });
   const spanMs = Date.now() - started;
   const log = withoutTrace(checks.output);
@@ -474,23 +488,29 @@ function runCheck(root, dir, { base, config, prepare, wanted, identity }) {
 
 // ---- the fix issue ----------------------------------------------------------------------------------
 
-const PLAIN_WORD = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,40}$/;
-const LOOKS_LIKE_A_SECRET = /^[A-Za-z0-9]{24,}$|eyJ|^(?:gh[pous]_|github_pat_|sk[-_]|xox[a-z]-|AKIA[A-Z0-9]{8,})/;
+const CHECK_TOOLS = new Set(['npm', 'pnpm', 'yarn', 'bun', 'npx', 'node', 'deno', 'go', 'cargo', 'rustc', 'python', 'python3', 'pytest', 'ruff', 'mypy', 'make', 'mvn', 'gradle', './gradlew', './mvnw', 'tsc', 'eslint', 'jest', 'vitest', 'nx', 'turbo', 'rspec', 'bundle', 'rake', 'dotnet', 'phpunit', 'composer', 'swift', 'flutter', 'dart']);
+const CHECK_WORDS = new Set(['run', 'test', 'lint', 'exec', 'build', 'check', 'typecheck', 'vet', 'fmt', 'clippy', 'affected', 'run-many', 'ci', 'verify', 'compile']);
+const SCRIPT_NAME = /^[a-z][a-z0-9:_-]{0,30}$/;
 
 /**
  * The failing command as a PUBLIC issue may show it. The trace prints a command after the shell expanded it, so anything it
- * carried (a token in a header, `-u user:pass`, a key) is in it, quoted or not. The one safe rule: show the program and up to two
- * following plain words (`pnpm run lint`, `npm test`, `pnpm exec nx`), stop at the first word that is not plain, and say with
- * ` …` that something was left out. The raw command stays in the local state and the local report. Backticks are removed.
- * Display text only. @returns {string|null} null when the program itself is not a plain word.
+ * carried (a token, `-u user:pass`, a key, an id) is in it, and no pattern can tell every secret from a word. So this is an
+ * allowlist: the program must be a known check tool (`pnpm`, `go`, `cargo`...), the next words only known verbs (`run`, `test`,
+ * `lint`...), and right after `run` or `exec` one script or binary name (`lint:ci`, `nx`). It stops at the first word that fails,
+ * shows at most three words and adds ` …` when something was left out. The raw command stays in the local state and report.
+ * Display text only. @returns {string|null} null when the program is not on the list: then nothing of the command is shown.
  */
 export function publicCommand(command) {
   if (typeof command !== 'string') return null;
   const words = command.replace(/`/g, '').trim().split(/\s+/).filter(Boolean);
-  const plain = (w) => PLAIN_WORD.test(w) && !LOOKS_LIKE_A_SECRET.test(w);
-  if (!words.length || !plain(words[0])) return null;
+  if (!words.length || !CHECK_TOOLS.has(words[0])) return null;
   let shown = 1;
-  while (shown < 3 && shown < words.length && plain(words[shown])) shown += 1;
+  while (shown < 3 && shown < words.length) {
+    const word = words[shown];
+    const afterRun = shown >= 2 && ['run', 'exec'].includes(words[shown - 1]);
+    if (!(CHECK_WORDS.has(word) || (afterRun && SCRIPT_NAME.test(word)))) break;
+    shown += 1;
+  }
   return `${words.slice(0, shown).join(' ')}${shown < words.length ? ' …' : ''}`;
 }
 
@@ -502,7 +522,8 @@ const TEXT = {
     title: (branch, what) => `Fix the checks on ${branch}: ${what}`,
     intro: (branch, sha) => `The factory's checks fail on \`${branch}\` at \`${sha}\`, so every job whose checks also fail there waits for this issue.`,
     command: (shown, exit) => `Failing command: ${shown} (exit ${exit})`,
-    step: (shown, exit) => `Failing step: ${shown} (exit ${exit})`,
+    step: (shown) => `Failing step: ${shown}`,
+    exited: (exit) => `factory/checks.sh exited ${exit}`,
     goal: 'Goal',
     goalText: (branch) => `factory/checks.sh passes on ${branch} again, for every project.`,
     criteria: 'Acceptance criteria',
@@ -516,7 +537,8 @@ const TEXT = {
     title: (branch, what) => `Arreglar los checks en ${branch}: ${what}`,
     intro: (branch, sha) => `Los checks de la fábrica fallan en \`${branch}\` en \`${sha}\`, así que cada job cuyos checks también fallan ahí espera este issue.`,
     command: (shown, exit) => `Comando que falla: ${shown} (salida ${exit})`,
-    step: (shown, exit) => `Paso que falla: ${shown} (salida ${exit})`,
+    step: (shown) => `Paso que falla: ${shown}`,
+    exited: (exit) => `factory/checks.sh terminó con ${exit}`,
     goal: 'Objetivo',
     goalText: (branch) => `factory/checks.sh vuelve a pasar en ${branch}, para todos los proyectos.`,
     criteria: 'Criterios de aceptación',
@@ -530,7 +552,8 @@ const TEXT = {
     title: (branch, what) => `Corrigir os checks em ${branch}: ${what}`,
     intro: (branch, sha) => `Os checks da fábrica falham em \`${branch}\` em \`${sha}\`, então todo job cujos checks também falham ali espera esta issue.`,
     command: (shown, exit) => `Comando que falha: ${shown} (saída ${exit})`,
-    step: (shown, exit) => `Passo que falha: ${shown} (saída ${exit})`,
+    step: (shown) => `Passo que falha: ${shown}`,
+    exited: (exit) => `factory/checks.sh terminou com ${exit}`,
     goal: 'Objetivo',
     goalText: (branch) => `factory/checks.sh volta a passar em ${branch}, para todos os projetos.`,
     criteria: 'Critérios de aceitação',
@@ -560,7 +583,7 @@ export function issueText(config, record, { engineCommand: command = engineComma
     body: [
       t.intro(branch, sha),
       '',
-      shownCommand ? t.command(span(shownCommand), exit) : t.step(span('factory/checks.sh'), exit),
+      shownCommand ? t.command(span(shownCommand), exit) : t.step(span(t.exited(exit))),
       '',
       `## ${t.goal}`,
       '',
@@ -626,16 +649,23 @@ export function ensureFixIssue(root, config, record, { gh = process.env.FACTORY_
   return { number, created: number === mine };
 }
 
-/** Remembers the fix issue on the check that found the failure (the last full check and its cached result). Best effort. */
-export function setFixIssue(root, key, number) {
+/**
+ * Marks a cached FAIL as confirmed by a second, fresh run, without touching its time (the TTL counts from the check). A confirmed
+ * FAIL is not confirmed again for the next job. Best effort.
+ */
+export function markConfirmed(root, key) {
+  return updateRecord(root, key, (rec) => ({ ...rec, confirmed: true }));
+}
+
+function updateRecord(root, key, change) {
   try {
     const dir = ensureStateDir(root);
     const lock = takeLock(dir, 10_000, 100);
     if (!lock.ok) return false;
     try {
       const state = readState(root);
-      if (state.full?.key === key) state.full = { ...state.full, fix_issue: number };
-      if (state.results[key]) state.results[key] = { ...state.results[key], fix_issue: number };
+      if (state.full?.key === key) state.full = change(state.full);
+      if (state.results[key]) state.results[key] = change(state.results[key]);
       writeAtomic(join(dir, 'state.json'), `${JSON.stringify(state, null, 2)}\n`);
       return true;
     } finally {
@@ -644,6 +674,11 @@ export function setFixIssue(root, key, number) {
   } catch {
     return false;
   }
+}
+
+/** Remembers the fix issue on the check that found the failure (the last full check and its cached result). Best effort. */
+export function setFixIssue(root, key, number) {
+  return updateRecord(root, key, (rec) => ({ ...rec, fix_issue: number }));
 }
 
 // ---- the command ------------------------------------------------------------------------------------

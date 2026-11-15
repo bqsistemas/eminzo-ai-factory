@@ -29,14 +29,15 @@ export function overview(root, { now = Date.now() } = {}) {
   const byStage = {};
   for (const v of views) if (v.stage) byStage[v.stage] = (byStage[v.stage] ?? 0) + 1;
   const running = views.filter((v) => v.group === 'active' && !v.waiting).sort(newestFirst).map(brief);
-  const waiting = views.filter((v) => v.waiting).length;
+  // A job held by a broken base waits for the base to be fixed, not for a person: it is counted apart.
   const onBase = views.filter((v) => v.waiting?.kind === 'fix-base').length;
+  const waiting = views.filter((v) => v.waiting).length - onBase;
   const finished = views.filter((v) => v.finished).sort((a, b) => (at(b.finished) ?? 0) - (at(a.finished) ?? 0));
   const last = finished[0] ? { ...brief(finished[0]), finished: finished[0].finished } : null;
   const summary = views.length
-    ? `${plural(running.length, 'job')} running, ${plural(waiting, 'job')} waiting for a person${onBase ? ` (${onBase} of them for the base branch to be fixed)` : ''}, ${plural(counts.terminal, 'job')} finished (${plural(views.length, 'job')} on this machine).`
+    ? `${plural(running.length, 'job')} running, ${plural(waiting, 'job')} waiting for a person${onBase ? ` · ${plural(onBase, 'job')} waiting for the base branch to be fixed` : ''}, ${plural(counts.terminal, 'job')} finished (${plural(views.length, 'job')} on this machine).`
     : 'No jobs on this machine yet.';
-  return { summary, jobs: views.length, counts, by_stage: byStage, running, waiting_for_people: waiting, last_finished: last };
+  return { summary, jobs: views.length, counts, by_stage: byStage, running, waiting_for_people: waiting, ...(onBase ? { waiting_for_base: onBase } : {}), last_finished: last };
 }
 
 /** Jobs matching every given filter, most recently updated first, at most `limit`. */

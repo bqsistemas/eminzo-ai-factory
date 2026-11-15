@@ -40,7 +40,7 @@ runs it as `factory/bin/mcp`.
 
 | Tool | Answers | Arguments |
 |---|---|---|
-| `factory_overview` | how the factory is now: jobs per group and stage, what runs, how many wait for a person, the last job that finished | none |
+| `factory_overview` | how the factory is now: jobs per group and stage, what runs, how many wait for a person (a job held by a broken base branch is counted apart, as `waiting_for_base`), the last job that finished | none |
 | `list_jobs` | which jobs match, most recently updated first | `stage`, `group` (`active`, `parked`, `terminal`), `lane`, `risk`, `size`, `since`, `limit` (1-100, default 20) |
 | `job_detail` | one job: every round with why it ran, gate result, each verdict with its blockers, the approval decision, times and cost per agent | `job`: a job id (`161-fix-login`) or an issue number (`161`, `#161`) |
 | `waiting_on_people` | every job waiting for a person, oldest first, and what it needs: `decide`, `answer`, `approve-spec`, `merge` or `fix-base` (the job's checks fail on the base branch too, so it waits for the issue that fixes it, named as `fix_issue`) | none |

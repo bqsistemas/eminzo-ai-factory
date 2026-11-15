@@ -275,13 +275,18 @@ test('an empty lock file does not block forever: it ages out after a minute', ()
   assert.equal(t.base().status, 0);
 });
 
-test('a lock held by a live process is never taken over, however old it is', () => {
+test('a lock held by a live process is respected while its run can still be going, and taken over once it cannot (a reused pid)', () => {
   const t = baseFixture({ checks: GREEN, config: { checks: { prepare: '' } } });
   assert.equal(t.base().status, 0);
-  writeFileSync(join(t.root, 'factory/jobs/.base/lock'), JSON.stringify({ pid: process.pid, started: new Date(Date.now() - 6 * 3_600_000).toISOString() }));
-  const res = t.base();
-  assert.equal(res.status, 3);
-  assert.match(res.stdout, /another base check is still running/);
+  const lock = join(t.root, 'factory/jobs/.base/lock');
+  writeFileSync(lock, JSON.stringify({ pid: process.pid, started: new Date(Date.now() - 30 * 60_000).toISOString() }));
+  const busy = t.base();
+  assert.equal(busy.status, 3);
+  assert.match(busy.stdout, /another base check is still running/);
+  // prepare timeout (30 min) + checks timeout (30 min) + 10 minutes: older than that, its own run is over whatever the pid says.
+  writeFileSync(lock, JSON.stringify({ pid: process.pid, started: new Date(Date.now() - 2 * 3_600_000).toISOString() }));
+  assert.equal(t.base().status, 0);
+  assert.equal(existsSync(lock), false);
 });
 
 test('a FAIL in the cache is good for an hour, then the check runs again', () => {

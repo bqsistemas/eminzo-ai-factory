@@ -50,6 +50,11 @@ for (const [provider, { path, cmd }] of Object.entries(SKILLS)) {
     assert.match(near, /\bissue <n>`/);
   });
 
+  test(`${provider}: a held job is not gated again on a later run, only job <id> base runs for it`, () => {
+    const flat = text.replace(/\s+/g, ' ');
+    assert.match(flat, /A held job is not gated again on a later `run`: only `factory\/bin\/job <id> base` runs for it/);
+  });
+
   test(`${provider}: the gate asks whether the base fails the same checks before a job goes back to the builder`, () => {
     const at = text.indexOf('<!-- rule: red-base -->');
     assert.ok(at >= 0, 'red-base marker');

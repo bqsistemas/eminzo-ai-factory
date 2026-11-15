@@ -355,14 +355,6 @@ test('when the resume escalates a job, its PR record is refreshed like any other
   assert.ok(t.calls().slice(before).some(({ args }) => args[0] === 'pr' && args[1] === 'edit'), 'the PR body gets its Factory record');
 });
 
-test('the overview says how many waiting jobs wait for the base branch', async () => {
-  const { overview } = await import('../factory/lib/state/queries.js');
-  const t = redBase();
-  const id = await t.gated();
-  await t.base(id);
-  assert.match(overview(t.root).summary, /1 job waiting for a person \(1 of them for the base branch to be fixed\)/);
-});
-
 // --- review fixes: a flaky failure never holds a job or opens a public issue ----------------------------------------
 
 const FLAKY = `#!/bin/sh
@@ -396,4 +388,31 @@ test('a held job is checked again after an hour even when the tip did not move',
   assert.equal((await t.base(id)).stdout.trim(), 'wait: main is broken (#1)');
   assert.equal(t.baseRuns(), 3, 'one more run, and no confirmation: the tip is the one that was held');
   assert.equal(t.fake.creates().length, 1);
+});
+
+test('a failure that a second run already confirmed is not run again for the next job, and its timestamp is not rewritten', async () => {
+  const t = redBase();
+  const first = await t.gated(7);
+  await t.base(first);
+  assert.equal(t.baseRuns(), 2);
+  const stateFile = join(t.root, 'factory/jobs/.base/state.json');
+  const before = JSON.parse(readFileSync(stateFile, 'utf8'));
+  assert.equal(Object.values(before.results)[0].confirmed, true);
+  const second = await t.gated(8);
+  const res = await t.base(second);
+  assert.equal(res.stdout.trim(), 'wait: main is broken (#1)');
+  assert.equal(t.baseRuns(), 2, 'no run for the second job');
+  assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')).results, before.results, 'nothing rewritten');
+  assert.equal(t.fake.creates().length, 1);
+});
+
+test('the overview counts a held job apart from the jobs that wait for a person', async () => {
+  const { overview } = await import('../factory/lib/state/queries.js');
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  const o = overview(t.root);
+  assert.match(o.summary, /0 jobs waiting for a person · 1 job waiting for the base branch to be fixed/);
+  assert.equal(o.waiting_for_people, 0);
+  assert.equal(o.waiting_for_base, 1);
 });

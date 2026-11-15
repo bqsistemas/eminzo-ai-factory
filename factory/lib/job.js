@@ -56,7 +56,7 @@ import { KNOWN_SURFACES, parseIntake } from './intake.js';
 import { hasLessonsSection, lessonsCommand, parseLast } from './lessons.js';
 import { computeMetrics, metricsText } from './metrics.js';
 import { overlapReport, overlaps } from './overlap.js';
-import { checkBase, ensureFixIssue, resolveTip, setFixIssue, short } from './base.js';
+import { checkBase, ensureFixIssue, markConfirmed, resolveTip, setFixIssue, short } from './base.js';
 import { BASE_FIX_LABEL } from './labels.js';
 import { endWait, gateFacts, ownChecksPassed, waitLine, waitNote } from './red-base.js';
 import { claimIssue } from './claim.js';
@@ -1329,7 +1329,10 @@ function baseCommand(c, id, fresh = false) {
   const ask = (again) => checkBase(c.root, { job: id, scope: facts.base ? { base: facts.base, head: facts.head } : null, fresh: fresh || again, config: c.config });
   let result = ask(false);
   // A failure is confirmed before it holds the first job or opens a public issue for a tip: a flaky or one-off failure must not.
-  if (result.status === 'FAIL' && (!held || held.sha !== result.sha) && !(fresh && !result.fromCache)) result = ask(true);
+  if (result.status === 'FAIL' && (!held || held.sha !== result.sha) && !(fresh && !result.fromCache) && !result.confirmed) {
+    result = ask(true);
+    if (result.status === 'FAIL') markConfirmed(c.root, result.key); // the next job that meets this failure does not run it a third time
+  }
   if (result.status === 'PASS') {
     // Only a job that was held is merged with the base and gated again; any other failure is the job's own and goes to the builder.
     if (held) {

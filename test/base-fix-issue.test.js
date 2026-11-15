@@ -40,9 +40,9 @@ test('no open issue: one create with both labels; the body names the sha, the fa
   assert.deepEqual(args.slice(0, 2), ['issue', 'create']);
   assert.deepEqual(args.filter((a, i) => args[i - 1] === '--label'), ['factory', BASE_FIX_LABEL]);
   const sha12 = t.tip().slice(0, 12);
-  assert.match(args[args.indexOf('--title') + 1], /^Fix the checks on main: test$/);
+  assert.match(args[args.indexOf('--title') + 1], /^Fix the checks on main: factory\/checks\.sh$/);
   assert.match(create.body, new RegExp(`\`main\` at \`${sha12}\``));
-  assert.match(create.body, /Failing command: `test …` \(exit 1\)/);
+  assert.match(create.body, /Failing step: `factory\/checks\.sh exited 1`/);
   assert.match(create.body, /factory\/bin\/base/, 'the engine is committed in this repository');
   assert.match(create.body, /^- AC-1: /m);
   assert.doesNotMatch(create.body, /LOG-LINE-THAT-MUST-STAY-LOCAL/);
@@ -90,7 +90,7 @@ test('language es: the title and the body are in Spanish', () => {
   assert.equal(fix().status, 0);
   const [create] = fake.creates();
   assert.match(create.args[create.args.indexOf('--title') + 1], /^Arreglar los checks en main: /);
-  assert.match(create.body, /Comando que falla/);
+  assert.match(create.body, /Paso que falla: `factory\/checks\.sh terminó con 1`/);
 });
 
 test('a gh failure is exit 1 and a missing label points at setup', () => {
@@ -123,41 +123,67 @@ test('fix-issue is refused after a passing check, with no check at all, and afte
   assert.match(moved.stderr, /refused: origin\/main moved since; run factory\/bin\/base again/);
 });
 
-test('publicCommand publishes the program and at most two plain words, and nothing after the first word that is not plain', () => {
+test('publicCommand is an allowlist: a known check tool, a known subcommand, at most one script name after run or exec', () => {
   assert.equal(publicCommand('pnpm run lint'), 'pnpm run lint');
+  assert.equal(publicCommand('pnpm run lint:ci'), 'pnpm run lint:ci');
   assert.equal(publicCommand('npm test'), 'npm test');
   assert.equal(publicCommand('pnpm exec nx run-many -t lint test'), 'pnpm exec nx …');
   assert.equal(publicCommand('pnpm run lint --max-warnings=0'), 'pnpm run lint …');
+  assert.equal(publicCommand('go vet ./...'), 'go vet …');
+  assert.equal(publicCommand('cargo clippy --all-targets'), 'cargo clippy …');
+  assert.equal(publicCommand('./gradlew test'), './gradlew test');
+  assert.equal(publicCommand('make'), 'make');
+  assert.equal(publicCommand('echo ``a`` b'), null, 'echo is not a check tool; backticks never survive');
+  assert.equal(publicCommand('npm `run` lint'), 'npm run lint');
   assert.equal(publicCommand(null), null);
   assert.equal(publicCommand('   '), null);
-  assert.equal(publicCommand('./run.sh --token x'), null, 'a program that is not a plain word is not shown');
+  assert.equal(publicCommand('./run.sh --token x'), null);
+  assert.equal(publicCommand('/usr/bin/pnpm run lint'), null, 'a path is not on the list');
+  assert.equal(publicCommand('npm run build test extra'), 'npm run build …', 'at most three words');
+});
+
+test('publicCommand never lets a token, a key, an id or a password through, whatever it looks like', () => {
   const leaks = [
-    "curl -H 'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz0123456789' https://x",
-    'curl -u admin:SuperSecret123 https://x',
-    'aws configure set aws_secret_access_key wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
-    'deploy --jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc',
-    'test hunter2hunter2hunter2hunter2hunter2 = nope',
-    'run "quoted secret" tail',
+    ['aws-secret wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'wJalrXUtnFEMI'],
+    ['npm login npm_abcdefghijklmnopqrstuvwxyz0123456789', 'npm_abcdefghij'],
+    ['vault login hvs.CAESIabcdefgh12345', 'hvs.CAESI'],
+    ['deploy glpat-abcdefghij1234567890', 'glpat'],
+    ['a SG.abcdefghijklmnop.qrstuvwxyz0123456', 'SG.abc'],
+    ['x 550e8400-e29b-41d4-a716-446655440000', '550e8400'],
+    ['redis-cli AUTH s3cretpass', 's3cretpass'],
+    ["curl -H 'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz0123456789' https://x", 'ghp_'],
+    ['curl -u admin:SuperSecret123 https://x', 'SuperSecret123'],
+    ['deploy --jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc', 'eyJ'],
+    ['test hunter2hunter2hunter2hunter2hunter2 = nope', 'hunter2'],
+    ['npm login --password hunter2', 'hunter2'],
+    ['npm run hunter2hunter2hunter2hunter2hunter2hunter2hunter2', 'hunter2'],
   ];
-  for (const raw of leaks) {
+  const config = { base: 'origin/main', language: 'en' };
+  for (const [raw, secret] of leaks) {
     const shown = publicCommand(raw);
-    assert.ok(shown === null || shown.split(' ').length <= 4, shown);
-    for (const secret of ['ghp_', 'SuperSecret123', 'wJalrXUtnFEMI', 'eyJ', 'hunter2', 'quoted', 'Bearer', 'admin']) assert.ok(!(shown ?? '').includes(secret), `${secret} in ${shown}`);
+    assert.ok(!(shown ?? '').includes(secret), `${secret} in ${shown}`);
+    const { title, body } = issueText(config, { sha: 'a'.repeat(40), status: 'FAIL', exit: 3, command: raw }, { engineCommand: 'eminzo base', version: null, date: '2026-11-15' });
+    assert.ok(!title.includes(secret) && !body.includes(secret), `${secret} reached the issue for ${raw}`);
   }
-  assert.equal(publicCommand('echo ``a`` b'), 'echo a b', 'backticks are stripped');
-  assert.equal(publicCommand(`${'x'.repeat(300)} pnpm`), null, 'a long first word is not a plain word');
+});
+
+test('a command whose program is not a known check tool is not published: the issue says checks.sh exited with the code', () => {
+  const config = { base: 'origin/main', language: 'en' };
+  const { title, body } = issueText(config, { sha: 'a'.repeat(40), status: 'FAIL', exit: 7, command: 'redis-cli AUTH s3cretpass' }, { engineCommand: 'eminzo base', version: null, date: '2026-11-15' });
+  assert.match(body, /factory\/checks\.sh exited 7/);
+  assert.equal(title, 'Fix the checks on main: factory/checks.sh');
 });
 
 test('issueText: inert title, no backtick can break the span, no command falls back to checks.sh', () => {
   const config = { base: 'origin/main', language: 'en' };
-  const base = { sha: 'a'.repeat(40), status: 'FAIL', exit: 2, command: 'echo `x` $(rm -rf /)' };
+  const base = { sha: 'a'.repeat(40), status: 'FAIL', exit: 2, command: 'npm run lint `x` $(rm -rf /)' };
   const { title, body } = issueText(config, base, { engineCommand: 'eminzo base', version: '1.2.3', date: '2026-11-15' });
   assert.doesNotMatch(title, /[`$]|\n/);
-  assert.match(body, /Failing command: `echo x …` \(exit 2\)/);
+  assert.match(body, /Failing command: `npm run lint …` \(exit 2\)/);
   assert.doesNotMatch(body, /rm -rf/);
   assert.match(body, /Found by eminzo base \(engine 1\.2\.3\) on 2026-11-15\./);
   const bare = issueText(config, { ...base, command: null }, { engineCommand: 'eminzo base', version: null, date: '2026-11-15' });
-  assert.match(bare.body, /Failing step: `factory\/checks\.sh` \(exit 2\)/);
+  assert.match(bare.body, /Failing step: `factory\/checks\.sh exited 2`/);
   assert.match(bare.title, /^Fix the checks on main: factory\/checks\.sh$/);
   assert.doesNotMatch(bare.body, /engine null/);
 });
