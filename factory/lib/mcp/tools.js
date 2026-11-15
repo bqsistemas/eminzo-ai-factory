@@ -171,7 +171,7 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'waiting_on_people',
       title: 'Waiting for a person',
-      description: 'Every local job that waits for a person, oldest wait first, with what is needed: decide (escalated), answer (intake question), approve-spec, or merge. Use it for "what is waiting for me".',
+      description: 'Every local job that waits for a person, oldest wait first, with what is needed: decide (escalated), answer (intake question), approve-spec, merge, or fix-base (the base branch fails the same checks; the issue that fixes it is named). Use it for "what is waiting for me".',
       answer: (_, c) => waitingOnPeople(c.root, { now: c.now }),
     }, ctx),
     tool({

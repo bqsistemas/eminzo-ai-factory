@@ -50,6 +50,10 @@ export function readJobs(root) {
 
 /** What a person must do for this job right now, or null. */
 export function waitingFor(job) {
+  // Held at the gate because the base branch fails the same checks: a person fixes the base (the fix issue).
+  if (job.stage === 'gate' && isObject(job.base_wait)) {
+    return { kind: 'fix-base', reason: textOrNull(job.note), since: textOrNull(job.base_wait.since) ?? job.updated ?? null, fix_issue: intOrNull(job.base_wait.fix_issue) };
+  }
   const kind = WAITING_KINDS[job.stage];
   if (!kind) return null;
   return { kind, reason: textOrNull(job.note), since: job.updated ?? null };

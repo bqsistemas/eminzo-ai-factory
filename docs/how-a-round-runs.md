@@ -21,6 +21,22 @@ The gate report names the first one as `Checks base: <sha>|none`. Values already
 - **Cap.** At most `checks.max_runs_per_round` check runs per round (default 6). Past it the nudge exits 2 with `cap reached: write build.md with what is still failing`.
 - **Flaky checks.** A check that fails and then passes with no code change goes to `build.md` `## Flaky` (`command | error`) instead of being fixed in the job.
 
+### When the base is red
+
+A gate failure is the job's own unless the base branch fails the same checks. After a real `GATE: FAIL` the orchestrator runs `job <id> base`, which checks the tip of the base for the job's own scope (the files it changed, for a `checks.sh` that reads `FACTORY_BASE`) in `.worktrees/.base` and answers:
+
+| Answer | Meaning | What happens |
+|---|---|---|
+| `own: <reason>` | the failure is the job's: the checks passed and something else failed, the base passes the same checks, the base could not be checked (`UNKNOWN`), or the job fixes the base | the job goes back to the builder, as always |
+| `wait: main is broken (#n)` | the base fails the same checks | the job is **held**: it stays at `gate` with `base_wait` in `job.json` and the note `main is broken: waiting for #n`. No builder runs, no round is spent and no `concurrency` slot is used |
+
+- **Only a real FAIL holds a job.** `UNKNOWN` (the install failed, git failed, exit 126 or 127, a signal, a busy lock) never does.
+- **One fix issue per breakage.** The first hold finds the one open `factory:base-fix` issue or creates it (`eminzo base fix-issue` does the same by hand). If `gh` fails, the job still waits and the note says how to create the issue.
+- **The fix job is exempt.** A job whose issue carries `factory:base-fix` (`job.json` `base_fix`) is checked on everything, never narrowed to its files, and never held.
+- **No shortcut.** `job <id> to build` and `job <id> promote` refuse a real gate failure that `job <id> base` has not answered, and refuse a held job.
+- **A held job in its last round waits** instead of escalating; when its PR is merged by hand, `to merged` ends the wait. Every wait is kept in `base_waits`.
+- **Where to look.** `job summary` shows `gate (waits for main, #n)`; Ask Eminzo lists the job as waiting with kind `fix-base`; the dashboard shows the note.
+
 ### The builder's plan and self-check
 
 - **Plan.** Before its first code edit, the builder writes `factory/jobs/<id>/plan.md` (at most 30 lines) with four sections:

@@ -187,7 +187,7 @@ function takeLock(dir, waitMs, pollMs) {
 // ---- git and the worktree -------------------------------------------------------------------------
 
 /** The commit `ref` points at, after `git fetch <remote>` (a failed fetch keeps the local ref). */
-function resolveTip(root, base, remote) {
+export function resolveTip(root, base, remote) {
   if (remote.startsWith('-') || base.startsWith('-')) return { error: `the base ${base} is not a valid ref` };
   git(root, ['fetch', remote], { timeout: 120_000 });
   const res = git(root, ['rev-parse', '--verify', '--quiet', `${base}^{commit}`]);

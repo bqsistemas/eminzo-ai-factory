@@ -109,7 +109,7 @@ Use the scripts for every transition. The stage contract is:
    `factory/bin/job new <n> --provider codex` idempotently for each; a refusal (not open or labeled, assigned to someone else, or `factory/<id>` already on the remote) skips that issue. With `own`, take no new issue. In both modes: reconcile PRs and resume unfinished local jobs in `factory/jobs/` up to
    `concurrency`, read with `factory/bin/job config concurrency` (the last field of its line), never from
    `factory/config.json` directly: the gitignored `factory/config.local.json` may lower it.
-   `spec-review` is parked like `awaiting-merge`: it uses no `concurrency` slot. `run` never
+   `spec-review` is parked like `awaiting-merge`, and so is a job held at `gate` by a broken `<base>` (`base_wait` in its `job.json`, see **red-base**): none uses a `concurrency` slot. `run` never
    approves or revises a spec: it reports each job in `spec-review` as waiting for the developer
    (`approve-spec <n>` or `revise-spec <n> <notes>`) and moves on.
 2. **intake**: spawn one `eminzo-intake` per job using `job.models.intake`. On `ACCEPT`, run
@@ -147,8 +147,14 @@ Use the scripts for every transition. The stage contract is:
      changed and why, decisions not to undo, anything deferred). When a round ends the engine moves
      it to `round-<n>/build.md`. A fresh builder for a later round reads those notes
      (`round-<round - 1>/build.md`) and the findings first, and opens only the files they name.
-5. **gate**: run `factory/bin/gate <id>`. A failure returns to build with the
-   check log (in lane xs: `job <id> promote`); a pass moves to review. Never spawn reviews before this step.
+5. **gate**: run `factory/bin/gate <id>`. A pass moves to review. Never spawn reviews before this step.
+   <!-- rule: red-base -->
+   On `GATE: FAIL` first run `factory/bin/job <id> base` (foreground, long timeout: it may install
+   dependencies and run the checks on `<base>`) and act on its first word. `own:` returns the job to build with
+   the check log (in lane xs: `job <id> promote`). `wait:` means `<base>` fails the same checks: the job is
+   held at **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it uses
+   no `concurrency` slot and spends no round, even in its last one. `to build` and `promote` refuse a real gate
+   failure that `base` has not answered, and a held job.
    <!-- rule: round-context -->
    - **Round context.** The gate also writes `round-N/context.md`: the changed files, what changed
      this round, the acceptance criteria and the blockers still open. Every reviewer and the

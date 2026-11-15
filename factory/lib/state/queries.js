@@ -58,6 +58,7 @@ export function waitingOnPeople(root, { now = Date.now() } = {}) {
     ...brief(v),
     kind: v.waiting.kind,
     reason: v.waiting.reason,
+    ...(v.waiting.kind === 'fix-base' ? { fix_issue: v.waiting.fix_issue ?? null } : {}),
     since: v.waiting.since,
     hours: v.waiting.since && at(v.waiting.since) !== null ? Math.round(((now - at(v.waiting.since)) / 3_600_000) * 10) / 10 : null,
   })).sort((a, b) => (at(a.since) ?? 0) - (at(b.since) ?? 0));
@@ -134,7 +135,7 @@ export function jobByRef(root, ref, { now = Date.now() } = {}) {
   const job = findJob(readJobs(root), ref);
   if (!job) return null;
   const detail = jobDetail(root, job, now);
-  const where = detail.waiting ? `waits for a person to ${detail.waiting.kind}` : detail.group === 'terminal' ? `finished as ${detail.stage}` : `is in ${detail.stage}`;
+  const where = detail.waiting?.kind === 'fix-base' ? `waits for the base branch to be fixed${detail.waiting.fix_issue ? ` (issue #${detail.waiting.fix_issue})` : ''}` : detail.waiting ? `waits for a person to ${detail.waiting.kind}` : detail.group === 'terminal' ? `finished as ${detail.stage}` : `is in ${detail.stage}`;
   const issue = detail.issue === null ? '' : ` (issue #${detail.issue})`;
   return { summary: `Job ${detail.id}${issue} ${where}, round ${detail.round}${detail.max_rounds ? ` of ${detail.max_rounds}` : ''}.`, job: detail };
 }

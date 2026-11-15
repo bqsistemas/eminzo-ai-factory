@@ -43,7 +43,7 @@ runs it as `factory/bin/mcp`.
 | `factory_overview` | how the factory is now: jobs per group and stage, what runs, how many wait for a person, the last job that finished | none |
 | `list_jobs` | which jobs match, most recently updated first | `stage`, `group` (`active`, `parked`, `terminal`), `lane`, `risk`, `size`, `since`, `limit` (1-100, default 20) |
 | `job_detail` | one job: every round with why it ran, gate result, each verdict with its blockers, the approval decision, times and cost per agent | `job`: a job id (`161-fix-login`) or an issue number (`161`, `#161`) |
-| `waiting_on_people` | every job waiting for a person, oldest first, and what it needs: `decide`, `answer`, `approve-spec` or `merge` | none |
+| `waiting_on_people` | every job waiting for a person, oldest first, and what it needs: `decide`, `answer`, `approve-spec`, `merge` or `fix-base` (the job's checks fail on the base branch too, so it waits for the issue that fixes it, named as `fix_issue`) | none |
 | `changes_since` | what finished, started waiting, started or moved since a moment | `since` (default: 24 hours ago) |
 | `period_summary` | jobs started, merged, rejected and escalated; total and extra rounds; known cost by lane | `from`, `to` (default: the last 7 days) |
 | `factory_diagnosis` | where the factory loses time and money over the jobs that finished in a period: extra rounds by cause, first-review changes by lens, cost by role and risk, escalations by risk, time by size, and proposals backed by those numbers (a proposal needs a minimum of evidence; nothing is changed) | `from`, `to` (default: the last 30 days) |

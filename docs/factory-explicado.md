@@ -212,6 +212,12 @@ en la copia del builder y verifica que nadie haya tocado los tests protegidos
 - `GATE: PASS`: pueden entrar los revisores.
 - `GATE: FAIL`: vuelve al builder con el log del error, **sin gastar** en
   revisores.
+- **Si `main` ya está roto:** antes de devolver el trabajo, la fábrica pregunta
+  (`job <id> base`) si la rama base falla los mismos checks. Si falla, el
+  trabajo **espera** en el gate (`main is broken: waiting for #n`): no se llama
+  al builder ni se gasta una ronda, y se crea un solo issue `factory:base-fix`
+  para arreglar `main`. Si el problema no se pudo comprobar, o `main` pasa,
+  el fallo es del trabajo y vuelve al builder como siempre.
 
 Es el filtro más barato y confiable de toda la cadena.
 

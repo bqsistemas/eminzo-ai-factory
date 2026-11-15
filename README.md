@@ -73,7 +73,7 @@ flowchart LR
 | Intake | `intake` agent | Accept, needs info or reject, with the risk and the surfaces the change touches |
 | Spec | `spec-writer` | `spec.md` with numbered, testable acceptance criteria |
 | Build | `builder` | `plan.md`, one test per criterion, the code and a draft PR, in its own worktree |
-| Gate | `factory/checks.sh` | Pass or fail of your own checks; a failure sends the job back to the builder |
+| Gate | `factory/checks.sh` | Pass or fail of your own checks; a failure sends the job back to the builder, unless the base branch fails the same checks: then the job waits for the issue that fixes it |
 | Review | Routed reviewers | One verdict per reviewer and round |
 | Approve | Approver (a script or an agent) | `decision.md`: APPROVE, or ESCALATE to you |
 | Merge | `gh pr merge` | The merged PR, after syncing with the base branch and a second gate |
@@ -307,7 +307,7 @@ Any stack. `factory/checks.sh` holds your repository's own checks, so the gate r
 <details>
 <summary><strong>What happens when a job fails?</strong></summary>
 
-A failed gate sends the job back to the builder for another round. After `max_rounds`, or when the approver escalates, the job stops as a pull request waiting for you. A job that needs more information is parked as a question on the issue.
+A failed gate sends the job back to the builder for another round, unless the base branch fails the same checks: then the job waits at the gate, without spending a round, until the `factory:base-fix` issue is fixed. After `max_rounds`, or when the approver escalates, the job stops as a pull request waiting for you. A job that needs more information is parked as a question on the issue.
 </details>
 
 ## Documentation

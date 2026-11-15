@@ -215,7 +215,9 @@ the next `/eminzo-factory run` moves the job to `merged`.
    `pr`, try `job <id> to merged`. If that is refused, try `job <id> to rejected` (the
    PR was closed without merging). If that is also refused and the stage is `approve` or
    `awaiting-merge`, try `job <id> to needs-human` with no `--note` (a trusted
-   "Request changes" review on the PR). A refusal just means "still waiting". This runs before
+   "Request changes" review on the PR). A refusal just means "still waiting". A job at `gate` whose
+   `job.json` has `base_wait` is held by a broken `<base>` (**red-base**): it needs no PR check beyond
+   `to merged`, and `run` spawns nothing for it. This runs before
    any agent is spawned. Repeat the check right before spawning any agent for a job
    with a `pr`, or before moving that job, and skip a job that ends up `merged` or
    `rejected`. Ignore output from agents still running for such a job.
@@ -223,7 +225,7 @@ the next `/eminzo-factory run` moves the job to `merged`.
    first. Read `concurrency` with `factory/bin/job config concurrency` (the last field of
    its line), never from `factory/config.json` directly: `factory/config.local.json` may lower it. A job resumes from its `stage` in `job.json` (see **Stages**). When one
    finishes or parks, start the next. `awaiting-merge` is parked: it uses no
-   `concurrency` slot, and neither does `spec-review`. `run` never approves or revises a spec: it
+   `concurrency` slot, and neither do `spec-review` and a job held at `gate` by a broken `<base>`. `run` never approves or revises a spec: it
    reports each job in `spec-review` as waiting for the developer (`approve-spec <n>` or
    `revise-spec <n> <notes>`) and moves on.
 <!-- rule: sync-after-worker -->
@@ -399,10 +401,16 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     not run; see its `Reason:`) never do. `eminzo-review-ui` reads `visual.md` first instead of re-measuring,
     and measures itself when it is SKIPPED or ERROR.
   - `GATE: PASS`: `job <id> to review`.
-  - `GATE: FAIL`: `job <id> to build`, then resume the builder (it reads
+  <!-- rule: red-base -->
+  - `GATE: FAIL`: first run `factory/bin/job <id> base` (foreground, long timeout: it may
+    install dependencies and run the checks on `<base>`) and act on its first word.
+    `own:` means the failure is the job's: `job <id> to build`, then resume the builder (it reads
     `checks.md`). If that is refused because it was the last round:
     `job <id> to needs-human --note "gate failed in the last round"`. In lane xs run
-    `job <id> promote` instead.
+    `job <id> promote` instead. `wait:` means `<base>` fails the same checks: the job is held at
+    **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it
+    uses no `concurrency` slot and spends no round, even in its last one. `to build` and `promote`
+    refuse a real gate failure that `base` has not answered, and a held job.
 - **review**: spawn the reviewers that `factory/bin/job <id> prompt` lists on its
   `Review lenses:` line (`review-<lens>`,
   with the model in `agents.reviewers`) in ONE message, so they run in parallel.

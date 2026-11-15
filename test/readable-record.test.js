@@ -191,8 +191,9 @@ test('engine_version is recorded at job creation and refreshed when a round star
   writeFileSync(join(t.json(id).worktree, 'BROKEN'), 'x\n');
   git(t.json(id).worktree, 'add', '.');
   git(t.json(id).worktree, 'commit', '-q', '-m', 'break');
-  writeFileSync(join(t.root, 'factory/checks.sh'), '#!/bin/sh\nexit 1\n');
+  writeFileSync(join(t.root, 'factory/checks.sh'), '#!/bin/sh\ntest ! -f BROKEN\n'); // fails on the job's own change only
   await t.bin('gate', [id]);
+  assert.match(ok(await t.job(id, 'base')), /^own: /); // a real gate failure is answered before the job goes back
   t.env.EMINZO_VERSION = '8.0.0';
   ok(await t.job(id, 'to', 'build'));
   assert.equal(t.json(id).round, 2);
