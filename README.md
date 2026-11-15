@@ -150,6 +150,16 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `/eminzo-factory approve-spec <n>` | With `spec_review` on: approves the spec and starts the build |
 | `/eminzo-factory revise-spec <n> <notes>` | With `spec_review` on: rewrites the spec from your notes |
 
+**The product stage** (Ask Eminzo) comes before any issue. It helps a Product Lead or Product Owner take an idea to an approved brief and its deliverables, in functional language, and it never writes code, creates issues or starts the factory. In Codex, use `$eminzo-product` with the same words. See [The product stage](docs/product-stage.md).
+
+| Command | What it does |
+|---|---|
+| `/eminzo-product <idea>` | Takes an idea through five steps: explore, define the brief, review, approve and deliverables |
+| `/eminzo-product status` | Answers how things are going in functional words; with a brief issue, how its deliverables are doing |
+| `/eminzo-product estimate` | Estimates the deliverables as a range, from the team's finished jobs |
+| `/eminzo-product map` | Drafts or updates `factory/product-map.md`, how the product works today, for you to review |
+| `/eminzo-product report <brief issue>` | Drafts the weekly client report of an initiative; it sends nothing |
+
 <details>
 <summary><strong>Terminal commands</strong></summary>
 
@@ -164,6 +174,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `eminzo job metrics [--last N] [--json]` | Gate pass rate, rounds per job, review changes and time over the last jobs |
 | `eminzo job config [<key>]` | The effective configuration, and where each key comes from |
 | `eminzo job lessons [--last N]` | Turns repeated lessons from past jobs into a pull request for `factory/project.md` |
+| `eminzo mcp` | Serves the factory's state as read-only MCP tools on stdin/stdout, for Claude Code, Codex and Ask Eminzo (`eminzo install` registers it) |
 | `eminzo show roles/<role>.md` | Prints a role the agents follow |
 
 </details>
@@ -178,6 +189,8 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `factory:needs-info` | The factory asked a question: answer on the issue, then `/eminzo-factory run` |
 | `factory:needs-human` | The job needs you: merge its pull request, or comment and `/eminzo-factory rework <n>` |
 | `factory:spec-review` | The spec waits for `approve-spec` or `revise-spec` |
+| `eminzo-brief` | An approved brief created by Eminzo: the record of an initiative, not edited afterwards |
+| `eminzo-deliverable` | A deliverable of an approved brief; it enters the factory when the tech lead adds `factory` |
 
 </details>
 
@@ -218,7 +231,11 @@ Eminzo desktop shows and runs the same jobs. It uses the CLI, so you don't need 
   <img src=".github/assets/pipeline.webp" alt="Eminzo desktop: the pipeline of a job, with retries and the routed reviewers" width="880">
 </p>
 
-A dashboard with the agents at work and a kanban board, the Pipeline of each job with its retries, Tasks, Issues & PRs, and a terminal for Claude Code or Codex sessions, all for repositories that have the factory installed. Without the desktop app, `eminzo dashboard` serves the same board in your browser.
+A dashboard with the agents at work and a kanban board, the Pipeline of each job with its retries, Tasks, Issues & PRs, and a terminal for Claude Code or Codex sessions, all for repositories that have the factory installed. Ask Eminzo (Cmd+J) is a chat about the factory that runs on your own Claude Code or Codex login: in Engineering mode it answers about jobs and reviews, and in Product mode it takes an idea to an approved brief (see [The product stage](docs/product-stage.md)). The Changes panel (Cmd+Shift+G) shows the code changes of a job as it is built, read-only and live. Without the desktop app, `eminzo dashboard` serves the same board in your browser.
+
+<p align="center">
+  <img src=".github/assets/ask-product.webp" alt="Ask Eminzo in Product mode: a brief in progress with its check" width="880">
+</p>
 
 <p align="center">
   <img src=".github/assets/terminal.webp" alt="The terminal of Eminzo desktop running a job" width="880">
