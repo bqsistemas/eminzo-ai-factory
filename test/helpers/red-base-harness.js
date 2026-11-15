@@ -1,6 +1,6 @@
 // Fixture for the red-base tests (hold and resume): the job harness (a real repo, a bare origin and a fake gh for
 // issues and PRs) plus a fake gh that also answers `issue list --label` and `issue create` (the fix issue), and a
-// checks.sh that fails while BROKEN exists and counts the runs it makes in the base worktree. Never talks to GitHub.
+// checks.sh that fails while BROKEN (main's fault) or MINE (the job's) exists and counts the runs it makes in the base worktree. Never talks to GitHub.
 import { spawn } from 'node:child_process';
 import { chmodSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,12 +9,13 @@ import { fakeGhIssues } from './fake-gh-issues.js';
 import { INTAKE, git, ok, repo, setup, toGate } from './job-harness.js';
 
 export { INTAKE, git, ok, repo, toGate };
+export { gateToApprove } from './job-harness.js';
 export { refused } from './job-harness.js';
 
 const CHECKS = `#!/bin/sh
 case "$PWD" in */.worktrees/.base) echo run >> "$FACTORY_ROOT/base-runs" ;; esac
 echo "checks: running"
-if [ -f BROKEN ]; then echo "checks: BROKEN is present"; exit 1; fi
+if [ -f BROKEN ] || [ -f MINE ]; then echo "checks: BROKEN or MINE is present"; exit 1; fi
 echo "checks: ok"
 `;
 

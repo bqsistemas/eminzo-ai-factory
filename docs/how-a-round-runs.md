@@ -35,6 +35,11 @@ A gate failure is the job's own unless the base branch fails the same checks. Af
 - **The fix job is exempt.** A job whose issue carries `factory:base-fix` (`job.json` `base_fix`) is checked on everything, never narrowed to its files, and never held.
 - **No shortcut.** `job <id> to build` and `job <id> promote` refuse a real gate failure that `job <id> base` has not answered, and refuse a held job.
 - **A held job in its last round waits** instead of escalating; when its PR is merged by hand, `to merged` ends the wait. Every wait is kept in `base_waits`.
+- **Resume.** On every `run`, `job <id> base` is called again for each held job. A tip it already checked prints `wait:` at once; a new commit on the base is checked again (`--fresh` forces it).
+  - Still red: the job keeps waiting (`wait: main is broken (#n)`).
+  - Green: the engine merges the base into the job's branch **in the job's own worktree** (the one `job.json` names, which must be `.worktrees/<id>` on `factory/<id>`), pushes the branch (never a force push, and never the base branch) and runs the gate again. `resumed: GATE: PASS` goes on to review. `resumed: GATE: FAIL` is the job's own failure now: it goes back to the builder through the normal path.
+  - A merge that conflicts is not resolved by itself: the job goes to `needs-human` with the note `merge stopped at sync with <base>`, as the merge stage does. A failed push does the same.
+  - The merge stage looks at it too: when its post-sync checks fail and the base fails them as well, the job still ends in `needs-human` (nothing waits during a merge), but the note says `main is broken (#n)` and a fix issue exists.
 - **Where to look.** `job summary` shows `gate (waits for main, #n)`; Ask Eminzo lists the job as waiting with kind `fix-base`; the dashboard shows the note.
 
 ### The builder's plan and self-check

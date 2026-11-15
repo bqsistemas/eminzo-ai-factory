@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { git, ok, redBase, refused } from './helpers/red-base-harness.js';
+import { gateToApprove, git, ok, redBase, refused, toGate } from './helpers/red-base-harness.js';
 
 const { waitingOnPeople } = await import('../factory/lib/state/queries.js');
 const { jobView } = await import('../factory/lib/state/jobs.js');
@@ -182,4 +182,93 @@ test('Ask Eminzo and the summary show the job as waiting for the base, with the 
   assert.match(summary, new RegExp(`${id}\\s+#7\\s+gate \\(waits for main, #1\\)`));
   const graph = JSON.parse((await t.job('graph')).stdout);
   assert.ok(!graph.stages.some((s) => /base/.test(s.id)), 'no new stage');
+});
+
+// --- resume: the base passes again --------------------------------------------------------------------------
+
+test('the fix reaches main: the base is merged into the branch and pushed, the gate re-runs and passes, and the job goes to review', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  const fixed = t.pushMain({ BROKEN: null }, 'fix: repair main');
+  const res = await t.base(id);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout.trim(), 'resumed: GATE: PASS');
+  const job = t.json(id);
+  assert.equal(job.stage, 'gate');
+  assert.equal(job.base_wait, undefined);
+  assert.equal(job.base_waits.length, 1);
+  assert.equal(job.base_waits[0].fix_issue, 1);
+  assert.equal(job.note, '');
+  assert.equal(job.gate, 'PASS');
+  assert.equal(t.read(id, 'round-1/checks.md').split('\n')[0], 'GATE: PASS');
+  assert.equal(git(job.worktree, 'merge-base', '--is-ancestor', fixed, 'HEAD') === '', true, 'the base is in the branch');
+  assert.equal(git(t.origin, 'rev-parse', `factory/${id}`), git(job.worktree, 'rev-parse', 'HEAD'), 'the branch was pushed');
+  assert.equal(git(t.origin, 'rev-parse', 'main'), fixed, 'the base branch is never pushed to');
+  assert.equal(ok(t, await t.job(id, 'to', 'review')), `${id} review`);
+});
+
+test('the fix reaches main but the job has its own failure: resumed: GATE: FAIL, and to build is accepted', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  t.commit(id, { MINE: 'mine\n' });
+  await t.gate(id);
+  await t.base(id);
+  t.pushMain({ BROKEN: null });
+  const res = await t.base(id);
+  assert.equal(res.stdout.trim(), 'resumed: GATE: FAIL');
+  assert.equal(t.json(id).base_wait, undefined);
+  assert.equal(t.json(id).base_check.verdict, 'own');
+  assert.equal(t.read(id, 'round-1/checks.md').split('\n')[0], 'GATE: FAIL');
+  assert.match((await t.base(id)).stdout, /^own: /, 'asking again repeats the answer');
+  assert.equal(ok(t, await t.job(id, 'to', 'build')), `${id} build`);
+  assert.equal(t.json(id).round, 2);
+});
+
+test('the fix conflicts with the job: no auto-resolve, the job goes to needs-human and the merge is aborted', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  t.commit(id, { 'app.txt': 'job version\n' });
+  await t.gate(id);
+  await t.base(id);
+  t.pushMain({ BROKEN: null, 'app.txt': 'main version\n' });
+  const res = await t.base(id);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout.trim(), /^needs-human: merge stopped at sync with origin\/main: git merge conflicts/);
+  const job = t.json(id);
+  assert.equal(job.stage, 'needs-human');
+  assert.equal(job.base_wait, undefined);
+  assert.equal(git(job.worktree, 'status', '--porcelain'), '', 'the merge was aborted');
+  assert.ok(t.calls().some(({ args }) => args[0] === 'issue' && args[1] === 'edit' && args.includes('factory:needs-human')));
+});
+
+test('a job.json that points the worktree anywhere else is refused: nothing is merged or pushed', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  t.pushMain({ BROKEN: null });
+  const before = git(t.root, 'rev-parse', 'HEAD');
+  const job = t.json(id);
+  t.write(id, 'job.json', `${JSON.stringify({ ...job, worktree: t.root }, null, 2)}\n`);
+  const res = await t.base(id);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /^refused: .*worktree/m);
+  assert.equal(git(t.root, 'rev-parse', 'HEAD'), before);
+});
+
+test('the merge finds the base red: it stops at the post-sync checks and names the broken base and its issue', async () => {
+  const t = redBase({ broken: false });
+  t.issue(7, { title: 'Merge me' });
+  const id = ok(t, await t.job('new', '7'));
+  await toGate(t, id);
+  t.commit(id, { 'feature.txt': 'f\n' });
+  await gateToApprove(t, id);
+  t.write(id, 'decision.md', 'APPROVE\nAll good.\n');
+  t.pushMain({ BROKEN: 'x\n' }, 'feat: someone broke main');
+  const res = await t.job(id, 'to', 'merging');
+  assert.equal(res.status, 0, res.stderr);
+  const job = t.json(id);
+  assert.equal(job.stage, 'needs-human');
+  assert.match(job.note, /merge stopped at post-sync checks: main is broken \(#1\); see merge-checks\.md/);
+  assert.equal(t.fake.creates().length, 1);
 });

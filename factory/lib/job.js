@@ -27,7 +27,10 @@
 //   job <id> overlap                   "wait: <id> (<files>)" per job ahead that shares a file, else "none" (a read)
 //   job <id> base [--fresh]            at a failed gate: does <base> fail the same checks? "own: <reason>" (the job's failure: back to
 //                                      the builder as before), "wait: main is broken (#n)" (held at gate: no builder, no round, no
-//                                      concurrency slot; one fix issue) or, when the base passes again, "resumed: ..." (see below)
+//                                      concurrency slot; one fix issue) or, when the base passes again, the base is merged into the
+//                                      job's branch (its own worktree), pushed (never forced, never the base) and the gate re-runs:
+//                                      "resumed: GATE: PASS" (then `to review`), "resumed: GATE: FAIL" (the job's own failure now) or
+//                                      "needs-human: <note>" (the merge conflicts or the push fails; nothing is resolved by itself)
 //   job graph                          the pipeline as JSON (the content of factory/pipeline.json); read-only, touches no job
 //   job summary [--orchestrator]       one line per job, then a total (and the orchestrator sessions)
 //   job lessons [--last N]             the `## Lessons` of the last N decision.md (default 20), deduplicated, become project.md
@@ -39,15 +42,15 @@
 // Issue and comment text is attacker-controlled. It reaches agents only as
 // "> "-quoted data in issue.md, and gh gets every text through --body-file.
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { STAGE_COLUMNS, formatDuration, costAvailable, costLabel } from '../activity.js';
 import { codexJobCost, jobCostBreakdown, orchestratorCost, readAgentTranscripts, readCodexRollouts } from './cost.js';
 import { KINDS, jobProfile } from './profile.js';
-import { checksInputs, testedBy } from './check-stamp.js';
-import { gate as runGate } from './gate.js';
+import { checksInputs, mergeBase, testedBy } from './check-stamp.js';
+import { gate as runGate, uncommitted } from './gate.js';
 import { diffEntries, globRegex, isTestFile, scopeTokens, xsLimitProblems } from './diff.js';
 import { KNOWN_SURFACES, parseIntake } from './intake.js';
 import { hasLessonsSection, lessonsCommand, parseLast } from './lessons.js';
@@ -847,7 +850,7 @@ function merge(c, job) {
   if (synced.status !== 0) return stop('git rev-parse HEAD', why(synced));
   if (!reuseRoundGate(c, job, synced.stdout.trim(), base)
     && !runGate(c.root, job, file(c, job, 'merge-checks.md'))) {
-    return stop('post-sync checks', 'the gate failed after syncing; see merge-checks.md');
+    return stop('post-sync checks', postSyncDetail(c, job));
   }
   // GitHub must merge exactly the commit that was just pushed and gated.
   const head = run('git', ['rev-parse', 'HEAD'], wt);
@@ -872,6 +875,31 @@ function merge(c, job) {
   if (res.status !== 0) return stop('gh pr merge', why(res));
   finish(c, job, 'merged', `merged PR #${job.pr}`);
   return job;
+}
+
+/**
+ * Why the post-sync gate failed: when the base fails the same checks, say so and name the issue that fixes it (the job
+ * still ends in needs-human: nothing waits during the merge). Never throws; a doubt keeps the plain sentence.
+ */
+function postSyncDetail(c, job) {
+  const plain = 'the gate failed after syncing; see merge-checks.md';
+  if (job.base_fix) return plain;
+  try {
+    const facts = gateFacts(readText(file(c, job, 'merge-checks.md')));
+    if (facts.exit === 0 || !facts.head) return plain;
+    const result = checkBase(c.root, { job: job.id, scope: facts.base ? { base: facts.base, head: facts.head } : null, config: c.config });
+    if (result.status !== 'FAIL') return plain;
+    const { branch } = baseRef(c.config);
+    try {
+      const { number } = ensureFixIssue(c.root, c.config, result, { gh: c.gh });
+      setFixIssue(c.root, result.key, number);
+      return `${branch} is broken (#${number}); see merge-checks.md`;
+    } catch (err) {
+      return `${branch} is broken (no fix issue: ${cleanText(err.message)}); see merge-checks.md`;
+    }
+  } catch {
+    return plain;
+  }
 }
 
 /**
@@ -1208,7 +1236,53 @@ function assertBaseAnswered(c, job) {
   throw new Refused(`run first: ${engineCommand('job')} ${job.id} base (it tells whether ${baseRef(c.config).base} fails the same checks)`);
 }
 
+/** The job's own worktree, and nothing else: the one this job's id names under the main checkout, on its own branch. */
+function ownWorktree(c, job) {
+  const expected = join(c.root, '.worktrees', job.id);
+  const real = (path) => { try { return realpathSync(path); } catch { return null; } };
+  if (job.worktree !== expected || !existsSync(expected) || real(expected) !== real(join(real(c.root), '.worktrees', job.id))) {
+    throw new Refused(`${job.id}: job.json names a worktree that is not ${expected}; nothing was merged`);
+  }
+  const head = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: expected });
+  if (head.status !== 0 || head.stdout.trim() !== `factory/${job.id}`) throw new Refused(`${job.id}: its worktree is not on factory/${job.id}; nothing was merged`);
+}
+
 const cleanText = (text) => String(text ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 300);
+
+/**
+ * The base passes again: merge it into the job's branch (in the job's own worktree, as `merge()` does), push the branch (never
+ * a force push, never the base) and run the gate again. A conflict or a failed push goes to needs-human like merge().
+ */
+function resumeFromBase(c, job, { base, remote, own, record }) {
+  const branch = `factory/${job.id}`;
+  const wt = { cwd: job.worktree };
+  const why = (res) => (res.stderr || res.error?.message || '').trim().split('\n').slice(-1)[0] || `exit ${res.status}`;
+  const stop = (step, detail) => {
+    const note = `merge stopped at ${step}: ${detail}`;
+    escalate(c, job, note);
+    endWait(job, now());
+    saveJob(c, job);
+    return `needs-human: ${note}`;
+  };
+  if (uncommitted(job.worktree).length) return own(`the worktree has uncommitted changes, so ${base} was not merged into it`);
+  let res = run('git', ['merge', '--no-edit', base], wt);
+  if (res.status !== 0) {
+    run('git', ['merge', '--abort'], wt);
+    return stop(`sync with ${base}`, `git merge conflicts; rework the branch onto ${base}`);
+  }
+  res = run('git', ['push', remote, `refs/heads/${branch}:refs/heads/${branch}`], wt);
+  if (res.status !== 0) return stop(`git push ${remote} ${branch}`, why(res));
+  const report = file(c, job, `round-${job.round}/checks.md`);
+  const pass = runGate(c.root, job, report);
+  refreshFromFiles(c, job);
+  const next = gateFacts(readText(report));
+  record(pass ? 'resumed' : 'own', pass ? null : `the gate failed after merging ${base}`);
+  job.base_check.head = next.head;
+  endWait(job, now());
+  job.note = '';
+  saveJob(c, job);
+  return `resumed: GATE: ${pass ? 'PASS' : 'FAIL'}`;
+}
 
 /** `job <id> base [--fresh]`: see the header. Exit 0 for every answer. */
 function baseCommand(c, id, fresh = false) {
@@ -1245,9 +1319,13 @@ function baseCommand(c, id, fresh = false) {
   if (tip.error) return own(`could not check ${base}: ${cleanText(tip.error)}`);
 
   const result = checkBase(c.root, { job: id, scope: facts.base ? { base: facts.base, head: facts.head } : null, fresh, config: c.config });
-  if (result.status !== 'FAIL') {
-    return own(result.status === 'PASS' ? `${base} passes the same checks at ${short(result.sha)}` : `could not check ${base}: ${cleanText(result.reason)}`);
+  if (result.status === 'PASS') {
+    // The base passes and the branch is behind it: the failure may be gone. Merge the base in and run the gate again.
+    ownWorktree(c, job);
+    if (mergeBase(job.worktree, base) !== result.sha) return resumeFromBase(c, job, { base, remote, own, record });
+    return own(`${base} passes the same checks at ${short(result.sha)}`);
   }
+  if (result.status !== 'FAIL') return own(`could not check ${base}: ${cleanText(result.reason)}`);
 
   // The base fails the same checks: hold the job, and make sure one fix issue exists. A gh failure never loses the hold.
   let fix = Number.isInteger(held?.fix_issue) ? held.fix_issue : null;

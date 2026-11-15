@@ -218,6 +218,11 @@ en la copia del builder y verifica que nadie haya tocado los tests protegidos
   al builder ni se gasta una ronda, y se crea un solo issue `factory:base-fix`
   para arreglar `main`. Si el problema no se pudo comprobar, o `main` pasa,
   el fallo es del trabajo y vuelve al builder como siempre.
+- **Cuando `main` se arregla:** en cada `run` se vuelve a preguntar
+  (`job <id> base`). Si `main` ya pasa, la fábrica trae `main` a la rama del
+  trabajo (solo en la copia propia del trabajo), la sube sin forzar y vuelve a
+  correr el gate: si pasa sigue a revisión; si falla, ahora sí es culpa del
+  trabajo. Si hay un conflicto, no se resuelve solo: pasa a `needs-human`.
 
 Es el filtro más barato y confiable de toda la cadena.
 

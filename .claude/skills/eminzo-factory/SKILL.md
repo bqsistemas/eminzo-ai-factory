@@ -217,7 +217,9 @@ the next `/eminzo-factory run` moves the job to `merged`.
    `awaiting-merge`, try `job <id> to needs-human` with no `--note` (a trusted
    "Request changes" review on the PR). A refusal just means "still waiting". A job at `gate` whose
    `job.json` has `base_wait` is held by a broken `<base>` (**red-base**): it needs no PR check beyond
-   `to merged`, and `run` spawns nothing for it. This runs before
+   `to merged`: on every `run`, after the PR checks, run `factory/bin/job <id> base` for each such job (it
+   re-runs the checks only when `<base>` has a new commit; otherwise it prints `wait:` at once), act on its
+   first word as above, and run it again after any job of this run merges. This runs before
    any agent is spawned. Repeat the check right before spawning any agent for a job
    with a `pr`, or before moving that job, and skip a job that ends up `merged` or
    `rejected`. Ignore output from agents still running for such a job.
@@ -410,7 +412,11 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     `job <id> promote` instead. `wait:` means `<base>` fails the same checks: the job is held at
     **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it
     uses no `concurrency` slot and spends no round, even in its last one. `to build` and `promote`
-    refuse a real gate failure that `base` has not answered, and a held job.
+    refuse a real gate failure that `base` has not answered, and a held job. When `<base>` passes
+    again `base` itself merges it into the job's branch (in the job's worktree), pushes the branch and
+    runs the gate again: `resumed: GATE: PASS` means `job <id> to review`; `resumed: GATE: FAIL`
+    means the failure is now the job's own, so go back to build as for `own:`; `needs-human:` means
+    the merge conflicted or the push failed: report it and spawn nothing.
 - **review**: spawn the reviewers that `factory/bin/job <id> prompt` lists on its
   `Review lenses:` line (`review-<lens>`,
   with the model in `agents.reviewers`) in ONE message, so they run in parallel.
