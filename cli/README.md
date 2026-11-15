@@ -358,7 +358,9 @@ for tools such as the Eminzo desktop app. The exit status is the same as without
 - With `--dry-run`: the same fields, `"dryRun": true` and no `url`; nothing is written.
 - A failed check: `{ "ok": false, "problems": [{ "code": "dirty", "message": "..." }] }` (codes: `not-git`,
   `install-in-progress`, `bad-branch`, `dirty`, `not-default-branch`, `ignored-paths`, `no-remote`,
-  `not-github`, `gh-auth`, `node-version`, `no-default-branch`).
+  `not-github`, `gh-auth`, `node-version`, `no-default-branch`, `empty-repo`).
+  `empty-repo` (no commits locally or on origin) also carries `commands`: the exact lines that give the
+  repository its first commit. The plain-text output prints them indented after the message.
 - Any other refusal or failure: `{ "ok": false, "error": "..." }`.
 
 ## Building the package (this repository)

@@ -248,3 +248,96 @@ test('enable --json turns an unexpected failure into a JSON error too, never a s
   assert.match(out.error, /JSON/);
   assert.equal(existsSync(join(t.root, 'factory')), false, 'nothing was written');
 });
+
+// An empty GitHub repository: origin has no branches, so there is no default branch to read.
+function setupEmpty({ name = 'shop', commit = false, ghEmpty = true, branch = 'main' } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'eminzo-enable-empty-'));
+  const origin = join(dir, 'origin.git');
+  const root = join(dir, name);
+  const env = { ...process.env, ...GIT_ENV, HOME: join(dir, 'home'), EMINZO_DIST: dist };
+  delete env.EMINZO_ENGINE;
+  delete env.FACTORY_ROOT;
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git(dir, 'init', '-q', '--bare', '-b', 'main', origin);
+  mkdirSync(root);
+  git(root, 'init', '-q', '-b', branch);
+  if (commit) {
+    writeFileSync(join(root, 'a.txt'), 'a\n');
+    git(root, 'add', 'a.txt');
+    git(root, 'commit', '-q', '-m', 'init');
+  }
+  git(root, 'config', `url.${origin}.insteadOf`, URL_);
+  git(root, 'remote', 'add', 'origin', URL_);
+  const gh = join(dir, 'gh');
+  writeFileSync(gh, `#!/bin/sh
+case "$1 $2" in
+  "auth status") exit 0 ;;
+  "repo view")
+    case "$*" in
+      *isEmpty*) ${ghEmpty ? 'echo true' : 'echo "gh: boom" >&2; exit 1'} ;;
+      *) echo "" ;;
+    esac ;;
+  *) echo "unexpected: $*" >&2; exit 1 ;;
+esac
+`, { mode: 0o755 });
+  const run = (args = []) => spawnSync(process.execPath, [bin, 'enable', ...args], { cwd: root, env: { ...env, FACTORY_GH: gh }, encoding: 'utf8' });
+  return { dir, root, git, run };
+}
+
+const commandsFor = (name, branch) => [
+  `echo "# ${name}" > README.md`,
+  'git add README.md',
+  'git commit -m "chore: initial commit"',
+  `git push -u origin ${branch}`,
+];
+
+test('enable on an unborn local branch reports empty-repo with the commands to run', () => {
+  const t = setupEmpty();
+  const res = t.run(['--json']);
+  assert.equal(res.status, 1);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.ok, false);
+  assert.deepEqual(out.problems.map((p) => p.code), ['empty-repo']);
+  assert.equal(out.problems[0].message, 'This repository has no commits yet. Push a first commit to GitHub (for example a README), then enable the factory.');
+  assert.deepEqual(out.problems[0].commands, commandsFor('shop', 'main'));
+});
+
+test('enable uses the current branch name in the empty-repo commands', () => {
+  const t = setupEmpty({ branch: 'trunk' });
+  const out = JSON.parse(t.run(['--json']).stdout);
+  assert.deepEqual(out.problems[0].commands, commandsFor('shop', 'trunk'));
+});
+
+test('enable with local commits and an empty remote reports empty-repo (gh says isEmpty)', () => {
+  const t = setupEmpty({ commit: true });
+  const out = JSON.parse(t.run(['--json']).stdout);
+  assert.deepEqual(out.problems.map((p) => p.code), ['empty-repo']);
+});
+
+test('enable with local commits and an empty remote reports empty-repo (ls-remote, gh unhelpful)', () => {
+  const t = setupEmpty({ commit: true, ghEmpty: false });
+  const out = JSON.parse(t.run(['--json']).stdout);
+  assert.deepEqual(out.problems.map((p) => p.code), ['empty-repo']);
+});
+
+test('enable falls back to README when the folder name is not a safe file title', () => {
+  const t = setupEmpty({ name: 'my shop;rm' });
+  const out = JSON.parse(t.run(['--json']).stdout);
+  assert.equal(out.problems[0].commands[0], 'echo "# README" > README.md');
+});
+
+test('enable prints the empty-repo commands as an indented block after the message', () => {
+  const t = setupEmpty();
+  const res = t.run();
+  assert.equal(res.status, 1);
+  assert.match(res.stdout, /^FAIL This repository has no commits yet\./m);
+  for (const c of commandsFor('shop', 'main')) assert.ok(res.stdout.includes(`\n  ${c}\n`), c);
+});
+
+test('enable keeps no-default-branch for a non-empty repository, without commands', () => {
+  const t = setup();
+  t.git(t.root, 'remote', 'set-head', 'origin', '--delete');
+  const out = JSON.parse(t.run(['--json']).stdout);
+  assert.deepEqual(out.problems.map((p) => p.code), ['no-default-branch']);
+  assert.equal('commands' in out.problems[0], false);
+});
