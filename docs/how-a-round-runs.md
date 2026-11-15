@@ -31,6 +31,7 @@ A gate failure is the job's own unless the base branch fails the same checks. Af
 | `wait: main is broken (#n)` | the base fails the same checks | the job is **held**: it stays at `gate` with `base_wait` in `job.json` and the note `main is broken: waiting for #n`. No builder runs, no round is spent and no `concurrency` slot is used |
 
 - **Only a real FAIL holds a job.** `UNKNOWN` (the install failed, git failed, exit 126 or 127, a signal, a busy lock) never does.
+- **A failure is confirmed.** The first FAIL of a tip is run once more, fresh, before it holds a job or opens an issue: a flaky or one-off failure does neither. A FAIL is also good for an hour at most (in the cache and for a held job, which is then checked again even if the tip did not move).
 - **One fix issue per breakage.** The first hold finds the one open `factory:base-fix` issue or creates it (`eminzo base fix-issue` does the same by hand). If `gh` fails, the job still waits and the note says how to create the issue.
 - **The fix job is exempt.** A job whose issue carries `factory:base-fix` (`job.json` `base_fix`) is checked on everything, never narrowed to its files, and never held.
 - **No shortcut.** `job <id> to build` and `job <id> promote` refuse a real gate failure that `job <id> base` has not answered, and refuse a held job.

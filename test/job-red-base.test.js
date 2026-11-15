@@ -26,7 +26,7 @@ test('main is broken: the gate failure waits at gate, spends no round, and one f
   assert.equal(job.base_wait.sha, git(t.root, 'rev-parse', 'origin/main'));
   assert.match(job.base_wait.since, /^\d{4}-/);
   assert.equal(t.fake.creates().length, 1);
-  assert.equal(t.baseRuns(), 1);
+  assert.equal(t.baseRuns(), 2, 'the first FAIL of a tip is confirmed by a second, fresh run');
   assert.equal(t.board().jobs.find((j) => j.id === id).base_wait.fix_issue, 1);
 });
 
@@ -45,7 +45,7 @@ test('the same tip again: nothing runs and no second issue is created', async ()
   const before = t.raw(id);
   const res = await t.base(id);
   assert.equal(res.stdout.trim(), 'wait: main is broken (#1)');
-  assert.equal(t.baseRuns(), 1);
+  assert.equal(t.baseRuns(), 2);
   assert.equal(t.fake.creates().length, 1);
   assert.equal(t.raw(id), before, 'a re-check of the same tip changes nothing');
 });
@@ -314,17 +314,17 @@ test('a held job whose base is still red at a new tip refreshes the sha and crea
   assert.equal(res.stdout.trim(), 'wait: main is broken (#1)');
   assert.equal(t.json(id).base_wait.sha, tip);
   assert.equal(t.fake.creates().length, 1);
-  assert.equal(t.baseRuns(), 2);
+  assert.equal(t.baseRuns(), 4, 'a new tip is confirmed too');
 });
 
 test('--fresh on a held job runs the check again', async () => {
   const t = redBase();
   const id = await t.gated();
   await t.base(id);
-  assert.equal(t.baseRuns(), 1);
+  assert.equal(t.baseRuns(), 2);
   const res = await t.base(id, '--fresh');
   assert.equal(res.stdout.trim(), 'wait: main is broken (#1)');
-  assert.equal(t.baseRuns(), 2);
+  assert.equal(t.baseRuns(), 3);
 });
 
 test('needs-human and rework from a held job end the wait and keep it in base_waits', async () => {
@@ -361,4 +361,39 @@ test('the overview says how many waiting jobs wait for the base branch', async (
   const id = await t.gated();
   await t.base(id);
   assert.match(overview(t.root).summary, /1 job waiting for a person \(1 of them for the base branch to be fixed\)/);
+});
+
+// --- review fixes: a flaky failure never holds a job or opens a public issue ----------------------------------------
+
+const FLAKY = `#!/bin/sh
+case "$PWD" in */.worktrees/.base) echo run >> "$FACTORY_ROOT/base-runs"; n=$(wc -l < "$FACTORY_ROOT/base-runs"); [ "$n" -le 1 ] && exit 1; exit 0 ;; esac
+test ! -f BROKEN
+`;
+
+test('a failure that does not repeat holds nobody and opens no issue: the base is run again before the first hold', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  writeFileSync(join(t.root, 'factory/checks.sh'), FLAKY, { mode: 0o755 });
+  const res = await t.base(id);
+  assert.match(res.stdout.trim(), /^own: origin\/main passes the same checks at /);
+  assert.equal(t.baseRuns(), 2);
+  assert.equal(t.json(id).base_wait, undefined);
+  assert.equal(t.fake.creates().length, 0);
+});
+
+test('a held job is checked again after an hour even when the tip did not move', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  assert.equal(t.baseRuns(), 2);
+  const job = t.json(id);
+  job.base_wait.at = new Date(Date.now() - 2 * 3_600_000).toISOString();
+  t.write(id, 'job.json', `${JSON.stringify(job, null, 2)}\n`);
+  const stateFile = join(t.root, 'factory/jobs/.base/state.json');
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  for (const rec of [state.full, ...Object.values(state.results)]) if (rec) rec.at = new Date(Date.now() - 2 * 3_600_000).toISOString();
+  writeFileSync(stateFile, JSON.stringify(state));
+  assert.equal((await t.base(id)).stdout.trim(), 'wait: main is broken (#1)');
+  assert.equal(t.baseRuns(), 3, 'one more run, and no confirmation: the tip is the one that was held');
+  assert.equal(t.fake.creates().length, 1);
 });

@@ -40,9 +40,9 @@ test('no open issue: one create with both labels; the body names the sha, the fa
   assert.deepEqual(args.slice(0, 2), ['issue', 'create']);
   assert.deepEqual(args.filter((a, i) => args[i - 1] === '--label'), ['factory', BASE_FIX_LABEL]);
   const sha12 = t.tip().slice(0, 12);
-  assert.match(args[args.indexOf('--title') + 1], /^Fix the checks on main: test /);
+  assert.match(args[args.indexOf('--title') + 1], /^Fix the checks on main: test$/);
   assert.match(create.body, new RegExp(`\`main\` at \`${sha12}\``));
-  assert.match(create.body, /Failing command: `test … = nope` \(exit 1\)/);
+  assert.match(create.body, /Failing command: `test …` \(exit 1\)/);
   assert.match(create.body, /factory\/bin\/base/, 'the engine is committed in this repository');
   assert.match(create.body, /^- AC-1: /m);
   assert.doesNotMatch(create.body, /LOG-LINE-THAT-MUST-STAY-LOCAL/);
@@ -123,22 +123,51 @@ test('fix-issue is refused after a passing check, with no check at all, and afte
   assert.match(moved.stderr, /refused: origin\/main moved since; run factory\/bin\/base again/);
 });
 
-test('publicCommand drops what could be a secret and keeps the command readable', () => {
+test('publicCommand publishes the program and at most two plain words, and nothing after the first word that is not plain', () => {
   assert.equal(publicCommand('pnpm run lint'), 'pnpm run lint');
-  assert.equal(publicCommand('curl --token=abc123 https://user:pw@host/x'), 'curl --token=… …');
-  assert.equal(publicCommand('test AKIAIOSFODNN7EXAMPLE1234567 = x'), 'test … = x');
+  assert.equal(publicCommand('npm test'), 'npm test');
+  assert.equal(publicCommand('pnpm exec nx run-many -t lint test'), 'pnpm exec nx …');
+  assert.equal(publicCommand('pnpm run lint --max-warnings=0'), 'pnpm run lint …');
   assert.equal(publicCommand(null), null);
+  assert.equal(publicCommand('   '), null);
+  assert.equal(publicCommand('./run.sh --token x'), null, 'a program that is not a plain word is not shown');
+  const leaks = [
+    "curl -H 'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz0123456789' https://x",
+    'curl -u admin:SuperSecret123 https://x',
+    'aws configure set aws_secret_access_key wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+    'deploy --jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc',
+    'test hunter2hunter2hunter2hunter2hunter2 = nope',
+    'run "quoted secret" tail',
+  ];
+  for (const raw of leaks) {
+    const shown = publicCommand(raw);
+    assert.ok(shown === null || shown.split(' ').length <= 4, shown);
+    for (const secret of ['ghp_', 'SuperSecret123', 'wJalrXUtnFEMI', 'eyJ', 'hunter2', 'quoted', 'Bearer', 'admin']) assert.ok(!(shown ?? '').includes(secret), `${secret} in ${shown}`);
+  }
+  assert.equal(publicCommand('echo ``a`` b'), 'echo a b', 'backticks are stripped');
+  assert.equal(publicCommand(`${'x'.repeat(300)} pnpm`), null, 'a long first word is not a plain word');
 });
 
-test('issueText: inert title, a code span that survives backticks, no command falls back to checks.sh', () => {
+test('issueText: inert title, no backtick can break the span, no command falls back to checks.sh', () => {
   const config = { base: 'origin/main', language: 'en' };
   const base = { sha: 'a'.repeat(40), status: 'FAIL', exit: 2, command: 'echo `x` $(rm -rf /)' };
   const { title, body } = issueText(config, base, { engineCommand: 'eminzo base', version: '1.2.3', date: '2026-11-15' });
   assert.doesNotMatch(title, /[`$]|\n/);
-  assert.match(body, /Failing command: `` echo `x` \$\(rm -rf \/\) `` \(exit 2\)/);
+  assert.match(body, /Failing command: `echo x …` \(exit 2\)/);
+  assert.doesNotMatch(body, /rm -rf/);
   assert.match(body, /Found by eminzo base \(engine 1\.2\.3\) on 2026-11-15\./);
   const bare = issueText(config, { ...base, command: null }, { engineCommand: 'eminzo base', version: null, date: '2026-11-15' });
   assert.match(bare.body, /Failing step: `factory\/checks\.sh` \(exit 2\)/);
   assert.match(bare.title, /^Fix the checks on main: factory\/checks\.sh$/);
   assert.doesNotMatch(bare.body, /engine null/);
+});
+
+test('two machines racing: the one that lost closes its own issue as a duplicate of the lowest one', () => {
+  const t = red();
+  assert.equal(t.base().status, 1);
+  const { fake, fix } = withGh(t, { race: true });
+  assert.equal(fix().stdout.trim(), 'fix: #1 open');
+  const close = fake.calls().find((c) => c.args[1] === 'close');
+  assert.deepEqual(close.args, ['issue', 'close', '2', '--comment', 'Duplicate of #1']);
+  assert.equal(fake.issues().find((i) => i.number === 2).state, 'closed');
 });

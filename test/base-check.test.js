@@ -4,7 +4,7 @@
 // answer and its cache live in factory/jobs/.base/state.json. Real git, fake everything else.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { baseFixture, git, GREEN, COUNTING } from './helpers/base-harness.js';
@@ -78,7 +78,7 @@ test('a live lock makes the check UNKNOWN after the wait; a dead one is taken ov
   writeFileSync(lock, JSON.stringify({ pid: process.pid, started: new Date().toISOString() }));
   const busy = t.base();
   assert.equal(busy.status, 3);
-  assert.match(busy.stdout, /^base: UNKNOWN [0-9a-f]{12}: another base check is still running$/m);
+  assert.match(busy.stdout, /^base: UNKNOWN [0-9a-f]{12}: another base check is still running \(pid \d+;/m);
   writeFileSync(lock, JSON.stringify({ pid: 2 ** 22 + 12345, started: new Date().toISOString() }));
   assert.equal(t.base().status, 0, 'a lock whose process is gone is stale');
   assert.equal(existsSync(lock), false, 'the lock is released');
@@ -214,4 +214,101 @@ test('a PASS of the whole base at this tip answers a scoped check from the cache
   assert.equal(readFileSync(join(t.root, 'runs'), 'utf8').trim().split('\n').length, 1, 'no second run');
   const fresh = direct(t, { job: '001-x', scope: { base: from, head }, fresh: true });
   assert.equal(fresh.fromCache, false, '--fresh still runs');
+});
+
+// --- review fixes: permissions, timeout, environment, lock, cache ---------------------------------------------
+
+test('a repository checked out with umask 002 (factory/ and factory/jobs 0775) still gets an answer', () => {
+  const t = baseFixture({ checks: GREEN, config: { checks: { prepare: '' } } });
+  mkdirSync(join(t.root, 'factory/jobs'), { recursive: true });
+  chmodSync(join(t.root, 'factory'), 0o775);
+  chmodSync(join(t.root, 'factory/jobs'), 0o775);
+  const res = t.base();
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.equal(readFileSync(join(t.root, 'factory/jobs/.base/state.json'), 'utf8').includes('"PASS"'), true);
+});
+
+test('a world-writable factory/jobs is still refused: nothing is written there', () => {
+  const t = baseFixture({ checks: GREEN, config: { checks: { prepare: '' } } });
+  mkdirSync(join(t.root, 'factory/jobs'), { recursive: true });
+  chmodSync(join(t.root, 'factory/jobs'), 0o777);
+  const res = t.base();
+  assert.equal(res.status, 3);
+  assert.match(res.stdout, /factory\/jobs is not a private folder/);
+});
+
+test('checks.sh that does not finish is killed at checks.base_timeout_minutes and the answer is UNKNOWN', () => {
+  const t = baseFixture({ checks: '#!/bin/sh\nexec sleep 30\n', config: { checks: { prepare: '', base_timeout_minutes: 0.01 } } });
+  const started = Date.now();
+  const res = t.base();
+  assert.ok(Date.now() - started < 20_000, 'it did not wait for the sleep');
+  assert.equal(res.status, 3);
+  assert.match(res.stdout, /^base: UNKNOWN [0-9a-f]{12}: factory\/checks\.sh did not finish in 0\.01 minutes/m);
+  assert.deepEqual(t.state().results, {}, 'a timeout is never cached');
+});
+
+test('the base check never hands the secrets of the machine to the prepare step or to checks.sh', () => {
+  const t = baseFixture({
+    checks: '#!/bin/sh\nenv > "$FACTORY_ROOT/checks-env"\n',
+    config: { checks: { prepare: 'env > "$PWD/../prepare-env"' } },
+  });
+  const secrets = { GH_TOKEN: 'a', GITHUB_TOKEN: 'b', GH_ENTERPRISE_TOKEN: 'c', ANTHROPIC_API_KEY: 'd', OPENAI_API_KEY: 'e', FACTORY_DISCORD_WEBHOOK_URL: 'f', FACTORY_OTHER: 'g', NPM_TOKEN: 'keep-me' };
+  assert.equal(t.base([], secrets).status, 0);
+  for (const file of [join(t.root, 'checks-env'), join(t.root, '.worktrees/prepare-env')]) {
+    const seen = readFileSync(file, 'utf8');
+    for (const name of ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'FACTORY_DISCORD_WEBHOOK_URL', 'FACTORY_OTHER']) {
+      assert.doesNotMatch(seen, new RegExp(`^${name}=`, 'm'), `${name} is not passed`);
+    }
+    assert.match(seen, /^NPM_TOKEN=keep-me$/m, 'an install may need it');
+  }
+});
+
+test('an empty lock file does not block forever: it ages out after a minute', () => {
+  const t = baseFixture({ checks: GREEN, config: { checks: { prepare: '' } } });
+  assert.equal(t.base().status, 0);
+  const lock = join(t.root, 'factory/jobs/.base/lock');
+  writeFileSync(lock, '');
+  const res = t.base();
+  assert.equal(res.status, 3, 'a fresh empty lock is somebody starting up');
+  const old = new Date(Date.now() - 120_000);
+  utimesSync(lock, old, old);
+  assert.equal(t.base().status, 0);
+});
+
+test('a lock held by a live process is never taken over, however old it is', () => {
+  const t = baseFixture({ checks: GREEN, config: { checks: { prepare: '' } } });
+  assert.equal(t.base().status, 0);
+  writeFileSync(join(t.root, 'factory/jobs/.base/lock'), JSON.stringify({ pid: process.pid, started: new Date(Date.now() - 6 * 3_600_000).toISOString() }));
+  const res = t.base();
+  assert.equal(res.status, 3);
+  assert.match(res.stdout, /another base check is still running/);
+});
+
+test('a FAIL in the cache is good for an hour, then the check runs again', () => {
+  const t = baseFixture({ files: { BROKEN: 'x\n' }, checks: '#!/bin/sh\necho run >> "$FACTORY_ROOT/runs"\ntest ! -f BROKEN\n', config: { checks: { prepare: '' } } });
+  assert.equal(direct(t, { job: '001-x' }).status, 'FAIL');
+  assert.equal(direct(t, { job: '001-x' }).fromCache, true);
+  assert.equal(t.runs(), 1);
+  const state = t.state();
+  for (const rec of Object.values(state.results)) rec.at = new Date(Date.now() - 2 * 3_600_000).toISOString();
+  writeFileSync(join(t.root, 'factory/jobs/.base/state.json'), JSON.stringify(state));
+  assert.equal(direct(t, { job: '001-x' }).fromCache, false);
+  assert.equal(t.runs(), 2);
+});
+
+test('a stray report folder is pruned after a check, and a record whose report is not its own is dropped', () => {
+  const t = baseFixture({ checks: GREEN, config: { checks: { prepare: '' } } });
+  assert.equal(t.base().status, 0);
+  const dir = join(t.root, 'factory/jobs/.base');
+  mkdirSync(join(dir, 'aaaaaaaaaaaa'));
+  writeFileSync(join(dir, 'aaaaaaaaaaaa/checks.md'), 'old');
+  const state = t.state();
+  state.results[state.full.key] = { ...state.full, report: '../../escape/checks.md' };
+  state.full = { ...state.full, report: '../../escape/checks.md' };
+  writeFileSync(join(dir, 'state.json'), JSON.stringify(state));
+  t.push({ 'x.txt': 'x\n' });
+  assert.equal(t.base().status, 0);
+  assert.equal(existsSync(join(dir, 'aaaaaaaaaaaa')), false);
+  assert.equal(readdirSync(dir).filter((n) => /^[0-9a-f]{12}$/.test(n)).length, 1);
+  assert.match(t.state().full.report, /^[0-9a-f]{12}\/checks\.md$/);
 });

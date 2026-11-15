@@ -67,11 +67,15 @@ const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.
  * dropped, and without a scope every project is checked.
  * With `trace` the script runs under `sh -x` with the prefix `+[factory] `, so the base check can name
  * the command that failed (display text only; the trace is on stderr, merged into `output`).
- * @returns {{code: number, output: string, signal: string|null, failedToStart: boolean}} `code` is 1 when
+ * `timeoutMs` (SIGKILL when it runs out), `dropEnv` (names to remove) and `dropFactoryEnv` (every FACTORY_* but FACTORY_ROOT) are for the
+ * base check, which runs unattended on a machine that holds secrets.
+ * @returns {{code: number, output: string, signal: string|null, failedToStart: boolean, timedOut: boolean}} `code` is 1 when
  *   the shell has no exit status (a signal, or it did not start); the base check tells those apart.
  */
-export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false } = {}) {
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false, timeoutMs, dropEnv = [], dropFactoryEnv = false } = {}) {
   const env = { ...process.env };
+  for (const name of dropEnv) delete env[name];
+  if (dropFactoryEnv) for (const name of Object.keys(env)) if (name.startsWith('FACTORY_') && name !== 'FACTORY_ROOT') delete env[name];
   delete env.NODE_TEST_CONTEXT; // a gate started from a test run must not report into it
   delete env.FACTORY_CHANGED_FILES;
   delete env.FACTORY_BASE;
@@ -84,9 +88,12 @@ export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, sco
   if (trace) env.PS4 = '+[factory] ';
   const sh = trace ? 'sh -x' : 'sh';
   const script = pidFile ? `printf "%s\n" "$$" > "$1"; exec ${sh} "$0" 2>&1` : `exec ${sh} "$0" 2>&1`;
-  const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env });
+  // Only a caller that passes a timeout gets one (the base check): the gate's own and the nudge's behavior do not change.
+  const limit = Number.isFinite(timeoutMs) && timeoutMs > 0 ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {};
+  const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env, ...limit });
   const output = `${res.stdout ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
-  return { code: res.status ?? 1, output, signal: res.signal ?? null, failedToStart: Boolean(res.error) };
+  const timedOut = res.error?.code === 'ETIMEDOUT';
+  return { code: res.status ?? 1, output, signal: res.signal ?? null, failedToStart: Boolean(res.error) && !timedOut, timedOut };
 }
 
 /** Protected test paths the branch changed since it left `base`, or an error. */

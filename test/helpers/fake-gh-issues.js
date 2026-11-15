@@ -40,6 +40,11 @@ if (a === 'issue' && b === 'list') {
   state.issues.push({ number, title: flag('--title'), body: entry.body, labels, state: 'open' });
   save();
   process.stdout.write('https://github.com/acme/shop/issues/' + number + '\\n');
+} else if (a === 'issue' && b === 'close') {
+  const issue = state.issues.find((i) => String(i.number) === args[2]);
+  if (!issue) fail('no such issue');
+  issue.state = 'closed';
+  save();
 } else fail('unexpected gh call: ' + args.join(' '));
 `, { mode: 0o755 });
   return {

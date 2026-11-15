@@ -14,7 +14,7 @@
 // State lives in factory/jobs/.base/ (gitignored; `allJobs` skips names that are not job ids):
 //   state.json            the last full-scope check and up to 50 cached results, written atomically
 //   <key12>/checks.md     the report of one check, with checks.log next to it
-//   lock                  one check at a time ({pid, started}; stale when the pid is dead or after 3 hours)
+//   lock                  one check at a time ({pid, started}; only a dead holder's lock is taken over, and an empty one after a minute)
 // The folder must be a private one that this user owns, never a link: nothing is read or written through one.
 //
 // `base` by hand never uses the cache. A job's check (checkBase with `job`) reuses a PASS or FAIL for the same
@@ -30,7 +30,7 @@
 //                             fix: #<n> created | fix: #<n> open
 //                             refused: the last check of <base> did not fail | <base> moved since; run base again
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -48,10 +48,16 @@ const STATUSES = ['PASS', 'FAIL', 'UNKNOWN'];
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const KEY = /^[0-9a-f]{64}$/;
 const MAX_STATE_BYTES = 256 * 1024;
-const LOCK_STALE_MS = 3 * 60 * 60 * 1000;
 const PREPARE_TIMEOUT_MS = 30 * 60 * 1000;
 const TRACE = /^\++\[factory\] (.*)$/;
 const COMMAND_MAX = 300;
+const CHECKS_TIMEOUT_MINUTES = 30;
+const FAIL_TTL_MS = 60 * 60 * 1000; // a FAIL may be a flaky or environment-only failure: it holds jobs for an hour, not for ever
+const EMPTY_LOCK_MS = 60 * 1000;
+const FETCH_TTL_MS = 60 * 1000;
+// Secrets of the machine that neither the prepare step nor checks.sh of the base check may inherit. Registry tokens such as
+// NPM_TOKEN stay: an install may need them.
+const SECRET_ENV = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'FACTORY_DISCORD_WEBHOOK_URL'];
 
 const envNumber = (name, fallback) => {
   const n = Number(process.env[name]);
@@ -76,9 +82,10 @@ const sleep = (ms) => { if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayB
 /** `factory/jobs/.base`, created private on first use; throws (with a reason) when it is not safe to use. */
 function ensureStateDir(root) {
   const mine = (st) => typeof process.getuid !== 'function' || st.uid === process.getuid();
+  // factory/ and factory/jobs belong to the repository: a group-writable one (umask 002) is normal, a world-writable one is not.
   const plain = (dir) => {
     const st = lstatSync(dir);
-    return st.isDirectory() && !st.isSymbolicLink() && mine(st) && (process.platform === 'win32' || (st.mode & 0o022) === 0);
+    return st.isDirectory() && !st.isSymbolicLink() && mine(st) && (process.platform === 'win32' || (st.mode & 0o002) === 0);
   };
   const factoryDir = join(root, 'factory');
   const jobsDir = join(factoryDir, 'jobs');
@@ -101,7 +108,8 @@ function existsSyncNoFollow(path) {
   }
 }
 
-const isRecord = (r) => r && typeof r === 'object' && !Array.isArray(r) && KEY.test(r.key ?? '') && SHA.test(r.sha ?? '') && STATUSES.includes(r.status);
+const isRecord = (r) => r && typeof r === 'object' && !Array.isArray(r) && KEY.test(r.key ?? '') && SHA.test(r.sha ?? '') && STATUSES.includes(r.status)
+  && (r.report === null || r.report === undefined || r.report === `${r.key.slice(0, 12)}/checks.md`);
 
 /** A state with nothing in it. */
 export const emptyState = (base = null) => ({ version: STATE_VERSION, base, full: null, results: {} });
@@ -147,16 +155,21 @@ const alive = (pid) => {
   }
 };
 
-function lockIsStale(file) {
+/**
+ * Whether the lock is a dead holder's, and which file that judgment is about (its inode). A live holder is never robbed, however
+ * old its lock is: the checks and the prepare step have a timeout, so a live pid is a check that is still running. An empty or
+ * unreadable file is a holder that died while writing it: it ages out after a minute by its mtime.
+ */
+function lockStaleness(file) {
   try {
     const st = lstatSync(file);
-    if (!st.isFile()) return true; // a link or a folder is never a lock this engine wrote
-    const held = JSON.parse(readFileSync(file, 'utf8'));
-    const started = Date.parse(held?.started);
-    if (!Number.isInteger(held?.pid) || !Number.isFinite(started)) return Date.now() - st.mtimeMs > LOCK_STALE_MS;
-    return !alive(held.pid) || Date.now() - started > LOCK_STALE_MS;
+    if (!st.isFile()) return { stale: true, ino: st.ino }; // a link or a folder is never a lock this engine wrote
+    let held = null;
+    try { held = JSON.parse(readFileSync(file, 'utf8')); } catch { /* empty or half written */ }
+    if (!Number.isInteger(held?.pid)) return { stale: Date.now() - st.mtimeMs > EMPTY_LOCK_MS, ino: st.ino };
+    return { stale: !alive(held.pid), ino: st.ino, pid: held.pid };
   } catch {
-    return false; // half written or gone: look again
+    return { stale: false };
   }
 }
 
@@ -171,15 +184,22 @@ function takeLock(dir, waitMs, pollMs) {
     } catch (err) {
       if (err.code !== 'EEXIST') return { ok: false, reason: `cannot take the lock: ${err.message}` };
     }
-    if (lockIsStale(file)) {
+    const judged = lockStaleness(file);
+    if (judged.stale) {
+      // Take over only the file that was judged: the same inode before and after the rename, or give it back and give up.
+      const away = `${file}.stale.${process.pid}`;
       try {
-        const away = `${file}.stale.${process.pid}`;
+        if (lstatSync(file).ino !== judged.ino) continue;
         renameSync(file, away);
+        if (lstatSync(away).ino !== judged.ino) {
+          if (!existsSyncNoFollow(file)) renameSync(away, file); // it was somebody's fresh lock: put it back
+          return { ok: false, reason: 'another base check is still running' };
+        }
         rmSync(away, { force: true });
       } catch { /* someone else took it over */ }
       continue;
     }
-    if (Date.now() >= deadline) return { ok: false, reason: 'another base check is still running' };
+    if (Date.now() >= deadline) return { ok: false, reason: `another base check is still running${judged.pid ? ` (pid ${judged.pid}; if it is gone, remove factory/jobs/.base/lock)` : ''}` };
     sleep(pollMs);
   }
 }
@@ -187,9 +207,14 @@ function takeLock(dir, waitMs, pollMs) {
 // ---- git and the worktree -------------------------------------------------------------------------
 
 /** The commit `ref` points at, after `git fetch <remote>` (a failed fetch keeps the local ref). */
+const fetched = new Map();
 export function resolveTip(root, base, remote) {
   if (remote.startsWith('-') || base.startsWith('-')) return { error: `the base ${base} is not a valid ref` };
-  git(root, ['fetch', remote], { timeout: 120_000 });
+  const seen = `${root}\0${remote}`;
+  if (!(Date.now() - (fetched.get(seen) ?? 0) < FETCH_TTL_MS)) { // one fetch per minute per process is plenty
+    git(root, ['fetch', remote], { timeout: 120_000 });
+    fetched.set(seen, Date.now());
+  }
   const res = git(root, ['rev-parse', '--verify', '--quiet', `${base}^{commit}`]);
   const sha = res.status === 0 ? res.stdout.trim() : '';
   return SHA.test(sha) ? { sha } : { error: `cannot resolve ${base}${res.status === 0 ? '' : `: ${why(res)}`}` };
@@ -251,10 +276,11 @@ function prepareFor(config, files) {
 function runPrepare(path, { command, custom }) {
   const env = { ...process.env, CI: 'true' };
   for (const name of Object.keys(env)) if (name.startsWith('FACTORY_')) delete env[name];
+  for (const name of SECRET_ENV) delete env[name];
   delete env.NODE_TEST_CONTEXT;
   const [cmd, args] = custom ? ['sh', ['-c', command]] : [command.split(/\s+/)[0], command.split(/\s+/).slice(1)];
   const started = Date.now();
-  const res = run(cmd, args, { cwd: path, env, timeout: envNumber('FACTORY_BASE_PREPARE_TIMEOUT_MS', PREPARE_TIMEOUT_MS), stdio: ['ignore', 'pipe', 'pipe'] });
+  const res = run(cmd, args, { cwd: path, env, timeout: envNumber('FACTORY_BASE_PREPARE_TIMEOUT_MS', PREPARE_TIMEOUT_MS), killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
   const output = `${res.stdout ?? ''}${res.stderr ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
   return { code: res.status, signal: res.signal, error: res.error, output, spanMs: Date.now() - started };
 }
@@ -373,7 +399,9 @@ export function checkBase(root, { job = null, scope = null, fresh = false, byHan
     const state = readState(root);
     const full = state.full;
     if (scopeKey !== 'full' && full?.status === 'PASS' && full.sha === sha && full.inputs === inputs && full.prepare === prepare.command) return { ...full, job };
-    return state.results[key];
+    const rec = state.results[key];
+    if (rec?.status === 'FAIL' && !(Date.now() - Date.parse(rec.at) < FAIL_TTL_MS)) return undefined; // too old to hold a job
+    return rec;
   };
   const hit = cached();
   if (hit) return { ...hit, fromCache: true };
@@ -389,7 +417,17 @@ export function checkBase(root, { job = null, scope = null, fresh = false, byHan
   }
 }
 
-function runCheck(root, dir, { base, prepare, wanted, identity }) {
+/** Removes the report folders no record of the state points to (the one just written stays). Best effort. */
+function prune(dir, state, current) {
+  try {
+    const keep = new Set([current, ...Object.keys(state.results).map((k) => k.slice(0, 12)), ...(state.full ? [state.full.key.slice(0, 12)] : [])]);
+    for (const name of readdirSync(dir)) {
+      if (/^[0-9a-f]{12}$/.test(name) && !keep.has(name)) rmSync(join(dir, name), { recursive: true, force: true });
+    }
+  } catch { /* a leftover folder is harmless */ }
+}
+
+function runCheck(root, dir, { base, config, prepare, wanted, identity }) {
   const record = (fields) => ({ ...identity, command: null, reason: null, exit: null, at: now(), span_ms: 0, report: `${identity.key.slice(0, 12)}/checks.md`, fix_issue: null, ...fields });
   const finish = (rec, extras) => {
     const folder = join(dir, identity.key.slice(0, 12));
@@ -397,7 +435,9 @@ function runCheck(root, dir, { base, prepare, wanted, identity }) {
       mkdirSync(folder, { recursive: true, mode: 0o700 });
       writeAtomic(join(dir, rec.report), reportText(rec, { base, prepare: prepare.command, scope: wanted, ...extras }));
       writeAtomic(join(folder, 'checks.log'), capLog(extras.log ?? ''));
-      writeAtomic(join(dir, 'state.json'), `${JSON.stringify(recordResult({ ...readState(root), base }, rec), null, 2)}\n`);
+      const next = recordResult({ ...readState(root), base }, rec);
+      writeAtomic(join(dir, 'state.json'), `${JSON.stringify(next, null, 2)}\n`);
+      prune(dir, next, identity.key.slice(0, 12));
     } catch (err) {
       return { ...rec, report: null, reason: rec.status === 'UNKNOWN' ? rec.reason : null, writeError: err.message, fromCache: false };
     }
@@ -418,10 +458,13 @@ function runCheck(root, dir, { base, prepare, wanted, identity }) {
   }
 
   const started = Date.now();
-  const checks = runChecks(root, checkout.path, { trace: true, ...(wanted ? { scope: wanted } : {}) });
+  const minutes = Number(config?.checks?.base_timeout_minutes);
+  const limit = Number.isFinite(minutes) && minutes > 0 ? minutes : CHECKS_TIMEOUT_MINUTES;
+  const checks = runChecks(root, checkout.path, { trace: true, timeoutMs: limit * 60 * 1000, dropEnv: SECRET_ENV, dropFactoryEnv: true, ...(wanted ? { scope: wanted } : {}) });
   const spanMs = Date.now() - started;
   const log = withoutTrace(checks.output);
   const base_ = { span_ms: spanMs };
+  if (checks.timedOut) return finish(record({ ...base_, status: 'UNKNOWN', reason: `factory/checks.sh did not finish in ${limit} minutes and was stopped` }), { log, prepareRun });
   if (checks.failedToStart) return finish(record({ ...base_, status: 'UNKNOWN', reason: clean(`factory/checks.sh did not start: ${tail(checks.output, 1)}`) }), { log, prepareRun });
   if (checks.signal) return finish(record({ ...base_, status: 'UNKNOWN', reason: `factory/checks.sh was killed by ${checks.signal}` }), { log, prepareRun });
   if (checks.code === 126 || checks.code === 127) return finish(record({ ...base_, status: 'UNKNOWN', exit: checks.code, reason: `factory/checks.sh could not run (exit ${checks.code})` }), { log, prepareRun });
@@ -431,19 +474,24 @@ function runCheck(root, dir, { base, prepare, wanted, identity }) {
 
 // ---- the fix issue ----------------------------------------------------------------------------------
 
+const PLAIN_WORD = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,40}$/;
+const LOOKS_LIKE_A_SECRET = /^[A-Za-z0-9]{24,}$|eyJ|^(?:gh[pous]_|github_pat_|sk[-_]|xox[a-z]-|AKIA[A-Z0-9]{8,})/;
+
 /**
- * The failing command as a PUBLIC issue may show it. The trace prints a command after the shell expanded it, so a
- * secret the command carried would be there: a `name=value` keeps only the name, a long run of token characters and a
- * URL with a user become `…`. Display text only.
+ * The failing command as a PUBLIC issue may show it. The trace prints a command after the shell expanded it, so anything it
+ * carried (a token in a header, `-u user:pass`, a key) is in it, quoted or not. The one safe rule: show the program and up to two
+ * following plain words (`pnpm run lint`, `npm test`, `pnpm exec nx`), stop at the first word that is not plain, and say with
+ * ` …` that something was left out. The raw command stays in the local state and the local report. Backticks are removed.
+ * Display text only. @returns {string|null} null when the program itself is not a plain word.
  */
 export function publicCommand(command) {
-  if (typeof command !== 'string' || !command.trim()) return null;
-  return command.trim().split(/\s+/).map((token) => {
-    if (token.includes('://') && token.includes('@')) return '…';
-    const pair = /^([^=\s]+)=(.+)$/.exec(token);
-    if (pair) return `${pair[1]}=…`;
-    return /^[A-Za-z0-9+_-]{24,}={0,2}$/.test(token) ? '…' : token;
-  }).join(' ');
+  if (typeof command !== 'string') return null;
+  const words = command.replace(/`/g, '').trim().split(/\s+/).filter(Boolean);
+  const plain = (w) => PLAIN_WORD.test(w) && !LOOKS_LIKE_A_SECRET.test(w);
+  if (!words.length || !plain(words[0])) return null;
+  let shown = 1;
+  while (shown < 3 && shown < words.length && plain(words[shown])) shown += 1;
+  return `${words.slice(0, shown).join(' ')}${shown < words.length ? ' …' : ''}`;
 }
 
 /** The title with only characters that are inert in a shell and in Markdown (job.js `safeTitle` does the same for issue titles). */
@@ -571,6 +619,10 @@ export function ensureFixIssue(root, config, record, { gh = process.env.FACTORY_
   const after = openFixIssues(gh, root);
   const number = after[0] ?? (Number.isInteger(mine) && mine > 0 ? mine : null);
   if (number === null) throw new Error('gh created the issue but its number could not be read');
+  if (Number.isInteger(mine) && mine > 0 && number !== mine) {
+    // Another machine's issue is the lower one: close ours as its duplicate (argv only). Best effort: a failed close leaves a duplicate a person can close.
+    run(gh, ['issue', 'close', String(mine), '--comment', `Duplicate of #${number}`], { cwd: root });
+  }
   return { number, created: number === mine };
 }
 

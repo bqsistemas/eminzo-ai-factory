@@ -1314,7 +1314,9 @@ function baseCommand(c, id, fresh = false) {
   const tip = resolveTip(c.root, base, remote);
   // A held job whose base could not be checked stays held and tries again on the next run: it is never sent to the builder for it.
   const stay = () => waitLine(branch, held?.fix_issue);
-  if (held && Number.isInteger(held.fix_issue) && !fresh && tip.sha === held.sha) return stay();
+  // The cheap path (nothing runs) holds for an hour: a FAIL may be flaky or environmental, so it is checked again after that.
+  const recent = Number.isFinite(Date.parse(held?.at ?? '')) && Date.now() - Date.parse(held.at) < 60 * 60 * 1000;
+  if (held && Number.isInteger(held.fix_issue) && !fresh && tip.sha === held.sha && recent) return stay();
   // The labels are read live: a maintainer may have marked this job as the fix after it started.
   try {
     if (baseFixRequested(fetchIssue(c, job.issue))) {
@@ -1324,7 +1326,10 @@ function baseCommand(c, id, fresh = false) {
   } catch { /* the issue could not be read: the label recorded at job new stands */ }
   if (tip.error) return held ? stay() : own(`could not check ${base}: ${cleanText(tip.error)}`);
 
-  const result = checkBase(c.root, { job: id, scope: facts.base ? { base: facts.base, head: facts.head } : null, fresh, config: c.config });
+  const ask = (again) => checkBase(c.root, { job: id, scope: facts.base ? { base: facts.base, head: facts.head } : null, fresh: fresh || again, config: c.config });
+  let result = ask(false);
+  // A failure is confirmed before it holds the first job or opens a public issue for a tip: a flaky or one-off failure must not.
+  if (result.status === 'FAIL' && (!held || held.sha !== result.sha) && !(fresh && !result.fromCache)) result = ask(true);
   if (result.status === 'PASS') {
     // Only a job that was held is merged with the base and gated again; any other failure is the job's own and goes to the builder.
     if (held) {
@@ -1344,7 +1349,7 @@ function baseCommand(c, id, fresh = false) {
   } catch (err) {
     failure = cleanText(err.message);
   }
-  job.base_wait = { since: held?.since ?? now(), sha: result.sha, key: result.key, fix_issue: fix, command: result.command ?? null };
+  job.base_wait = { since: held?.since ?? now(), at: now(), sha: result.sha, key: result.key, fix_issue: fix, command: result.command ?? null };
   record('wait');
   job.note = waitNote(branch, fix, failure, { base: engineCommand('base') });
   saveJob(c, job);
