@@ -141,7 +141,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | Command | What it does |
 |---|---|
 | `/eminzo-factory enable` | Once per repository: opens the pull request that adds the factory files |
-| `/eminzo-factory setup` | Once per repository, and again after an update: every label (the factory's and Ask Eminzo's) and `factory/project.md` |
+| `/eminzo-factory setup` | Once per repository, and again after an update: every label (the factory's and Ask Eminzo's), `factory/project.md` and one check of the base branch (it asks before it creates the issue that fixes a failing base) |
 | `/eminzo-factory issue <n>` | Runs issue `<n>` now |
 | `/eminzo-factory <feature>` | Opens an issue for the feature and runs it |
 | `/eminzo-factory xs <request>` | The same, through the light lane |

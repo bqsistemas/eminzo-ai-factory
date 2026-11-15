@@ -342,7 +342,20 @@ never interpret a displayed `$0.00` as verified Codex cost.
   guess or claim commands were run unless they were, preserve valid repo-specific guidance,
   remove stale TODOs, update the date, and add `<!-- eminzo:setup-complete -->` only after the
   analysis is complete. Do not include credentials or secrets. Report labels and refreshed
-  sections. No job, issue or agent is started.
+  sections. No job, issue or agent is started by setup, apart from the fix issue below when the user asks for it.
+<!-- rule: base-check -->
+- Before the first job, setup checks `<base>` once. Run `factory/bin/init checks`, then `factory/bin/base`
+  in the foreground with a long timeout: it installs dependencies in `.worktrees/.base` and runs
+  the checks there, so it can take as long as the gate plus an install.
+  - `suggestion:` from `init checks` (an Nx or Turborepo repo whose checks.sh checks everything): show the
+    proposed file to the user. Never write it over the existing `factory/checks.sh`.
+  - `base: PASS <sha>`: report that the checks pass on `<branch>`.
+  - `base: FAIL <sha>: <command>`: tell the user that `<command>` fails on `<branch>`, name the
+    `report:` file, and ask whether to create an issue to fix it. Only after the user says yes, run
+    `factory/bin/base fix-issue`: `fix: #<n> created`, or `fix: #<n> open` when one is already open. It
+    carries `factory` and `factory:base-fix`; run it like any other issue (`$eminzo-factory issue <n>`).
+  - `base: UNKNOWN <sha>: <reason>`: report the reason. The factory never holds a job on a check that
+    could not run, and it never blocks setup.
 - `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
 - `factory/bin/init checks` writes `factory/checks.sh` only when it is missing. For an Nx or Turborepo repo whose existing file checks every project it prints a `suggestion:` with the affected-only script and never overwrites the file.
 - `factory/bin/base` runs `factory/checks.sh` on the tip of the base branch in the reused worktree `.worktrees/.base`, after the prepare step (`checks.prepare` in config.json, else the one the lockfile names). It prints `base: PASS <sha>`, `base: FAIL <sha>: <command>` or `base: UNKNOWN <sha>: <reason>` and the `report:` file; exit 0, 1 or 3. A check that could not run is UNKNOWN, never a failure. `factory/bin/base fix-issue` finds or creates the one open issue (labels `factory` and `factory:base-fix`) that fixes a failing base: `fix: #<n> created` or `fix: #<n> open`; it is refused when the last check did not fail or the base moved since. The issue holds the sha, the failing command and how to reproduce it, never log lines.

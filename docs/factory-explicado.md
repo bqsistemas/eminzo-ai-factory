@@ -37,7 +37,7 @@ entrega **un solo documento**. Por eso se puede auditar todo lo que pasó.
 |---|---|
 | `/eminzo-factory <pedido>` (Claude) o `$eminzo-factory <pedido>` (Codex) | Crea una issue en GitHub con tu pedido y la procesa |
 | `/eminzo-factory issue 51` | Procesa la issue 51, que ya existe |
-| `/eminzo-factory setup` (o `$eminzo-factory setup`) | Paso obligatorio después de instalar Factory en un repo nuevo. Eminzo mantiene sus secciones bloqueadas hasta que el comando prepare los labels y el LLM analice el repo, actualice `factory/project.md` y escriba el marcador de setup completo. |
+| `/eminzo-factory setup` (o `$eminzo-factory setup`) | Paso obligatorio después de instalar Factory en un repo nuevo. Eminzo mantiene sus secciones bloqueadas hasta que el comando prepare los labels y el LLM analice el repo, actualice `factory/project.md` y escriba el marcador de setup completo. También comprueba una vez la rama base (`eminzo base`): si los checks fallan, muestra el comando que falla y pregunta si crear el issue que lo arregla (nunca sin que lo confirmes); si no se pudieron correr, lo dice y sigue. |
 | `/eminzo-factory run` | Procesa todas las issues pendientes de la cola y retoma las que quedaron a medias |
 | `/eminzo-factory rework 51` | Retoma un trabajo que quedó esperando una decisión humana |
 | `/eminzo-factory xs <pedido>` (o `$eminzo-factory xs`) | Pide el **carril liviano** para un cambio chico (ver abajo). Es un pedido: la fábrica igual verifica que califique |

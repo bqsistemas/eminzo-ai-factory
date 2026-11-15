@@ -132,7 +132,20 @@ developer's spec review).
   them, update the analysis date, and add the exact marker `<!-- eminzo:setup-complete -->` only
   after completing the analysis. Do not include secrets or environment-specific credentials.
 - `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
-- Report labels and the sections refreshed. No job, issue or agent is started by setup.
+- Report labels and the sections refreshed. No job, issue or agent is started by setup, apart from the fix issue below when the user asks for it.
+<!-- rule: base-check -->
+- Before the first job, setup checks `<base>` once. Run `factory/bin/init checks`, then `factory/bin/base`
+  in the foreground with a long timeout: it installs dependencies in `.worktrees/.base` and runs
+  the checks there, so it can take as long as the gate plus an install.
+  - `suggestion:` from `init checks` (an Nx or Turborepo repo whose checks.sh checks everything): show the
+    proposed file to the user. Never write it over the existing `factory/checks.sh`.
+  - `base: PASS <sha>`: report that the checks pass on `<branch>`.
+  - `base: FAIL <sha>: <command>`: tell the user that `<command>` fails on `<branch>`, name the
+    `report:` file, and ask whether to create an issue to fix it. Only after the user says yes, run
+    `factory/bin/base fix-issue`: `fix: #<n> created`, or `fix: #<n> open` when one is already open. It
+    carries `factory` and `factory:base-fix`; run it like any other issue (`/eminzo-factory issue <n>`).
+  - `base: UNKNOWN <sha>: <reason>`: report the reason. The factory never holds a job on a check that
+    could not run, and it never blocks setup.
 - `/eminzo-factory run`: continue every unfinished local job, `concurrency` jobs at a time.
   It takes new issues from the queue (every open `factory` issue) only when `run_mode` in
   `factory/config.json` is `"queue"`; with `"own"` (the default when `run_mode` is missing) a new

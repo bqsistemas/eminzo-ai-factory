@@ -146,6 +146,8 @@ It creates the GitHub labels (`factory`, `factory:needs-info`, `factory:needs-hu
 what the product does, stack, commands, module map and conventions. Every agent reads this file
 before working, and every other factory command refuses until setup has run. Setup starts no job.
 
+Setup also checks the base branch once (`eminzo base`: it installs the dependencies in `.worktrees/.base` and runs `factory/checks.sh` there, so it can take as long as a gate). On `PASS` it says so. On `FAIL` it names the failing command and the report, and asks you whether to create the issue that fixes it (`eminzo base fix-issue`, labels `factory` and `factory:base-fix`); it creates nothing until you say yes. On `UNKNOWN` (the checks could not run) it says why and goes on: a check that could not run never blocks setup and never holds a job.
+
 Read `factory/project.md`, fix anything wrong, and commit it so the whole team shares it:
 
 ```sh
@@ -303,7 +305,7 @@ One-time setup, from the main checkout on `main`:
 
 ```sh
 gh auth login                    # gh must be logged in
-sh factory/checks.sh             # the repo's checks must pass on main
+sh factory/checks.sh             # the repo's checks should pass on main (setup checks it too: eminzo base)
 ```
 
 Then, in Claude Code (`$eminzo-factory ...` in Codex):
