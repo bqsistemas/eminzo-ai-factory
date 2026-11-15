@@ -272,3 +272,93 @@ test('the merge finds the base red: it stops at the post-sync checks and names t
   assert.match(job.note, /merge stopped at post-sync checks: main is broken \(#1\); see merge-checks\.md/);
   assert.equal(t.fake.creates().length, 1);
 });
+
+// --- review fixes: when a job is merged, held or released --------------------------------------------------------
+
+test('a job that was never held and failed on its own code gets no merge, no push and no re-gate when main is green and ahead', async () => {
+  const t = redBase({ broken: false });
+  const id = await t.gated();
+  t.commit(id, { MINE: 'mine\n' });
+  await t.gate(id);
+  t.pushMain({ 'other.txt': 'main moved on\n' }, 'feat: main moves');
+  const branchBefore = git(t.json(id).worktree, 'rev-parse', 'HEAD');
+  const res = await t.base(id);
+  assert.match(res.stdout.trim(), /^own: /);
+  assert.equal(git(t.json(id).worktree, 'rev-parse', 'HEAD'), branchBefore, 'nothing was merged');
+  assert.throws(() => git(t.origin, 'rev-parse', '--verify', '--quiet', `factory/${id}`), 'nothing was pushed');
+  assert.equal(t.read(id, 'round-1/checks.md').split('\n')[0], 'GATE: FAIL');
+  assert.equal(ok(t, await t.job(id, 'to', 'build')), `${id} build`);
+});
+
+test('a held job whose re-check cannot run stays held and tries again on the next run', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  const held = t.json(id).base_wait;
+  t.pushMain({ 'factory/config.json': JSON.stringify({ ...JSON.parse(readFileSync(join(t.root, 'factory/config.json'), 'utf8')), checks: { prepare: 'exit 9' } }) }, 'chore: broken prepare');
+  const res = await t.base(id);
+  assert.match(res.stdout.trim(), /^wait: main is broken \(#1\)$/);
+  const job = t.json(id);
+  assert.equal(job.stage, 'gate');
+  assert.equal(job.base_wait.since, held.since);
+  assert.equal(job.base_waits, undefined, 'the wait did not end');
+  assert.equal(t.fake.creates().length, 1);
+});
+
+test('a held job whose base is still red at a new tip refreshes the sha and creates no second issue', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  const tip = t.pushMain({ 'other.txt': 'x\n' }, 'chore: another commit, still red');
+  const res = await t.base(id);
+  assert.equal(res.stdout.trim(), 'wait: main is broken (#1)');
+  assert.equal(t.json(id).base_wait.sha, tip);
+  assert.equal(t.fake.creates().length, 1);
+  assert.equal(t.baseRuns(), 2);
+});
+
+test('--fresh on a held job runs the check again', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  assert.equal(t.baseRuns(), 1);
+  const res = await t.base(id, '--fresh');
+  assert.equal(res.stdout.trim(), 'wait: main is broken (#1)');
+  assert.equal(t.baseRuns(), 2);
+});
+
+test('needs-human and rework from a held job end the wait and keep it in base_waits', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  assert.equal(ok(t, await t.job(id, 'to', 'needs-human', '--note', 'a person looked')), `${id} needs-human`);
+  let job = t.json(id);
+  assert.equal(job.base_wait, undefined);
+  assert.equal(job.base_waits.length, 1);
+  t.setPr(37, { reviews: [], comments: [] });
+  ok(t, await t.job(id, 'to', 'build'));
+  job = t.json(id);
+  assert.equal(job.stage, 'build');
+  assert.equal(job.base_wait, undefined);
+});
+
+test('when the resume escalates a job, its PR record is refreshed like any other transition', async () => {
+  const t = redBase();
+  const id = await t.gated();
+  t.commit(id, { 'app.txt': 'job version\n' });
+  await t.gate(id);
+  await t.base(id);
+  t.setPr(37, { body: 'Human text\n' });
+  t.pushMain({ BROKEN: null, 'app.txt': 'main version\n' });
+  const before = t.calls().length;
+  assert.match((await t.base(id)).stdout, /^needs-human: /);
+  assert.ok(t.calls().slice(before).some(({ args }) => args[0] === 'pr' && args[1] === 'edit'), 'the PR body gets its Factory record');
+});
+
+test('the overview says how many waiting jobs wait for the base branch', async () => {
+  const { overview } = await import('../factory/lib/state/queries.js');
+  const t = redBase();
+  const id = await t.gated();
+  await t.base(id);
+  assert.match(overview(t.root).summary, /1 job waiting for a person \(1 of them for the base branch to be fixed\)/);
+});

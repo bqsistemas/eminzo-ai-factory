@@ -20,7 +20,7 @@ set -e
 # runs full mode, so a focused pass is a shortcut for the builder and the full run is the backstop.
 #
 # Affected-only checks (optional, for a monorepo). The factory also sets:
-#   FACTORY_BASE  the commit the job's branch left the base at, for the gate, the merge and the nudge.
+#   FACTORY_BASE  the commit the job's branch left the base at, for the gate, the merge and the builder's focused nudge (not nudge --full or the Stop hook).
 #   FACTORY_HEAD  the commit under test, for the gate and the merge (not the nudge).
 # Neither is set when you run this file by hand or the job fixes the base: check everything then.
 MODE="${FACTORY_CHECK_MODE:-full}"

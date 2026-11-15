@@ -30,10 +30,11 @@ export function overview(root, { now = Date.now() } = {}) {
   for (const v of views) if (v.stage) byStage[v.stage] = (byStage[v.stage] ?? 0) + 1;
   const running = views.filter((v) => v.group === 'active' && !v.waiting).sort(newestFirst).map(brief);
   const waiting = views.filter((v) => v.waiting).length;
+  const onBase = views.filter((v) => v.waiting?.kind === 'fix-base').length;
   const finished = views.filter((v) => v.finished).sort((a, b) => (at(b.finished) ?? 0) - (at(a.finished) ?? 0));
   const last = finished[0] ? { ...brief(finished[0]), finished: finished[0].finished } : null;
   const summary = views.length
-    ? `${plural(running.length, 'job')} running, ${plural(waiting, 'job')} waiting for a person, ${plural(counts.terminal, 'job')} finished (${plural(views.length, 'job')} on this machine).`
+    ? `${plural(running.length, 'job')} running, ${plural(waiting, 'job')} waiting for a person${onBase ? ` (${onBase} of them for the base branch to be fixed)` : ''}, ${plural(counts.terminal, 'job')} finished (${plural(views.length, 'job')} on this machine).`
     : 'No jobs on this machine yet.';
   return { summary, jobs: views.length, counts, by_stage: byStage, running, waiting_for_people: waiting, last_finished: last };
 }

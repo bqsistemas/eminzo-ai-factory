@@ -366,7 +366,15 @@ export function checkBase(root, { job = null, scope = null, fresh = false, byHan
     return unknown(err.message, sha, { key });
   }
   const useCache = !byHand && !fresh;
-  const cached = () => (useCache ? readState(root).results[key] : undefined);
+  // A PASS of the whole base at this tip (same inputs, same prepare) also answers any narrower check of it: the job's files
+  // are a subset of everything. Only a PASS: a FAIL of everything says nothing about a subset.
+  const cached = () => {
+    if (!useCache) return undefined;
+    const state = readState(root);
+    const full = state.full;
+    if (scopeKey !== 'full' && full?.status === 'PASS' && full.sha === sha && full.inputs === inputs && full.prepare === prepare.command) return { ...full, job };
+    return state.results[key];
+  };
   const hit = cached();
   if (hit) return { ...hit, fromCache: true };
 

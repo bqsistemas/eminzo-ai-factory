@@ -201,3 +201,17 @@ test('usage: an unknown argument is exit 2', () => {
   assert.equal(res.status, 2);
   assert.match(res.stderr, /^usage: base/);
 });
+
+test('a PASS of the whole base at this tip answers a scoped check from the cache: the files are a subset, nothing runs', () => {
+  const t = baseFixture({ checks: '#!/bin/sh\necho "$FACTORY_BASE" >> "$FACTORY_ROOT/runs"\n', config: { checks: { prepare: '' } } });
+  const from = t.tip();
+  const head = t.push({ 'a.txt': 'a\n' });
+  assert.equal(t.base().status, 0);
+  assert.equal(readFileSync(join(t.root, 'runs'), 'utf8').trim().split('\n').length, 1);
+  const res = direct(t, { job: '001-x', scope: { base: from, head } });
+  assert.equal(res.status, 'PASS');
+  assert.equal(res.fromCache, true);
+  assert.equal(readFileSync(join(t.root, 'runs'), 'utf8').trim().split('\n').length, 1, 'no second run');
+  const fresh = direct(t, { job: '001-x', scope: { base: from, head }, fresh: true });
+  assert.equal(fresh.fromCache, false, '--fresh still runs');
+});

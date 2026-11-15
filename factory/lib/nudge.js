@@ -115,7 +115,13 @@ function main(args = []) {
   };
   // A stamp that records a base ran the checks against it: another merge-base is another scope. Stamps
   // from before the scope existed have none and ran everything, so they still count for a full caller.
-  const sameScope = () => (last?.base === undefined ? last?.mode !== 'focused' : focusedOk());
+  // A full caller (--full, the hook) runs everything with no scope, so only a pass that also ran everything counts for it.
+  // A focused caller accepts a pass that ran everything (no base recorded), or one made against the same merge-base.
+  const sameScope = () => {
+    if (wantFull) return (last?.base ?? null) === null && last?.mode !== 'focused';
+    if (last?.mode !== 'focused' && (last?.base ?? null) === null) return true;
+    return last?.base !== undefined && focusedOk();
+  };
   // Full callers accept only a full pass (no mode = recorded before modes existed); anything else re-runs.
   const fullPass = last?.mode === undefined || last.mode === 'full';
   const passed = (fullPass || (!wantFull && last.mode === 'focused')) && sameScope();
@@ -202,10 +208,10 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inp
   let result;
   let scopeBaseSha = null;
   try {
-    scopeBaseSha = scopeBase(root, job);
+    if (!wantFull) scopeBaseSha = scopeBase(root, job); // --full and the hook run every project: no scope
   } catch { /* no config or no base: everything runs */ }
   try {
-    // FACTORY_BASE only: the nudge also sees uncommitted and untracked files, so there is no head to name.
+    // A focused nudge sets FACTORY_BASE only (it also sees uncommitted and untracked files, so there is no head to name); a full one sets nothing.
     result = runChecks(root, job.worktree, { ...focus.options, scope: { base: scopeBaseSha ?? undefined }, ...(childFile ? { pidFile: childFile } : {}) });
   } finally {
     focus.cleanup();

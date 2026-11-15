@@ -1253,7 +1253,7 @@ const cleanText = (text) => String(text ?? '').replace(/[\u0000-\u001f\u007f]+/g
  * The base passes again: merge it into the job's branch (in the job's own worktree, as `merge()` does), push the branch (never
  * a force push, never the base) and run the gate again. A conflict or a failed push goes to needs-human like merge().
  */
-function resumeFromBase(c, job, { base, remote, own, record }) {
+function resumeFromBase(c, job, { base, remote, sha, own, record, stay }) {
   const branch = `factory/${job.id}`;
   const wt = { cwd: job.worktree };
   const why = (res) => (res.stderr || res.error?.message || '').trim().split('\n').slice(-1)[0] || `exit ${res.status}`;
@@ -1261,11 +1261,15 @@ function resumeFromBase(c, job, { base, remote, own, record }) {
     const note = `merge stopped at ${step}: ${detail}`;
     escalate(c, job, note);
     endWait(job, now());
+    updatePrRecord(c, job); // like transition(): a job parked for a human keeps its PR record current
     saveJob(c, job);
     return `needs-human: ${note}`;
   };
   if (uncommitted(job.worktree).length) return own(`the worktree has uncommitted changes, so ${base} was not merged into it`);
-  let res = run('git', ['merge', '--no-edit', base], wt);
+  // Merge the commit that was checked, never the ref name: the base may have moved while the check ran.
+  const now_ = run('git', ['rev-parse', '--verify', '--quiet', `${base}^{commit}`], { cwd: c.root });
+  if (now_.status !== 0 || now_.stdout.trim() !== sha) return stay();
+  let res = run('git', ['merge', '--no-edit', sha], wt);
   if (res.status !== 0) {
     run('git', ['merge', '--abort'], wt);
     return stop(`sync with ${base}`, `git merge conflicts; rework the branch onto ${base}`);
@@ -1308,7 +1312,9 @@ function baseCommand(c, id, fresh = false) {
   if (!facts.head) return own('the gate report names no tested head');
 
   const tip = resolveTip(c.root, base, remote);
-  if (held && Number.isInteger(held.fix_issue) && !fresh && tip.sha === held.sha) return waitLine(branch, held.fix_issue);
+  // A held job whose base could not be checked stays held and tries again on the next run: it is never sent to the builder for it.
+  const stay = () => waitLine(branch, held?.fix_issue);
+  if (held && Number.isInteger(held.fix_issue) && !fresh && tip.sha === held.sha) return stay();
   // The labels are read live: a maintainer may have marked this job as the fix after it started.
   try {
     if (baseFixRequested(fetchIssue(c, job.issue))) {
@@ -1316,16 +1322,18 @@ function baseCommand(c, id, fresh = false) {
       return own('this job fixes main (factory:base-fix)');
     }
   } catch { /* the issue could not be read: the label recorded at job new stands */ }
-  if (tip.error) return own(`could not check ${base}: ${cleanText(tip.error)}`);
+  if (tip.error) return held ? stay() : own(`could not check ${base}: ${cleanText(tip.error)}`);
 
   const result = checkBase(c.root, { job: id, scope: facts.base ? { base: facts.base, head: facts.head } : null, fresh, config: c.config });
   if (result.status === 'PASS') {
-    // The base passes and the branch is behind it: the failure may be gone. Merge the base in and run the gate again.
-    ownWorktree(c, job);
-    if (mergeBase(job.worktree, base) !== result.sha) return resumeFromBase(c, job, { base, remote, own, record });
+    // Only a job that was held is merged with the base and gated again; any other failure is the job's own and goes to the builder.
+    if (held) {
+      ownWorktree(c, job);
+      if (mergeBase(job.worktree, base) !== result.sha) return resumeFromBase(c, job, { base, remote, sha: result.sha, own, record, stay });
+    }
     return own(`${base} passes the same checks at ${short(result.sha)}`);
   }
-  if (result.status !== 'FAIL') return own(`could not check ${base}: ${cleanText(result.reason)}`);
+  if (result.status !== 'FAIL') return held ? stay() : own(`could not check ${base}: ${cleanText(result.reason)}`);
 
   // The base fails the same checks: hold the job, and make sure one fix issue exists. A gh failure never loses the hold.
   let fix = Number.isInteger(held?.fix_issue) ? held.fix_issue : null;

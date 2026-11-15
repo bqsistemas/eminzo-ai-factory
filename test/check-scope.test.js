@@ -65,7 +65,7 @@ test('a job that fixes the base gets neither variable and the report says none',
   assert.match(t.report(), /^Checks base: none$/m);
 });
 
-test('the nudge sets only FACTORY_BASE, in both modes', () => {
+test('the nudge sets only FACTORY_BASE when it runs focused by hand; --full and the hook run everything', () => {
   const t = gateFixture(DUMP);
   const mb = git(t.worktree, 'merge-base', 'origin/main', 'HEAD');
   commitOnBranch(t);
@@ -73,12 +73,12 @@ test('the nudge sets only FACTORY_BASE, in both modes', () => {
     const res = spawnSync('sh', [join(repo, 'factory/bin/nudge'), '001-contract', ...args], { encoding: 'utf8', env: t.env });
     assert.equal(res.status, 0, res.stderr);
   }
-  assert.deepEqual(runs(t), [`base=${mb} head=unset`, `base=${mb} head=unset`]);
+  assert.deepEqual(runs(t), [`base=${mb} head=unset`, 'base=unset head=unset']);
 });
 
-test('a nudge pass is not reused once the branch has another merge-base', () => {
+test('a focused nudge pass is not reused once the branch has another merge-base', () => {
   const t = gateFixture(DUMP);
-  const nudge = () => spawnSync('sh', [join(repo, 'factory/bin/nudge'), '001-contract', '--full'], { encoding: 'utf8', env: t.env });
+  const nudge = () => spawnSync('sh', [join(repo, 'factory/bin/nudge'), '001-contract'], { encoding: 'utf8', env: t.env });
   assert.equal(nudge().status, 0);
   assert.equal(nudge().status, 0);
   assert.equal(runs(t).length, 1, 'same tree and same merge-base: reused');
@@ -88,6 +88,18 @@ test('a nudge pass is not reused once the branch has another merge-base', () => 
   git(t.worktree, 'merge', '-q', '--no-edit', 'origin/main'); // the files stay the same, the merge-base moves
   assert.equal(nudge().status, 0);
   assert.equal(runs(t).length, 2, 'another merge-base: run again');
+});
+
+test('a full nudge pass does not depend on the merge-base: it ran everything', () => {
+  const t = gateFixture(DUMP);
+  const nudge = () => spawnSync('sh', [join(repo, 'factory/bin/nudge'), '001-contract', '--full'], { encoding: 'utf8', env: t.env });
+  assert.equal(nudge().status, 0);
+  git(t.root, 'commit', '-q', '--allow-empty', '-m', 'chore: empty base commit');
+  git(t.root, 'push', '-q', 'origin', 'main');
+  git(t.root, 'fetch', '-q', 'origin');
+  git(t.worktree, 'merge', '-q', '--no-edit', 'origin/main');
+  assert.equal(nudge().status, 0);
+  assert.equal(runs(t).length, 1);
 });
 
 test('merge-checks pass the new tip as the base and the merge commit as the head', () => {

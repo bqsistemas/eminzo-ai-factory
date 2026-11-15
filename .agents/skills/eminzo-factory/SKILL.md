@@ -160,6 +160,8 @@ Use the scripts for every transition. The stage contract is:
    the job's branch (in the job's worktree), pushes the branch and runs the gate again: `resumed: GATE: PASS`
    means `job <id> to review`; `resumed: GATE: FAIL` means the failure is now the job's own, so return to build as
    for `own:`; `needs-human:` means the merge conflicted or the push failed: report it and spawn nothing.
+   A held job is not gated again on a later `run`: only `factory/bin/job <id> base` runs for it (it re-gates by
+   itself when `<base>` passes).
    <!-- rule: round-context -->
    - **Round context.** The gate also writes `round-N/context.md`: the changed files, what changed
      this round, the acceptance criteria and the blockers still open. Every reviewer and the

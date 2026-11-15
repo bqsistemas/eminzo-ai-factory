@@ -429,7 +429,9 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     again `base` itself merges it into the job's branch (in the job's worktree), pushes the branch and
     runs the gate again: `resumed: GATE: PASS` means `job <id> to review`; `resumed: GATE: FAIL`
     means the failure is now the job's own, so go back to build as for `own:`; `needs-human:` means
-    the merge conflicted or the push failed: report it and spawn nothing.
+    the merge conflicted or the push failed: report it and spawn nothing. A held job is not gated
+    again on a later `run`: only `factory/bin/job <id> base` runs for it (it re-gates by itself when
+    `<base>` passes).
 - **review**: spawn the reviewers that `factory/bin/job <id> prompt` lists on its
   `Review lenses:` line (`review-<lens>`,
   with the model in `agents.reviewers`) in ONE message, so they run in parallel.

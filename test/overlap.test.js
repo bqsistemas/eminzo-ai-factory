@@ -98,3 +98,12 @@ test('both skills tell the orchestrator to check overlap before the first build,
     assert.match(near, /concurrency/, `${path} says a waiting job uses no concurrency slot`);
   }
 });
+
+test('a job held at gate by a broken base is never ahead: the job that fixes the base would wait for it forever', () => {
+  const dir = root();
+  const held = addJob(dir, { id: '001-held', stage: 'gate', base_wait: { since: 'x', fix_issue: 3 } }, { 'spec.md': spec('src/app.js') });
+  const fix = addJob(dir, { id: '002-fix', stage: 'build', base_fix: true }, { 'spec.md': spec('src/app.js') });
+  assert.deepEqual(overlaps(dir, fix, [held, fix]), []);
+  const plain = addJob(dir, { id: '003-plain', stage: 'gate' }, { 'spec.md': spec('src/app.js') });
+  assert.equal(overlaps(dir, fix, [plain, fix]).length, 1, 'a job at gate that is not held still counts');
+});
