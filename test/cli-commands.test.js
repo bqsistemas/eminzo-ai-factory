@@ -84,6 +84,16 @@ test('an engine command runs the packaged engine on the repo of the current dire
   assert.match(readFileSync(join(root, 'factory/project.md'), 'utf8'), /first draft from `eminzo init`/, 'the engine knows it runs as eminzo');
 });
 
+test('eminzo base runs the packaged engine; the base it cannot resolve is UNKNOWN (exit 3)', () => {
+  const t = sandbox();
+  const root = repoWith(t.dir);
+  assert.match(t.run(['help']).stdout, /eminzo base\b/);
+  const res = t.run(['base'], { cwd: root });
+  assert.equal(res.status, 3, res.stderr);
+  assert.match(res.stdout, /^base: UNKNOWN origin\/main: cannot resolve origin\/main/m);
+  assert.equal(t.run(['base', '--what'], { cwd: root }).status, 2);
+});
+
 test('the repo\'s engine range is enforced; a missing range only warns', () => {
   const t = sandbox();
   const pinned = repoWith(join(t.dir, 'a'), { engine: '9.9.x' });

@@ -333,6 +333,8 @@ never interpret a displayed `$0.00` as verified Codex cost.
   analysis is complete. Do not include credentials or secrets. Report labels and refreshed
   sections. No job, issue or agent is started.
 - `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
+- `factory/bin/init checks` writes `factory/checks.sh` only when it is missing. For an Nx or Turborepo repo whose existing file checks every project it prints a `suggestion:` with the affected-only script and never overwrites the file.
+- `factory/bin/base` runs `factory/checks.sh` on the tip of the base branch in the reused worktree `.worktrees/.base`, after the prepare step (`checks.prepare` in config.json, else the one the lockfile names). It prints `base: PASS <sha>`, `base: FAIL <sha>: <command>` or `base: UNKNOWN <sha>: <reason>` and the `report:` file; exit 0, 1 or 3. A check that could not run is UNKNOWN, never a failure.
 - `$eminzo-factory run`: resume every unfinished local job, respecting `concurrency` (from
   `factory/bin/job config concurrency`). It drains
   the queue of open `factory` issues only when `run_mode` in `factory/config.json` is `"queue"`;

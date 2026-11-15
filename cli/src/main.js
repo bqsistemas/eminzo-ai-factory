@@ -21,6 +21,7 @@ Day to day, in Claude Code: /eminzo-factory setup | run | issue <n> | rework <n>
 
 Engine commands (the skill and agents call these; they run on the repository of the current directory):
   eminzo job | gate | approve | route | visual | nudge | ensure-output | protect-tests | dashboard | init | setup | setup-spec-review | profile
+  eminzo base                            do the repo's checks pass on the base branch? (PASS, FAIL or UNKNOWN; exit 0, 1, 3)
   eminzo selfcheck <job-id>              the builder's check before READY (same as: eminzo job <job-id> selfcheck)
 
 Ask Eminzo (read-only tools for Claude Code, Codex and the desktop):

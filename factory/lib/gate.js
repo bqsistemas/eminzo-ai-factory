@@ -65,8 +65,12 @@ const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.
  * the job's branch left the base at) becomes FACTORY_BASE and `scope.head` (the commit under test)
  * becomes FACTORY_HEAD. Each is set only from a full-length hex sha; inherited values are always
  * dropped, and without a scope every project is checked.
+ * With `trace` the script runs under `sh -x` with the prefix `+[factory] `, so the base check can name
+ * the command that failed (display text only; the trace is on stderr, merged into `output`).
+ * @returns {{code: number, output: string, signal: string|null, failedToStart: boolean}} `code` is 1 when
+ *   the shell has no exit status (a signal, or it did not start); the base check tells those apart.
  */
-export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope } = {}) {
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false } = {}) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT; // a gate started from a test run must not report into it
   delete env.FACTORY_CHANGED_FILES;
@@ -77,10 +81,12 @@ export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, sco
   const focused = mode === 'focused' && typeof changedFiles === 'string';
   env.FACTORY_CHECK_MODE = focused ? 'focused' : 'full';
   if (focused) env.FACTORY_CHANGED_FILES = changedFiles;
-  const script = pidFile ? 'printf "%s\n" "$$" > "$1"; exec sh "$0" 2>&1' : 'exec sh "$0" 2>&1';
+  if (trace) env.PS4 = '+[factory] ';
+  const sh = trace ? 'sh -x' : 'sh';
+  const script = pidFile ? `printf "%s\n" "$$" > "$1"; exec ${sh} "$0" 2>&1` : `exec ${sh} "$0" 2>&1`;
   const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env });
   const output = `${res.stdout ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
-  return { code: res.status ?? 1, output };
+  return { code: res.status ?? 1, output, signal: res.signal ?? null, failedToStart: Boolean(res.error) };
 }
 
 /** Protected test paths the branch changed since it left `base`, or an error. */
