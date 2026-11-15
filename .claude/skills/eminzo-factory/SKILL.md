@@ -80,7 +80,7 @@ factory/
   bin/approve <id>      the deterministic approver: approve | escalate: <reason> | inconclusive: <reasons>
   bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
   bin/init [review|checks]  writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent; `init checks` writes a missing checks.sh and, for an Nx or Turborepo repo that checks everything, only prints an affected-only suggestion
-  bin/base              runs checks.sh on the tip of the base branch in `.worktrees/.base` (after its prepare step): `base: PASS|FAIL|UNKNOWN`, exit 0, 1, 3 → factory/jobs/.base/
+  bin/base [fix-issue]  runs checks.sh on the tip of the base branch in `.worktrees/.base` (after its prepare step): `base: PASS|FAIL|UNKNOWN`, exit 0, 1, 3 → factory/jobs/.base/; `fix-issue` finds or creates the one open issue (`factory` and `factory:base-fix`) that fixes a failing base
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
   bin/setup             creates or updates every GitHub label in lib/labels.js, the one list (`/eminzo-factory setup` runs it)
   bin/setup-spec-review creates only factory:spec-review; setup already creates it, kept for older docs
@@ -109,7 +109,7 @@ developer's spec review).
   and tell the user to run `/eminzo-factory setup` in this terminal. Do not run it silently for them.
 - Setup runs the normal Git/GitHub preflight, `factory/bin/setup`, which creates or updates
   every label in the engine's one label list (`factory`, `factory:needs-info`,
-  `factory:needs-human`, `factory:xs`, `factory:spec-review` and Ask Eminzo's `eminzo-brief` and
+  `factory:needs-human`, `factory:xs`, `factory:spec-review`, `factory:base-fix` and Ask Eminzo's `eminzo-brief` and
   `eminzo-deliverable`), without changing issues. It tries every label, reports each failure and exits non-zero.
   Run it again after an update: it also adds labels that did not exist before.
   `factory/bin/setup-spec-review` is the same script limited to `factory:spec-review`. If `factory/project.md` is missing, run `factory/bin/init` only to create its

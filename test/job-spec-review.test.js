@@ -327,5 +327,5 @@ test('AC-6: setup-spec-review creates the label with --force, --color and --desc
   res = spawnSync(join(repo, 'factory/bin/setup'), [], { env, encoding: 'utf8' });
   assert.equal(res.status, 0, res.stderr);
   assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n').map((l) => l.split(' ')[2]),
-    ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs', 'factory:spec-review', 'eminzo-brief', 'eminzo-deliverable']);
+    ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs', 'factory:spec-review', 'factory:base-fix', 'eminzo-brief', 'eminzo-deliverable']);
 });

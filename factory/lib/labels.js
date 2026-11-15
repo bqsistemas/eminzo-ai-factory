@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 export const BRIEF_ISSUE_LABEL = 'eminzo-brief';
 export const DELIVERABLE_LABEL = 'eminzo-deliverable';
+/** The issue that fixes the checks of the base branch (`factory/bin/base fix-issue`); a job that carries it is never held for a red base. */
+export const BASE_FIX_LABEL = 'factory:base-fix';
 
 /** @type {ReadonlyArray<{ name: string, color: string, description: string }>} */
 export const LABELS = [
@@ -14,6 +16,7 @@ export const LABELS = [
   { name: 'factory:needs-human', color: 'd93f0b', description: 'Factory escalated this job to a human' },
   { name: 'factory:xs', color: '0e8a16', description: 'Ask for the XS lane: the factory still checks the criteria and promotes on the first failure' },
   { name: 'factory:spec-review', color: '5319e7', description: "Factory spec is waiting for the developer's review (approve-spec or revise-spec)" },
+  { name: BASE_FIX_LABEL, color: 'b60205', description: 'Fixes the failing checks on the base branch; the factory never holds this job for a red base' },
   { name: BRIEF_ISSUE_LABEL, color: '5319e7', description: 'Approved brief created by Eminzo: the record of an initiative. Not edited afterwards.' },
   { name: DELIVERABLE_LABEL, color: '0e8a16', description: 'Deliverable of an approved Eminzo brief. Enters the factory when the tech lead adds factory.' },
 ];

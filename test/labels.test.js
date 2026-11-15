@@ -11,7 +11,7 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { LABELS, BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL } = await import('../factory/lib/labels.js');
 const { BRIEF_ISSUE_LABEL: HANDOFF_BRIEF, DELIVERABLE_LABEL: HANDOFF_DELIVERABLE } = await import('../factory/lib/handoff.js');
 
-const EXPECTED = ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs', 'factory:spec-review', 'eminzo-brief', 'eminzo-deliverable'];
+const EXPECTED = ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs', 'factory:spec-review', 'factory:base-fix', 'eminzo-brief', 'eminzo-deliverable'];
 
 test('the list: names unique, colors 6-digit hex, descriptions within GitHub\'s 100 characters', () => {
   const names = LABELS.map((l) => l.name);

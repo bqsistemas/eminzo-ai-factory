@@ -274,7 +274,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     const res = spawnSync(join(repo, 'factory/bin/setup'), [], { env: t.env, encoding: 'utf8' });
     assert.equal(res.status, 0, res.stderr);
     const labels = t.calls().filter(({ args }) => args[0] === 'label' && args[1] === 'create');
-    assert.deepEqual(labels.map(({ args }) => args[2]), ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs', 'factory:spec-review', 'eminzo-brief', 'eminzo-deliverable']);
+    assert.deepEqual(labels.map(({ args }) => args[2]), ['factory', 'factory:needs-info', 'factory:needs-human', 'factory:xs', 'factory:spec-review', 'factory:base-fix', 'eminzo-brief', 'eminzo-deliverable']);
     for (const { args } of labels) {
       assert.ok(args.includes('--force') && args.includes('--color') && args.includes('--description'), args.join(' '));
     }

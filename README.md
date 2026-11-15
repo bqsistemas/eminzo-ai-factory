@@ -169,7 +169,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `eminzo uninstall [--dry-run]` | Removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | Checks the machine and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | The same as `/eminzo-factory enable`, from a terminal |
-| `eminzo base` | Checks that your `factory/checks.sh` passes on the base branch (`PASS`, `FAIL` or `UNKNOWN` when it could not run), in a reused worktree that installs the dependencies first |
+| `eminzo base` | Checks that your `factory/checks.sh` passes on the base branch (`PASS`, `FAIL` or `UNKNOWN` when it could not run), in a reused worktree that installs the dependencies first; `eminzo base fix-issue` opens (or finds) the one issue that fixes a failing base |
 | `eminzo init checks` | Writes `factory/checks.sh` when it is missing; in an Nx or Turborepo repo whose file checks every project, prints the affected-only script as a suggestion and never overwrites |
 | `eminzo dashboard [port]` | Serves the dashboard of the current repository (port 8000 by default) |
 | `eminzo job summary` | One line per job (issue, stage, cost, time) and the total |
@@ -191,6 +191,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `factory:needs-info` | The factory asked a question: answer on the issue, then `/eminzo-factory run` |
 | `factory:needs-human` | The job needs you: merge its pull request, or comment and `/eminzo-factory rework <n>` |
 | `factory:spec-review` | The spec waits for `approve-spec` or `revise-spec` |
+| `factory:base-fix` | The issue that fixes the failing checks of the base branch; the engine creates it (with `factory`) or reuses the open one |
 | `eminzo-brief` | An approved brief created by Eminzo: the record of an initiative, not edited afterwards |
 | `eminzo-deliverable` | A deliverable of an approved brief; it enters the factory when the tech lead adds `factory` |
 

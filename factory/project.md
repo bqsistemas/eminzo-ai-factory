@@ -98,7 +98,7 @@ Portable factory engine:
   `visual*.js` browser checks; `project-map.js` context freshness; `run-mode.js`
   `config.run_mode` (`own` default, `queue`); `claim.js` the `job new` issue claim; `util.js`
   config, paths and `EMINZO_ENGINE` (`installedEngine()`/`engineDir()`/`engineCommand()`);
-  `stacks.js` per-stack detection, commands, `ac_pattern`, `checks.sh` (templates in `factory/templates/checks/`, affected-only for Nx and Turborepo) and the prepare command of each lockfile; `base.js` the base check (`factory/bin/base`: the reused `.worktrees/.base`, its lock and `factory/jobs/.base/state.json`); remaining helpers, init and static dashboard server. Engine modules remain dependency-free.
+  `stacks.js` per-stack detection, commands, `ac_pattern`, `checks.sh` (templates in `factory/templates/checks/`, affected-only for Nx and Turborepo) and the prepare command of each lockfile; `base.js` the base check (`factory/bin/base`: the reused `.worktrees/.base`, its lock and `factory/jobs/.base/state.json`) and its fix issue (`base fix-issue`); remaining helpers, init and static dashboard server. Engine modules remain dependency-free.
 - `factory/pipeline.json`: generated stage/transition graph consumed by dashboards and the desktop.
 - `factory/roles/`: eight provider-neutral worker contracts; `factory/templates/`:
   project structure and installer config template.

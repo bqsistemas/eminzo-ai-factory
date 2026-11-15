@@ -141,8 +141,8 @@ In Claude Code, inside the repository:
 /eminzo-factory setup
 ```
 
-It creates the five GitHub labels (`factory`, `factory:needs-info`, `factory:needs-human`,
-`factory:xs`, `factory:spec-review`) and analyzes the repository to complete `factory/project.md`:
+It creates the GitHub labels (`factory`, `factory:needs-info`, `factory:needs-human`,
+`factory:xs`, `factory:spec-review`, `factory:base-fix`) and analyzes the repository to complete `factory/project.md`:
 what the product does, stack, commands, module map and conventions. Every agent reads this file
 before working, and every other factory command refuses until setup has run. Setup starts no job.
 
@@ -269,7 +269,7 @@ reach the builder.
 | `eminzo uninstall [--dry-run]` | removes what `install` wrote (files you changed are kept) |
 | `eminzo doctor` | checks Node, git, gh, the PATH, the installed files and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | the same as `/eminzo-factory enable`, from a terminal |
-| `eminzo base` | does the repo's `factory/checks.sh` pass on the tip of the base branch? Runs in the reused worktree `.worktrees/.base`: fetches, checks out the tip, runs the prepare step (installs the dependencies; `checks.prepare` in `config.json` overrides it, `""` turns it off) and the checks. Prints `base: PASS <sha>`, `base: FAIL <sha>: <command>` or `base: UNKNOWN <sha>: <reason>` and `report: factory/jobs/.base/<key>/checks.md`; exit 0, 1 or 3. UNKNOWN means it could not run (install failed, git error, exit 126 or 127, a signal, a busy lock): it is never a failure and nothing waits for it. The last answer is in `factory/jobs/.base/state.json` |
+| `eminzo base` | does the repo's `factory/checks.sh` pass on the tip of the base branch? Runs in the reused worktree `.worktrees/.base`: fetches, checks out the tip, runs the prepare step (installs the dependencies; `checks.prepare` in `config.json` overrides it, `""` turns it off) and the checks. Prints `base: PASS <sha>`, `base: FAIL <sha>: <command>` or `base: UNKNOWN <sha>: <reason>` and `report: factory/jobs/.base/<key>/checks.md`; exit 0, 1 or 3. UNKNOWN means it could not run (install failed, git error, exit 126 or 127, a signal, a busy lock): it is never a failure and nothing waits for it. The last answer is in `factory/jobs/.base/state.json`. `eminzo base fix-issue` (only after a FAIL of the current tip) finds the one open `factory:base-fix` issue or creates it with the labels `factory` and `factory:base-fix`, in the repository's language: `fix: #<n> created` or `fix: #<n> open`. The issue holds the base sha, the failing command and its exit code, and how to reproduce it, never log lines |
 | `eminzo init checks` | writes `factory/checks.sh` when it is missing; when it exists in an Nx or Turborepo repo that checks every project, prints the affected-only script as a `suggestion:` and leaves the file byte-identical |
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
@@ -294,6 +294,7 @@ the rest while a job runs; you do not need to run those yourself.
 | `factory:needs-info` | the factory asked the issue author a question; answer on the issue, then `/eminzo-factory run` |
 | `factory:needs-human` | the job needs you: merge its pull request, or comment and run `/eminzo-factory rework <n>` |
 | `factory:spec-review` | the spec is posted on the issue and waits for `approve-spec` or `revise-spec` |
+| `factory:base-fix` | the issue that fixes the failing checks of the base branch; `eminzo base fix-issue` creates it (with `factory`) or reuses the open one, and its text never holds log lines |
 
 ## Use it with a committed engine (this repository)
 
