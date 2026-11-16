@@ -10,6 +10,7 @@
 // The labels `confirmed` and `assumed` and the word `source` stay in English in every language; the title prefix,
 // the review word and the area headings follow the repository's language. Pure: no I/O, no clock (the caller passes
 // `now`). Nothing in the engine writes the file.
+import { LOGIN_BODY } from './brief.js';
 
 /** A map not reviewed for more than this many days is stale. */
 export const STALE_AFTER_DAYS = 90;
@@ -27,7 +28,7 @@ const WORDS = Object.freeze({
 
 const TITLE_PREFIX = /^(?:product map|mapa del producto|mapa do produto):\s*/i;
 const REVIEW_LINE = /^(?:reviewed|revisado)\s*:/i;
-const REVIEW = /^(?:reviewed|revisado)\s*:\s*(\d{4}-\d{2}-\d{2})\s+(?:by|por)\s+([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\s*$/i;
+const REVIEW = new RegExp(String.raw`^(?:reviewed|revisado)\s*:\s*(\d{4}-\d{2}-\d{2})\s+(?:by|por)\s+((?=\S{1,39}\s*$)${LOGIN_BODY})\s*$`, 'i');
 const validDate = (s) => Number.isFinite(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
 
 /** `- text [confirmed|assumed] (source: x)` as `{ text, basis, source }`, or null. Linear: no backtracking. */

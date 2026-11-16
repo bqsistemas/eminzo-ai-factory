@@ -20,6 +20,11 @@ const MAP = [
 const DAY = 86_400_000;
 const at = (iso) => Date.parse(iso);
 
+test('parseProductMap reads an Enterprise Managed User login and refuses a malformed one', () => {
+  assert.deepEqual(parseProductMap('# Product map: Shop\nReviewed: 2026-11-01 by mona-cat_octo\n').reviewed, { date: '2026-11-01', by: 'mona-cat_octo' });
+  for (const by of ['ana_ab', 'ana__octo', 'ana_', 'a'.repeat(40)]) assert.equal(parseProductMap(`# Product map: Shop\nReviewed: 2026-11-01 by ${by}\n`).reviewed, null, by);
+});
+
 test('parseProductMap reads title, review line, areas, items, basis and source', () => {
   const m = parseProductMap(MAP);
   assert.equal(m.title, 'Acme Shop');

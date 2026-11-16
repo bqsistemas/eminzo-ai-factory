@@ -46,8 +46,15 @@ const INVISIBLE = /[\u0080-\u009F\u00AD\u200B-\u200D\u2028\u2029\u2060\uFEFF]/;
 // GitHub notifies for `@login` unless a letter, digit or underscore comes right before the `@` (an e-mail address).
 const MENTION = /(?:^|[^A-Za-z0-9_])@[A-Za-z0-9]/;
 const ISO_AT = '\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})';
+/**
+ * A GitHub login: letters, digits and hyphens, plus the `_<shortcode>` (3 to 8 letters or digits) that an Enterprise Managed
+ * User login ends with, in 39 characters at most. This is the one definition; every other check of a login builds on it.
+ */
+export const LOGIN_BODY = '[A-Za-z0-9][A-Za-z0-9-]*(?:_[A-Za-z0-9]{3,8})?';
+export const LOGIN_PATTERN = `^(?=.{1,39}$)${LOGIN_BODY}$`;
+export const LOGIN = new RegExp(LOGIN_PATTERN);
 /** A whole line that is an approval marker; captures hash, login and date. brief-approval.js uses the same one. */
-export const APPROVAL_PATTERN = new RegExp(`^<!-- eminzo:approved sha256=([0-9a-f]{64}) by=([A-Za-z0-9][A-Za-z0-9-]{0,38}) at=(${ISO_AT}) -->$`);
+export const APPROVAL_PATTERN = new RegExp(`^<!-- eminzo:approved sha256=([0-9a-f]{64}) by=((?=[^ ]{1,39} )${LOGIN_BODY}) at=(${ISO_AT}) -->$`);
 export const APPROVAL_ISO_AT = ISO_AT;
 
 /** The fence character a line opens or closes (up to 3 spaces in), or null. */

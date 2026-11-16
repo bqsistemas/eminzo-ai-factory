@@ -61,6 +61,32 @@ test('approveBrief refuses a brief with problems, with a sentence a person under
   assert.throws(() => approveBrief('not a brief', WHO), /The brief cannot be approved yet: /);
 });
 
+const EMU_39 = `${'a'.repeat(30)}_abcdefgh`;
+test('approveBrief accepts plain and Enterprise Managed User logins', () => {
+  for (const by of ['ana', 'ana-p', 'mona-cat_octo', 'octo_admin', EMU_39, 'a'.repeat(39)]) {
+    assert.match(approveBrief(READY, { by, at: AT }), new RegExp(` by=${by} at=`), by);
+  }
+});
+
+test('approveBrief refuses logins that are not GitHub logins, and names the EMU suffix', () => {
+  const bad = ['', '-ana', 'ana_', '_ana', 'ana__octo', 'ana_ab', 'ana_abcdefghi', 'ana_oc-to', 'ana.bo', 'ana bo', 'a'.repeat(40), `${'a'.repeat(31)}_abcdefgh`];
+  for (const by of bad) assert.throws(() => approveBrief(READY, { by, at: AT }), /GitHub login.*Enterprise Managed User/, by);
+});
+
+test('an Enterprise Managed User approval round-trips through briefStatus', () => {
+  const s = briefStatus(approveBrief(READY, { by: 'mona-cat_octo', at: AT }));
+  assert.equal(s.state, 'approved');
+  assert.equal(s.approval.by, 'mona-cat_octo');
+  assert.equal(s.can_create_issues, true);
+});
+
+test('the marker pattern holds the same login rule, 39 characters included', () => {
+  const line = (by) => `<!-- eminzo:approved sha256=${'a'.repeat(64)} by=${by} at=${AT} -->`;
+  assert.equal(APPROVAL_PATTERN.exec(line('mona-cat_octo'))[2], 'mona-cat_octo');
+  assert.ok(APPROVAL_PATTERN.test(line(EMU_39)));
+  for (const by of ['ana_ab', 'ana_abcdefghi', 'ana__octo', 'a'.repeat(40), `${'a'.repeat(31)}_abcdefgh`]) assert.ok(!APPROVAL_PATTERN.test(line(by)), by);
+});
+
 test('approveBrief validates who approved and when', () => {
   for (const by of ['', 'ana bo', '-ana', 'a'.repeat(40), 'ana>', undefined]) {
     assert.throws(() => approveBrief(READY, { by, at: AT }), /GitHub login/, String(by));
