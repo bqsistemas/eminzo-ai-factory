@@ -7,22 +7,12 @@ This repository publishes two products from one GitHub Releases page: the CLI (`
 | | CLI | Desktop app |
 |---|---|---|
 | Tag | `vX.Y.Z` | `desktop-vX.Y.Z` |
-| Published by | `npm run release:cli` (GitHub Release) and the Publish CLI workflow (npm, with provenance) | the desktop build (electron-builder), as a **draft** |
+| Published by | `npm run release:cli` (GitHub Release) and `npm publish` (npm) | the desktop build (electron-builder), as a **draft** |
 | "Latest" | **Never.** Always `--latest=false` | **Always.** Mark it when you publish the draft |
 
 **Why.** The desktop app updates itself with electron-updater, which asks `https://github.com/bqsistemas/eminzo-ai-factory/releases/latest` and reads `latest-mac.yml`, `latest.yml` or `latest-linux.yml` from that release. If a CLI release becomes "Latest", installed apps stop seeing updates.
 
 The workflow `.github/workflows/keep-desktop-latest.yml` is the safety net: when any non-desktop release is published or edited, it restores "Latest" to the newest published desktop release. Do not rely on it; follow the rules. Releases are cut from `main`, and the safety net only runs for tags whose commit already contains this workflow (GitHub runs the workflow as it exists at the tagged commit), so a release tagged before it landed is not covered.
-
-## npm: the Publish CLI workflow
-
-`.github/workflows/publish-cli.yml` is the only way the CLI reaches npm. On every pull request it runs the tests and packs the CLI. When a `vX.Y.Z` tag is pushed, it does the same, then waits for a maintainer to approve the `npm` environment, checks that the tag matches `cli/package.json`, and publishes with provenance: npm shows which workflow and commit built the package, and `npm audit signatures` can check it. No npm token exists; npm trusts this workflow instead.
-
-One-time setup:
-
-1. On npmjs.com, open `@eminzo/factory` → Settings → **Trusted Publisher** → GitHub Actions: owner `bqsistemas`, repository `eminzo-ai-factory`, workflow `publish-cli.yml`, environment `npm`.
-2. On GitHub, Settings → Environments → New environment `npm`, with yourself as a required reviewer and the deployment tags limited to `v*`.
-3. After the first publish through the workflow succeeds, on npmjs.com set the package's publishing access to require two-factor authentication and disallow tokens, so nothing else can publish it.
 
 ## Asset names (contract)
 
@@ -56,7 +46,7 @@ Link form: `https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/down
    ```
 
    The script requires `main`, a clean tree, and `vX.Y.Z` on HEAD both locally and on origin. It refuses `desktop-` versions and always passes `--latest=false`. Use `--notes-file <path>` instead of generated notes if you wrote some.
-4. Approve the publish: pushing the tag started the Publish CLI workflow, which waits on the `npm` environment (Actions → Publish CLI → Review deployments). It publishes to npm with provenance once you approve. Nobody runs `npm publish` by hand.
+4. Publish to npm yourself (the script never does): `cd cli && npm publish`. `prepack` builds and `prepublishOnly` runs the tests.
 5. Verify (see below): the CLI release must not be Latest.
 
 ## Flow 2: desktop only
@@ -75,7 +65,7 @@ Link form: `https://github.com/bqsistemas/eminzo-ai-factory/releases/latest/down
 
 Do the CLI first, then the desktop app, so the desktop release is the last one published and ends as Latest.
 
-1. Flow 1 completely (tag, `release:cli`, the approved npm publish).
+1. Flow 1 completely (tag, `release:cli`, `npm publish`).
 2. Flow 2 completely.
 
 If you must do the desktop first, the workflow will restore Latest when the CLI release is created, but check anyway.

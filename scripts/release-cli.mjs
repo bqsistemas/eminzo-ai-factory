@@ -3,7 +3,7 @@
 //
 // The release is ALWAYS created with --latest=false: the desktop app updates through
 // /releases/latest, so a CLI release must never become "Latest".
-// This script never publishes to npm: the Publish CLI workflow does, from the tag (docs/releasing.md).
+// This script never runs `npm publish`; see docs/releasing.md.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -99,7 +99,7 @@ function main(argv) {
   }
   console.log(shown);
   execFileSync(cmd, args, { cwd: root, stdio: 'inherit' });
-  console.log('GitHub Release created. The Publish CLI workflow publishes to npm once its npm environment is approved (docs/releasing.md).');
+  console.log('GitHub Release created. npm publish is a separate, manual step (docs/releasing.md).');
   return 0;
 }
 
