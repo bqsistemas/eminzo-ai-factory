@@ -488,30 +488,60 @@ function runCheck(root, dir, { base, config, prepare, wanted, identity }) {
 
 // ---- the fix issue ----------------------------------------------------------------------------------
 
-const CHECK_TOOLS = new Set(['npm', 'pnpm', 'yarn', 'bun', 'npx', 'node', 'deno', 'go', 'cargo', 'rustc', 'python', 'python3', 'pytest', 'ruff', 'mypy', 'make', 'mvn', 'gradle', './gradlew', './mvnw', 'tsc', 'eslint', 'jest', 'vitest', 'nx', 'turbo', 'rspec', 'bundle', 'rake', 'dotnet', 'phpunit', 'composer', 'swift', 'flutter', 'dart']);
+const CHECK_TOOLS = new Set(['npm', 'pnpm', 'yarn', 'bun', 'npx', 'bunx', 'node', 'deno', 'go', 'cargo', 'rustc', 'python', 'python3', 'pytest', 'ruff', 'mypy', 'make', 'mvn', 'gradle', './gradlew', './mvnw', 'tsc', 'eslint', 'jest', 'vitest', 'nx', 'turbo', 'rspec', 'bundle', 'rake', 'dotnet', 'phpunit', 'composer', 'swift', 'flutter', 'dart']);
 const CHECK_WORDS = new Set(['run', 'test', 'lint', 'exec', 'build', 'check', 'typecheck', 'vet', 'fmt', 'clippy', 'affected', 'run-many', 'ci', 'verify', 'compile']);
-const SCRIPT_NAME = /^[a-z][a-z0-9:_-]{0,30}$/;
+const SCRIPT_RUNNERS = new Set(['npm', 'pnpm', 'yarn', 'bun']); // `<runner> run <name>` runs a script of package.json
+const EXEC_BINS = new Set(['nx', 'turbo', 'tsc', 'eslint', 'jest', 'vitest', 'prettier', 'biome']);
+const BIN_RUNNERS = new Set(['npx', 'bunx']); // the word after them is a binary
 
 /**
  * The failing command as a PUBLIC issue may show it. The trace prints a command after the shell expanded it, so anything it
- * carried (a token, `-u user:pass`, a key, an id) is in it, and no pattern can tell every secret from a word. So this is an
- * allowlist: the program must be a known check tool (`pnpm`, `go`, `cargo`...), the next words only known verbs (`run`, `test`,
- * `lint`...), and right after `run` or `exec` one script or binary name (`lint:ci`, `nx`). It stops at the first word that fails,
- * shows at most three words and adds ` …` when something was left out. The raw command stays in the local state and report.
- * Display text only. @returns {string|null} null when the program is not on the list: then nothing of the command is shown.
+ * carried (a token, `-u user:pass`, a key, a password in a variable) is in it, and no pattern can tell a secret from a word. So
+ * this is an allowlist, and a free word is shown only when it can be checked:
+ * - the program must be a known check tool (`pnpm`, `go`, `cargo`...);
+ * - the next words are known verbs (`run`, `test`, `lint`...);
+ * - after `run` of npm, pnpm, yarn or bun, a word only when it is a key of `scripts` in the base worktree's package.json
+ *   (`scripts` is that list; without it the word is dropped);
+ * - after `exec`, and after npx or bunx, a word only when it is one of a fixed set of binaries (nx, turbo, tsc, eslint, jest,
+ *   vitest, prettier, biome);
+ * - after `run` of any other tool (node, deno, python, go, cargo...) no free word at all.
+ * It stops at the first word that fails, shows at most three words and adds ` …` when something was left out. The raw command
+ * stays in the local state and report. Display text only.
+ * @param {string|null} command @param {Iterable<string>|null} [scripts]
+ * @returns {string|null} null when the program is not on the list: then nothing of the command is shown.
  */
-export function publicCommand(command) {
+export function publicCommand(command, scripts = null) {
   if (typeof command !== 'string') return null;
   const words = command.replace(/`/g, '').trim().split(/\s+/).filter(Boolean);
   if (!words.length || !CHECK_TOOLS.has(words[0])) return null;
+  const known = new Set(scripts ?? []);
   let shown = 1;
   while (shown < 3 && shown < words.length) {
     const word = words[shown];
-    const afterRun = shown >= 2 && ['run', 'exec'].includes(words[shown - 1]);
-    if (!(CHECK_WORDS.has(word) || (afterRun && SCRIPT_NAME.test(word)))) break;
+    const before = words[shown - 1];
+    let allowed;
+    if (shown === 1 && BIN_RUNNERS.has(words[0])) allowed = EXEC_BINS.has(word);
+    else if (before === 'exec') allowed = EXEC_BINS.has(word);
+    else if (before === 'run' && SCRIPT_RUNNERS.has(words[0])) allowed = known.has(word);
+    else allowed = CHECK_WORDS.has(word);
+    if (!allowed) break;
     shown += 1;
   }
   return `${words.slice(0, shown).join(' ')}${shown < words.length ? ' …' : ''}`;
+}
+
+/** The names of `scripts` in the package.json of the base worktree, read bounded and never through a link; null when unreadable. */
+export function baseScripts(root) {
+  try {
+    const file = join(root, '.worktrees/.base/package.json');
+    const st = lstatSync(file);
+    if (!st.isFile() || st.size > 256 * 1024) return null;
+    const scripts = JSON.parse(readFileSync(file, 'utf8'))?.scripts;
+    if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) return null;
+    return Object.keys(scripts).slice(0, 500);
+  } catch {
+    return null;
+  }
 }
 
 /** The title with only characters that are inert in a shell and in Markdown (job.js `safeTitle` does the same for issue titles). */
@@ -572,11 +602,11 @@ const TEXT = {
  * @param {{sha: string, exit: number|null, command: string|null}} record the failing check
  * @param {{engineCommand?: string, version?: string|null, date?: string}} [options]
  */
-export function issueText(config, record, { engineCommand: command = engineCommand('base'), version = engineVersion(), date = new Date().toISOString().slice(0, 10) } = {}) {
+export function issueText(config, record, { engineCommand: command = engineCommand('base'), version = engineVersion(), date = new Date().toISOString().slice(0, 10), scripts = null } = {}) {
   const t = TEXT[configLanguage(config)];
   const { branch } = baseRef(config);
   const sha = short(record.sha);
-  const shownCommand = publicCommand(record.command);
+  const shownCommand = publicCommand(record.command, scripts);
   const exit = record.exit ?? '?';
   return {
     title: inertTitle(t.title(branch, shownCommand ?? 'factory/checks.sh')) || 'Fix the checks',
@@ -627,7 +657,7 @@ function openFixIssues(gh, root) {
 export function ensureFixIssue(root, config, record, { gh = process.env.FACTORY_GH || 'gh', date, version } = {}) {
   const open = openFixIssues(gh, root);
   if (open.length) return { number: open[0], created: false };
-  const { title, body } = issueText(config, record, { ...(date ? { date } : {}), ...(version !== undefined ? { version } : {}) });
+  const { title, body } = issueText(config, record, { scripts: baseScripts(root), ...(date ? { date } : {}), ...(version !== undefined ? { version } : {}) });
   const dir = mkdtempSync(join(tmpdir(), 'factory-base-fix-'));
   let made;
   try {
@@ -653,14 +683,15 @@ export function ensureFixIssue(root, config, record, { gh = process.env.FACTORY_
  * Marks a cached FAIL as confirmed by a second, fresh run, without touching its time (the TTL counts from the check). A confirmed
  * FAIL is not confirmed again for the next job. Best effort.
  */
-export function markConfirmed(root, key) {
-  return updateRecord(root, key, (rec) => ({ ...rec, confirmed: true }));
+export function markConfirmed(root, key, config) {
+  return updateRecord(root, key, (rec) => ({ ...rec, confirmed: true }), config);
 }
 
-function updateRecord(root, key, change) {
+function updateRecord(root, key, change, config) {
   try {
     const dir = ensureStateDir(root);
-    const lock = takeLock(dir, 10_000, 100);
+    // The same lock age as the check itself (it follows checks.base_timeout_minutes): a live holder is never robbed by a writer.
+    const lock = takeLock(dir, Math.min(10_000, envNumber('FACTORY_BASE_LOCK_WAIT_MS', 10_000)), Math.min(100, envNumber('FACTORY_BASE_LOCK_POLL_MS', 100)), lockAge(config ?? loadConfig(root)));
     if (!lock.ok) return false;
     try {
       const state = readState(root);
@@ -677,8 +708,8 @@ function updateRecord(root, key, change) {
 }
 
 /** Remembers the fix issue on the check that found the failure (the last full check and its cached result). Best effort. */
-export function setFixIssue(root, key, number) {
-  return updateRecord(root, key, (rec) => ({ ...rec, fix_issue: number }));
+export function setFixIssue(root, key, number, config) {
+  return updateRecord(root, key, (rec) => ({ ...rec, fix_issue: number }), config);
 }
 
 // ---- the command ------------------------------------------------------------------------------------
@@ -702,7 +733,7 @@ function fixIssueMain() {
   if (tip.error) throw new Error(tip.error);
   if (tip.sha !== last.sha) throw new Refused(`${base} moved since; run ${engineCommand('base')} again`);
   const { number, created } = ensureFixIssue(root, config, last);
-  setFixIssue(root, last.key, number);
+  setFixIssue(root, last.key, number, config);
   process.stdout.write(`fix: #${number} ${created ? 'created' : 'open'}\n`);
   return 0;
 }

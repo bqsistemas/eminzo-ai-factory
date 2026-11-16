@@ -385,6 +385,26 @@ for (const { question, tool, args, argsFrom, setup, source = 'local', check, ref
   });
 }
 
+test('golden: a job held by a broken base is waiting for the base, never for a person', async () => {
+  const dir = join(fixtureRoot, 'factory/jobs/172-held');
+  mkdirSync(dir, { recursive: true });
+  const at = new Date().toISOString();
+  writeFileSync(join(dir, 'job.json'), JSON.stringify({ id: '172-held', issue: 172, title: 'Rename the filter', stage: 'gate', lane: 'normal', round: 1, max_rounds: 3, provider: 'claude', gate: 'FAIL',
+    reviews: {}, history: [], note: 'main is broken: waiting for #9', base_wait: { since: at, at, sha: 'a'.repeat(40), key: 'b'.repeat(64), fix_issue: 9, command: null }, started: at, updated: at }));
+  try {
+    const overview = (await ask('factory_overview')).structuredContent;
+    assert.equal(overview.waiting_for_people, 4);
+    assert.equal(overview.waiting_for_base, 1);
+    assert.match(overview.summary, /4 jobs waiting for a person · 1 job waiting for the base branch to be fixed/);
+    const waiting = (await ask('waiting_on_people')).structuredContent;
+    assert.deepEqual(waiting.items.map((i) => i.issue), [165, 161, 164, 155]);
+    assert.deepEqual(waiting.waiting_for_base.map((i) => [i.issue, i.fix_issue]), [[172, 9]]);
+    assert.match((await ask('job_detail', { job: '172' })).structuredContent.summary, /waits for the base branch to be fixed \(issue #9\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('golden: a job from another machine is not invented', async () => {
   const result = await ask('job_detail', { job: '999' });
   assert.equal(result.isError, true);

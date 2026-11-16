@@ -130,7 +130,7 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'factory_overview',
       title: 'Factory now',
-      description: 'How the factory is right now on this machine: jobs per group and stage, the jobs running, how many wait for a person, and the last job that finished. Start here for "how is the factory doing".',
+      description: 'How the factory is right now on this machine: jobs per group and stage, the jobs running, how many wait for a person (`waiting_for_people`), how many wait for the base branch to be fixed (`waiting_for_base`, present only when some do: a job held by a broken base is not waiting for a person), and the last job that finished. Start here for "how is the factory doing".',
       answer: (_, c) => overview(c.root, { now: c.now }),
     }, ctx),
     tool({
@@ -171,7 +171,7 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'waiting_on_people',
       title: 'Waiting for a person',
-      description: 'Every local job that waits for a person, oldest wait first, with what is needed: decide (escalated), answer (intake question), approve-spec, merge, or fix-base (the base branch fails the same checks; the issue that fixes it is named). Use it for "what is waiting for me".',
+      description: 'Every local job that waits for a person, oldest wait first, with what is needed: decide (escalated), answer (intake question), approve-spec, or merge. Jobs held because the base branch fails the same checks are not a task for a person: they come apart, as `waiting_for_base`, with the issue that fixes it. Use it for "what is waiting for me".',
       answer: (_, c) => waitingOnPeople(c.root, { now: c.now }),
     }, ctx),
     tool({

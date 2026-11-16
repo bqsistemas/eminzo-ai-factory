@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { factoryQueue } from '../factory/lib/state/github.js';
 import { STAGE_GROUPS, findJob, jobView, readJobs, roundCauses, roundReason } from '../factory/lib/state/jobs.js';
 import { changesSince, configView, jobByRef, listJobs, overview, periodSummary, waitingOnPeople } from '../factory/lib/state/queries.js';
-import { QUEUE_ISSUES, stateFixture } from './helpers/factory-state-fixture.js';
+import { QUEUE_ISSUES, fixtureJobs, stateFixture } from './helpers/factory-state-fixture.js';
 
 const NOW = Date.parse('2026-11-12T15:00:00Z');
 const ago = (hours) => new Date(NOW - hours * 3_600_000).toISOString();
@@ -166,4 +166,44 @@ test('factoryQueue: gh failures become a message a person can act on', () => {
   assert.throws(() => factoryQueue(root, { runner: () => ({ status: 1, stderr: 'warning\ngh: To get started, run gh auth login\n' }) }), /could not read the queue from GitHub: gh: To get started, run gh auth login/);
   assert.throws(() => factoryQueue(root, { runner: () => ({ error: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }) }) }), /the GitHub CLI \(gh\) is not installed/);
   assert.throws(() => factoryQueue(root, { runner: () => ({ status: 0, stdout: 'oops' }) }), /gh did not return JSON/);
+});
+
+// A job held at the gate by a broken base branch waits for the base, not for a person: it is never in a "for a person" count or list.
+const held = stateFixture({
+  now: NOW,
+  jobs: {
+    ...fixtureJobs(NOW),
+    '172-held': {
+      job: { issue: 172, title: 'Rename the filter', stage: 'gate', lane: 'normal', round: 1, max_rounds: 3, provider: 'claude', pr: 173, gate: 'FAIL', reviews: {}, history: [],
+        intake: { decision: 'ACCEPT', risk: 'low', surfaces: [], size: 's' }, note: 'main is broken: waiting for #9',
+        base_wait: { since: ago(2), at: ago(2), sha: 'a'.repeat(40), key: 'b'.repeat(64), fix_issue: 9, command: 'pnpm run lint' }, started: ago(3), updated: ago(1), cost_usd: 1, cost_status: 'available' },
+      files: {},
+    },
+  },
+});
+
+test('overview: a job held by a broken base is counted apart from the jobs that wait for a person', () => {
+  const o = overview(held.root, { now: NOW });
+  assert.equal(o.summary, '2 jobs running, 4 jobs waiting for a person · 1 job waiting for the base branch to be fixed, 3 jobs finished (10 jobs on this machine).');
+  assert.equal(o.waiting_for_people, 4);
+  assert.equal(o.waiting_for_base, 1);
+  assert.deepEqual(ids(o.running), ['162-building', '163-review']);
+  assert.equal(overview(root, { now: NOW }).waiting_for_base, undefined, 'no key when nothing waits for the base');
+});
+
+test('waitingOnPeople: the held job is listed apart, with its fix issue, and never as a person\'s task', () => {
+  const w = waitingOnPeople(held.root, { now: NOW });
+  assert.equal(w.total, 4);
+  assert.ok(!ids(w.items).includes('172-held'));
+  assert.deepEqual(w.waiting_for_base.map((i) => [i.id, i.kind, i.fix_issue]), [['172-held', 'fix-base', 9]]);
+  assert.match(w.summary, /4 jobs wait for a person: .* · 1 job waiting for the base branch to be fixed\.$/);
+  assert.equal(waitingOnPeople(root, { now: NOW }).waiting_for_base, undefined);
+});
+
+test('changesSince: a held job started waiting for the base, not for a person', () => {
+  const c = changesSince(held.root, { since: ago(1.5), now: NOW });
+  assert.ok(!ids(c.waiting).includes('172-held'));
+  assert.deepEqual(ids(c.waiting_for_base), ['172-held']);
+  assert.match(c.summary, /1 job started waiting for the base branch to be fixed/);
+  assert.doesNotMatch(c.summary, /started waiting for a person/);
 });

@@ -892,7 +892,7 @@ function postSyncDetail(c, job) {
     const { branch } = baseRef(c.config);
     try {
       const { number } = ensureFixIssue(c.root, c.config, result, { gh: c.gh });
-      setFixIssue(c.root, result.key, number);
+      setFixIssue(c.root, result.key, number, c.config);
       return `${branch} is broken (#${number}); see merge-checks.md`;
     } catch (err) {
       return `${branch} is broken (no fix issue: ${cleanText(err.message)}); see merge-checks.md`;
@@ -1331,7 +1331,7 @@ function baseCommand(c, id, fresh = false) {
   // A failure is confirmed before it holds the first job or opens a public issue for a tip: a flaky or one-off failure must not.
   if (result.status === 'FAIL' && (!held || held.sha !== result.sha) && !(fresh && !result.fromCache) && !result.confirmed) {
     result = ask(true);
-    if (result.status === 'FAIL') markConfirmed(c.root, result.key); // the next job that meets this failure does not run it a third time
+    if (result.status === 'FAIL') markConfirmed(c.root, result.key, c.config); // the next job that meets this failure does not run it a third time
   }
   if (result.status === 'PASS') {
     // Only a job that was held is merged with the base and gated again; any other failure is the job's own and goes to the builder.
@@ -1348,7 +1348,7 @@ function baseCommand(c, id, fresh = false) {
   let failure = null;
   try {
     fix = ensureFixIssue(c.root, c.config, result, { gh: c.gh }).number;
-    setFixIssue(c.root, result.key, fix);
+    setFixIssue(c.root, result.key, fix, c.config);
   } catch (err) {
     failure = cleanText(err.message);
   }

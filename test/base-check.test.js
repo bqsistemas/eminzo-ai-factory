@@ -11,7 +11,7 @@ import { baseFixture, git, GREEN, COUNTING } from './helpers/base-harness.js';
 
 // The engine code runs in this process for the direct calls below.
 Object.assign(process.env, { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@e.x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@e.x' });
-const { checkBase, recordResult, MAX_RESULTS } = await import('../factory/lib/base.js');
+const { checkBase, recordResult, setFixIssue, MAX_RESULTS } = await import('../factory/lib/base.js');
 const direct = (t, opts = {}) => { process.env.FACTORY_ROOT = t.root; process.env.FACTORY_BASE_LOCK_WAIT_MS = '400'; process.env.FACTORY_BASE_LOCK_POLL_MS = '40'; return checkBase(t.root, opts); };
 
 test('a green base: PASS, exit 0, the state, the report and a detached .worktrees/.base', () => {
@@ -42,13 +42,13 @@ test('a red base: FAIL, exit 1, the failing command from the trace and none of i
   const t = baseFixture({ files: { BROKEN: 'x\n' }, config: { checks: { prepare: '' } } });
   const res = t.base();
   assert.equal(res.status, 1, res.stderr);
-  assert.match(res.stdout, new RegExp(`^base: FAIL ${t.tip().slice(0, 12)}: test '!' -f BROKEN$`, 'm'));
+  assert.match(res.stdout, new RegExp(`^base: FAIL ${t.tip().slice(0, 12)}: test '?!'? -f BROKEN$`, 'm')); // bash quotes the ! in a trace, dash does not
   const full = t.state().full;
   assert.equal(full.status, 'FAIL');
-  assert.equal(full.command, "test '!' -f BROKEN"); // sh -x quotes the !
+  assert.match(full.command, /^test '?!'? -f BROKEN$/); // sh -x quotes the ! in bash and not in dash
   assert.equal(full.exit, 1);
   const report = t.report(full.report);
-  assert.match(report, /^Failing command: test '!' -f BROKEN$/m);
+  assert.match(report, /^Failing command: test '?!'? -f BROKEN$/m);
   assert.doesNotMatch(report, /\+\[factory\]/);
   assert.doesNotMatch(readFileSync(join(t.root, 'factory/jobs/.base', full.report.replace('checks.md', 'checks.log')), 'utf8'), /\+\[factory\]/);
 });
@@ -316,4 +316,22 @@ test('a stray report folder is pruned after a check, and a record whose report i
   assert.equal(existsSync(join(dir, 'aaaaaaaaaaaa')), false);
   assert.equal(readdirSync(dir).filter((n) => /^[0-9a-f]{12}$/.test(n)).length, 1);
   assert.match(t.state().full.report, /^[0-9a-f]{12}\/checks\.md$/);
+});
+
+test('every caller of the lock uses the same age: raising the checks timeout also protects the lock from the fix-issue writer', () => {
+  const t = baseFixture({ files: { BROKEN: 'x\n' }, checks: '#!/bin/sh\ntest ! -f BROKEN\n', config: { checks: { prepare: '', base_timeout_minutes: 120 } } });
+  assert.equal(t.base().status, 1);
+  const key = t.state().full.key;
+  const lock = join(t.root, 'factory/jobs/.base/lock');
+  const held = JSON.stringify({ pid: process.pid, started: new Date(Date.now() - 2 * 3_600_000).toISOString() });
+  process.env.FACTORY_BASE_LOCK_WAIT_MS = '300';
+  process.env.FACTORY_BASE_LOCK_POLL_MS = '40';
+  // 30 min prepare + 120 min checks + 10 min margin: a check that began two hours ago may still be running.
+  writeFileSync(lock, held);
+  assert.equal(setFixIssue(t.root, key, 5, { checks: { base_timeout_minutes: 120 } }), false);
+  assert.equal(readFileSync(lock, 'utf8'), held, 'the live holder keeps its lock');
+  assert.equal(t.state().full.fix_issue ?? null, null);
+  // With the default timeout the same lock is already over.
+  assert.equal(setFixIssue(t.root, key, 5, {}), true);
+  assert.equal(t.state().full.fix_issue, 5);
 });

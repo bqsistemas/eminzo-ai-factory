@@ -176,8 +176,9 @@ test('Ask Eminzo and the summary show the job as waiting for the base, with the 
   assert.equal(view.waiting.kind, 'fix-base');
   assert.match(view.waiting.reason, /waiting for #1/);
   const waiting = waitingOnPeople(t.root);
-  assert.equal(waiting.items[0].kind, 'fix-base');
-  assert.equal(waiting.items[0].fix_issue, 1);
+  assert.deepEqual(waiting.items, [], 'a held job is not a person\'s task');
+  assert.equal(waiting.waiting_for_base[0].kind, 'fix-base');
+  assert.equal(waiting.waiting_for_base[0].fix_issue, 1);
   const summary = (await t.job('summary')).stdout;
   assert.match(summary, new RegExp(`${id}\\s+#7\\s+gate \\(waits for main, #1\\)`));
   const graph = JSON.parse((await t.job('graph')).stdout);

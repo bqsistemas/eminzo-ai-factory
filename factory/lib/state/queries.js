@@ -54,9 +54,9 @@ export function listJobs(root, { stage, group, lane, risk, size, since, limit = 
   return { summary, total: views.length, jobs };
 }
 
-/** What every waiting job needs from a person, oldest wait first. */
+/** What every waiting job needs from a person, oldest wait first. A job held by a broken base is listed apart: it waits for the base, not for a person. */
 export function waitingOnPeople(root, { now = Date.now() } = {}) {
-  const items = readJobs(root).map((j) => jobView(j, now)).filter((v) => v.waiting).map((v) => ({
+  const all = readJobs(root).map((j) => jobView(j, now)).filter((v) => v.waiting).map((v) => ({
     ...brief(v),
     kind: v.waiting.kind,
     reason: v.waiting.reason,
@@ -64,10 +64,13 @@ export function waitingOnPeople(root, { now = Date.now() } = {}) {
     since: v.waiting.since,
     hours: v.waiting.since && at(v.waiting.since) !== null ? Math.round(((now - at(v.waiting.since)) / 3_600_000) * 10) / 10 : null,
   })).sort((a, b) => (at(a.since) ?? 0) - (at(b.since) ?? 0));
+  const items = all.filter((i) => i.kind !== 'fix-base');
+  const onBase = all.filter((i) => i.kind === 'fix-base');
   const kinds = {};
   for (const item of items) kinds[item.kind] = (kinds[item.kind] ?? 0) + 1;
-  const summary = items.length ? `${plural(items.length, 'job')} wait for a person: ${Object.entries(kinds).map(([k, n]) => `${n} to ${k}`).join(', ')}.` : 'Nothing waits for a person.';
-  return { summary, total: items.length, by_kind: kinds, items };
+  const people = items.length ? `${plural(items.length, 'job')} wait for a person: ${Object.entries(kinds).map(([k, n]) => `${n} to ${k}`).join(', ')}` : 'Nothing waits for a person';
+  const summary = `${people}${onBase.length ? ` · ${plural(onBase.length, 'job')} waiting for the base branch to be fixed` : ''}.`;
+  return { summary, total: items.length, by_kind: kinds, items, ...(onBase.length ? { waiting_for_base: onBase } : {}) };
 }
 
 /**
@@ -78,19 +81,22 @@ export function changesSince(root, { since, now = Date.now() } = {}) {
   const from = since === undefined ? now - DAY : at(since);
   const views = readJobs(root).map((j) => jobView(j, now));
   const finished = views.filter((v) => within(v.finished, from, Infinity)).map((v) => ({ ...brief(v), finished: v.finished, decision: v.decision }));
-  const waiting = views.filter((v) => v.waiting && within(v.updated, from, Infinity)).map((v) => ({ ...brief(v), kind: v.waiting.kind, reason: v.waiting.reason }));
-  const done = new Set([...finished, ...waiting].map((v) => v.id));
+  const waitingAll = views.filter((v) => v.waiting && within(v.updated, from, Infinity)).map((v) => ({ ...brief(v), kind: v.waiting.kind, reason: v.waiting.reason }));
+  const waiting = waitingAll.filter((v) => v.kind !== 'fix-base');
+  const onBase = waitingAll.filter((v) => v.kind === 'fix-base'); // waiting for the base branch, not for a person
+  const done = new Set([...finished, ...waitingAll].map((v) => v.id));
   const started = views.filter((v) => !done.has(v.id) && within(v.started, from, Infinity)).map((v) => ({ ...brief(v), started: v.started }));
-  const seen = new Set([...finished, ...waiting, ...started].map((v) => v.id));
+  const seen = new Set([...finished, ...waitingAll, ...started].map((v) => v.id));
   const moved = views.filter((v) => !seen.has(v.id) && within(v.updated, from, Infinity)).sort(newestFirst).map(brief);
   const parts = [
     finished.length && `${plural(finished.length, 'job')} finished`,
     waiting.length && `${plural(waiting.length, 'job')} started waiting for a person`,
+    onBase.length && `${plural(onBase.length, 'job')} started waiting for the base branch to be fixed`,
     started.length && `${plural(started.length, 'job')} started`,
     moved.length && `${plural(moved.length, 'job')} moved`,
   ].filter(Boolean);
   const summary = parts.length ? `Since ${iso(from)}: ${parts.join(', ')}.` : `Nothing changed since ${iso(from)}.`;
-  return { summary, since: iso(from), finished, waiting, started, moved };
+  return { summary, since: iso(from), finished, waiting, ...(onBase.length ? { waiting_for_base: onBase } : {}), started, moved };
 }
 
 /** How a period went (default: the 7 days before `now`): jobs started and finished, rounds, escalations and cost. */

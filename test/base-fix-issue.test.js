@@ -3,6 +3,7 @@
 // sha, the command or step that failed with its exit code and how to reproduce it, and NEVER a line of the log.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { baseFixture } from './helpers/base-harness.js';
@@ -123,23 +124,70 @@ test('fix-issue is refused after a passing check, with no check at all, and afte
   assert.match(moved.stderr, /refused: origin\/main moved since; run factory\/bin\/base again/);
 });
 
-test('publicCommand is an allowlist: a known check tool, a known subcommand, at most one script name after run or exec', () => {
-  assert.equal(publicCommand('pnpm run lint'), 'pnpm run lint');
-  assert.equal(publicCommand('pnpm run lint:ci'), 'pnpm run lint:ci');
+test('publicCommand is an allowlist: a known check tool, known verbs, and a name only when it can be checked', () => {
+  const scripts = ['lint', 'lint:ci', 'build'];
+  assert.equal(publicCommand('pnpm run lint', scripts), 'pnpm run lint');
+  assert.equal(publicCommand('pnpm run lint:ci', scripts), 'pnpm run lint:ci', 'a script that package.json defines');
+  assert.equal(publicCommand('pnpm run lint:ci'), 'pnpm run …', 'no package.json: the name is dropped');
+  assert.equal(publicCommand('pnpm run lint:ci', ['test']), 'pnpm run …', 'package.json lacks it: dropped');
   assert.equal(publicCommand('npm test'), 'npm test');
   assert.equal(publicCommand('pnpm exec nx run-many -t lint test'), 'pnpm exec nx …');
-  assert.equal(publicCommand('pnpm run lint --max-warnings=0'), 'pnpm run lint …');
+  assert.equal(publicCommand('npx eslint src'), 'npx eslint …');
+  assert.equal(publicCommand('bunx vitest run'), 'bunx vitest run');
+  assert.equal(publicCommand('pnpm run lint --max-warnings=0', scripts), 'pnpm run lint …');
   assert.equal(publicCommand('go vet ./...'), 'go vet …');
   assert.equal(publicCommand('cargo clippy --all-targets'), 'cargo clippy …');
   assert.equal(publicCommand('./gradlew test'), './gradlew test');
   assert.equal(publicCommand('make'), 'make');
   assert.equal(publicCommand('echo ``a`` b'), null, 'echo is not a check tool; backticks never survive');
-  assert.equal(publicCommand('npm `run` lint'), 'npm run lint');
+  assert.equal(publicCommand('npm `run` lint', scripts), 'npm run lint');
   assert.equal(publicCommand(null), null);
   assert.equal(publicCommand('   '), null);
   assert.equal(publicCommand('./run.sh --token x'), null);
-  assert.equal(publicCommand('/usr/bin/pnpm run lint'), null, 'a path is not on the list');
-  assert.equal(publicCommand('npm run build test extra'), 'npm run build …', 'at most three words');
+  assert.equal(publicCommand('/usr/bin/pnpm run lint', scripts), null, 'a path is not on the list');
+  assert.equal(publicCommand('npm run build test extra', scripts), 'npm run build …', 'at most three words');
+});
+
+test('the short secrets that a trace shows after run or exec are dropped, with or without a package.json', () => {
+  const config = { base: 'origin/main', language: 'en' };
+  const probes = [
+    ['npm run s3cretpass', 'npm run …', 's3cretpass'],
+    ['pnpm run sk-live-abcdef0123', 'pnpm run …', 'sk-live'],
+    ['node run admin:pw123', 'node run …', 'admin:pw123'],
+    ['deno run secretpw', 'deno run …', 'secretpw'],
+    ['yarn exec abc123', 'yarn exec …', 'abc123'],
+    ['python run x', 'python run …', ''],
+    ['npm run $DEPLOY_PW', 'npm run …', 'DEPLOY_PW'],
+    ['pnpm exec lint:ci', 'pnpm exec …', 'lint:ci'],
+    ['npx hunter2', 'npx …', 'hunter2'],
+  ];
+  for (const scripts of [null, ['lint', 'build']]) {
+    for (const [raw, shown, secret] of probes) {
+      assert.equal(publicCommand(raw, scripts), shown, raw);
+      const { title, body } = issueText(config, { sha: 'a'.repeat(40), status: 'FAIL', exit: 3, command: raw }, { engineCommand: 'eminzo base', version: null, date: '2026-11-15', scripts });
+      if (secret) assert.ok(!title.includes(secret) && !body.includes(secret), `${secret} reached the issue for ${raw}`);
+      assert.match(body, new RegExp(`Failing command: \`${shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\` \\(exit 3\\)`));
+    }
+  }
+});
+
+test('the issue shows a script only when the base worktree\'s package.json defines it', () => {
+  const checks = '#!/bin/sh\nPATH="$FACTORY_ROOT/fakebin:$PATH"\npnpm run lint:ci\n';
+  const make = (scripts) => {
+    const t = baseFixture({ checks, config: { checks: { prepare: '' } }, files: { 'package.json': JSON.stringify({ name: 'x', scripts }) } });
+    mkdirSync(join(t.root, 'fakebin'));
+    writeFileSync(join(t.root, 'fakebin/pnpm'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    assert.equal(t.base().status, 1);
+    const { fake, fix } = withGh(t);
+    assert.equal(fix().status, 0);
+    return fake.creates()[0];
+  };
+  const defined = make({ 'lint:ci': 'eslint .' });
+  assert.match(defined.body, /Failing command: `pnpm run lint:ci` \(exit 1\)/);
+  assert.match(defined.args[defined.args.indexOf('--title') + 1], /^Fix the checks on main: pnpm run lint:ci$/);
+  const missing = make({ lint: 'eslint .' });
+  assert.match(missing.body, /Failing command: `pnpm run …` \(exit 1\)/);
+  assert.doesNotMatch(missing.body, /lint:ci/);
 });
 
 test('publicCommand never lets a token, a key, an id or a password through, whatever it looks like', () => {
@@ -177,7 +225,7 @@ test('a command whose program is not a known check tool is not published: the is
 test('issueText: inert title, no backtick can break the span, no command falls back to checks.sh', () => {
   const config = { base: 'origin/main', language: 'en' };
   const base = { sha: 'a'.repeat(40), status: 'FAIL', exit: 2, command: 'npm run lint `x` $(rm -rf /)' };
-  const { title, body } = issueText(config, base, { engineCommand: 'eminzo base', version: '1.2.3', date: '2026-11-15' });
+  const { title, body } = issueText(config, base, { engineCommand: 'eminzo base', version: '1.2.3', date: '2026-11-15', scripts: ['lint'] });
   assert.doesNotMatch(title, /[`$]|\n/);
   assert.match(body, /Failing command: `npm run lint …` \(exit 2\)/);
   assert.doesNotMatch(body, /rm -rf/);
