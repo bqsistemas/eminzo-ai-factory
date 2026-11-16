@@ -152,6 +152,7 @@ const INTAKE = `ACCEPT\nRISK: low\nSURFACES: none\nRESCOPED: no\n\n## Scope\nThe
 
 import { applyRecord, commentKinds, githubBody } from '../factory/lib/job.js';
 import { engineVersion } from '../factory/lib/util.js';
+import { parseFacts } from '../factory/lib/record-facts.js';
 
 const SPEC = '# Spec: toggle\n\n- AC-1: it toggles\n- AC-2: it persists\n';
 
@@ -190,8 +191,9 @@ test('engine_version is recorded at job creation and refreshed when a round star
   writeFileSync(join(t.json(id).worktree, 'BROKEN'), 'x\n');
   git(t.json(id).worktree, 'add', '.');
   git(t.json(id).worktree, 'commit', '-q', '-m', 'break');
-  writeFileSync(join(t.root, 'factory/checks.sh'), '#!/bin/sh\nexit 1\n');
+  writeFileSync(join(t.root, 'factory/checks.sh'), '#!/bin/sh\ntest ! -f BROKEN\n'); // fails on the job's own change only
   await t.bin('gate', [id]);
+  assert.match(ok(await t.job(id, 'base')), /^own: /); // a real gate failure is answered before the job goes back
   t.env.EMINZO_VERSION = '8.0.0';
   ok(await t.job(id, 'to', 'build'));
   assert.equal(t.json(id).round, 2);
@@ -228,6 +230,26 @@ test('the PR body gets one Factory record section, replaced in place, human text
   assert.equal(second.split('factory:record-start').length, 2, 'replaced, not appended');
   assert.equal(second.split('Human text').length, 2);
   assert.ok(second.startsWith('Human text\n\nCloses #7\n'));
+});
+
+test('the Factory record carries the job facts as one hidden line, refreshed when the job enters approve', async () => {
+  const t = setup();
+  const id = await building(t);
+  await gateAndReview(t, id);
+  const [atReview] = parseFacts(t.prBody(31));
+  assert.equal(atReview.job, id);
+  assert.equal(atReview.issue, 7);
+  assert.equal(atReview.lane, 'normal');
+  assert.equal(atReview.risk, 'low');
+  assert.equal(atReview.round, 1);
+  assert.equal(atReview.started, t.json(id).started);
+  assert.equal(atReview.approve_entered, null);
+  ok(await t.job(id, 'to', 'approve'));
+  const facts = parseFacts(t.prBody(31));
+  assert.equal(facts.length, 1, 'replaced with the record, not appended');
+  assert.equal(facts[0].approve_entered, t.json(id).approve_entered);
+  const body = t.prBody(31);
+  assert.ok(body.indexOf('factory:facts') < body.indexOf(`factory:record-end ${id}`), 'inside the record markers');
 });
 
 test('a human edit outside the markers survives the next update', async () => {

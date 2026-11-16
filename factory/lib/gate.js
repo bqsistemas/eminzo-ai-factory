@@ -6,7 +6,7 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
-import { checksInputs, headSha } from './check-stamp.js';
+import { checksInputs, headSha, mergeBase } from './check-stamp.js';
 import { withImplied } from './intake.js';
 import { projectMapLines, projectMapStatus } from './project-map.js';
 import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
@@ -51,6 +51,8 @@ export function runVisualCheck(root, config, job, checksFile) {
   return { status: 'ERROR', text: `VISUAL: ERROR\n\nReason: ${reason}\n`, reason };
 }
 
+const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
+
 /**
  * Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved.
  * With `pidFile`, the shell writes its PID there first (the same process then runs checks.sh), so a
@@ -58,19 +60,40 @@ export function runVisualCheck(root, config, job, checksFile) {
  * The checks see FACTORY_CHECK_MODE: `full` unless the caller passes mode `focused` together with
  * `changedFiles` (the absolute path of a file listing the changed paths, one per line), which
  * becomes FACTORY_CHANGED_FILES. Whatever the environment already holds for either variable is
- * dropped, so the gate and the merge always run full.
+ * dropped.
+ * `scope` says what the job touched, for a checks.sh that checks only that: `scope.base` (the commit
+ * the job's branch left the base at) becomes FACTORY_BASE and `scope.head` (the commit under test)
+ * becomes FACTORY_HEAD. Each is set only from a full-length hex sha; inherited values are always
+ * dropped, and without a scope every project is checked.
+ * With `trace` the script runs under `sh -x` with the prefix `+[factory] `, so the base check can name
+ * the command that failed (display text only; the trace is on stderr, merged into `output`).
+ * `timeoutMs` (SIGKILL when it runs out), `dropEnv` (names to remove) and `dropFactoryEnv` (every FACTORY_* but FACTORY_ROOT) are for the
+ * base check, which runs unattended on a machine that holds secrets.
+ * @returns {{code: number, output: string, signal: string|null, failedToStart: boolean, timedOut: boolean}} `code` is 1 when
+ *   the shell has no exit status (a signal, or it did not start); the base check tells those apart.
  */
-export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles } = {}) {
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false, timeoutMs, dropEnv = [], dropFactoryEnv = false } = {}) {
   const env = { ...process.env };
+  for (const name of dropEnv) delete env[name];
+  if (dropFactoryEnv) for (const name of Object.keys(env)) if (name.startsWith('FACTORY_') && name !== 'FACTORY_ROOT') delete env[name];
   delete env.NODE_TEST_CONTEXT; // a gate started from a test run must not report into it
   delete env.FACTORY_CHANGED_FILES;
+  delete env.FACTORY_BASE;
+  delete env.FACTORY_HEAD;
+  if (isSha(scope?.base)) env.FACTORY_BASE = scope.base;
+  if (isSha(scope?.head)) env.FACTORY_HEAD = scope.head;
   const focused = mode === 'focused' && typeof changedFiles === 'string';
   env.FACTORY_CHECK_MODE = focused ? 'focused' : 'full';
   if (focused) env.FACTORY_CHANGED_FILES = changedFiles;
-  const script = pidFile ? 'printf "%s\n" "$$" > "$1"; exec sh "$0" 2>&1' : 'exec sh "$0" 2>&1';
-  const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env });
+  if (trace) env.PS4 = '+[factory] ';
+  const sh = trace ? 'sh -x' : 'sh';
+  const script = pidFile ? `printf "%s\n" "$$" > "$1"; exec ${sh} "$0" 2>&1` : `exec ${sh} "$0" 2>&1`;
+  // Only a caller that passes a timeout gets one (the base check): the gate's own and the nudge's behavior do not change.
+  const limit = Number.isFinite(timeoutMs) && timeoutMs > 0 ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {};
+  const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env, ...limit });
   const output = `${res.stdout ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
-  return { code: res.status ?? 1, output };
+  const timedOut = res.error?.code === 'ETIMEDOUT';
+  return { code: res.status ?? 1, output, signal: res.signal ?? null, failedToStart: Boolean(res.error) && !timedOut, timedOut };
 }
 
 /** Protected test paths the branch changed since it left `base`, or an error. */
@@ -106,7 +129,9 @@ export function gate(root, job, outFile) {
   const head = headSha(job.worktree);
   const inputs = checksInputs(root);
   const started = Date.now();
-  const checks = runChecks(root, job.worktree);
+  // A job that fixes the base is judged on everything: its goal is the whole base.
+  const checksBase = job.base_fix ? null : mergeBase(job.worktree, base);
+  const checks = runChecks(root, job.worktree, { scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
   const spanMs = Date.now() - started;
   const guard = protectedChanges(job.worktree, base, config.protected_tests ?? []);
   const visual = checks.code === 0 ? runVisualCheck(root, config, job, outFile) : null;
@@ -127,6 +152,7 @@ export function gate(root, job, outFile) {
     '',
     `Checks exit code: ${checks.code}`,
     `Tested head: ${head ?? 'unknown'}`,
+    `Checks base: ${checksBase ?? 'none'}`,
     `Checks inputs: ${inputs}`,
     `Protected test violations: ${violations.length ? '' : 'none'}`,
     ...violations.map((v) => `- ${v}`),

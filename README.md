@@ -73,7 +73,7 @@ flowchart LR
 | Intake | `intake` agent | Accept, needs info or reject, with the risk and the surfaces the change touches |
 | Spec | `spec-writer` | `spec.md` with numbered, testable acceptance criteria |
 | Build | `builder` | `plan.md`, one test per criterion, the code and a draft PR, in its own worktree |
-| Gate | `factory/checks.sh` | Pass or fail of your own checks; a failure sends the job back to the builder |
+| Gate | `factory/checks.sh` | Pass or fail of your own checks; a failure sends the job back to the builder, unless the base branch fails the same checks: then the job waits for the issue that fixes it |
 | Review | Routed reviewers | One verdict per reviewer and round |
 | Approve | Approver (a script or an agent) | `decision.md`: APPROVE, or ESCALATE to you |
 | Merge | `gh pr merge` | The merged PR, after syncing with the base branch and a second gate |
@@ -111,7 +111,7 @@ Every role is a plain file you can read with `eminzo show roles/<role>.md`, and 
 
 ```sh
 npm i -g @eminzo/factory   # the eminzo command
-eminzo install             # the eminzo-factory skill and the eight agents, for Claude Code and Codex
+eminzo install             # the eminzo-factory and eminzo-product skills, the eight agents and the eminzo MCP server, for Claude Code and Codex
 eminzo doctor              # checks Node, git, gh, the PATH and the installed files
 ```
 
@@ -121,7 +121,7 @@ Restart Claude Code or Codex afterwards: a session loads its skills when it star
 
 ```text
 /eminzo-factory enable     # opens the chore/enable-factory pull request: merge it, then git pull
-/eminzo-factory setup      # creates the labels and fills factory/project.md
+/eminzo-factory setup      # creates or updates every label and fills factory/project.md
 ```
 
 **3. Every job:**
@@ -141,7 +141,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | Command | What it does |
 |---|---|
 | `/eminzo-factory enable` | Once per repository: opens the pull request that adds the factory files |
-| `/eminzo-factory setup` | Once per repository: the labels and `factory/project.md` |
+| `/eminzo-factory setup` | Once per repository, and again after an update: every label (the factory's and Ask Eminzo's), `factory/project.md` and one check of the base branch (it asks before it creates the issue that fixes a failing base) |
 | `/eminzo-factory issue <n>` | Runs issue `<n>` now |
 | `/eminzo-factory <feature>` | Opens an issue for the feature and runs it |
 | `/eminzo-factory xs <request>` | The same, through the light lane |
@@ -150,20 +150,33 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `/eminzo-factory approve-spec <n>` | With `spec_review` on: approves the spec and starts the build |
 | `/eminzo-factory revise-spec <n> <notes>` | With `spec_review` on: rewrites the spec from your notes |
 
+**The product stage** (Ask Eminzo) comes before any issue. It helps a Product Lead or Product Owner take an idea to an approved brief and its deliverables, in functional language, and it never writes code, creates issues or starts the factory. In Codex, use `$eminzo-product` with the same words. See [The product stage](docs/product-stage.md).
+
+| Command | What it does |
+|---|---|
+| `/eminzo-product <idea>` | Takes an idea through five steps: explore, define the brief, review, approve and deliverables |
+| `/eminzo-product status` | Answers how things are going in functional words; with a brief issue, how its deliverables are doing |
+| `/eminzo-product estimate` | Estimates the deliverables as a range, from the team's finished jobs |
+| `/eminzo-product map` | Drafts or updates `factory/product-map.md`, how the product works today, for you to review |
+| `/eminzo-product report <brief issue>` | Drafts the weekly client report of an initiative; it sends nothing |
+
 <details>
 <summary><strong>Terminal commands</strong></summary>
 
 | Command | What it does |
 |---|---|
-| `eminzo install [--dry-run] [--force]` | Installs the skill and agents for Claude Code and Codex in your home folder |
-| `eminzo uninstall [--dry-run]` | Removes what `install` wrote (files you changed are kept) |
+| `eminzo install [--dry-run] [--force] [--no-mcp]` | Installs the skill and agents for Claude Code and Codex in your home folder and registers the `eminzo` MCP server in both; it lists everything it adds |
+| `eminzo uninstall [--dry-run]` | Removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | Checks the machine and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | The same as `/eminzo-factory enable`, from a terminal |
+| `eminzo base` | Checks that your `factory/checks.sh` passes on the base branch (`PASS`, `FAIL` or `UNKNOWN` when it could not run), in a reused worktree that installs the dependencies first; `eminzo base fix-issue` opens (or finds) the one issue that fixes a failing base |
+| `eminzo init checks` | Writes `factory/checks.sh` when it is missing; in an Nx or Turborepo repo whose file checks every project, prints the affected-only script as a suggestion and never overwrites |
 | `eminzo dashboard [port]` | Serves the dashboard of the current repository (port 8000 by default) |
 | `eminzo job summary` | One line per job (issue, stage, cost, time) and the total |
 | `eminzo job metrics [--last N] [--json]` | Gate pass rate, rounds per job, review changes and time over the last jobs |
 | `eminzo job config [<key>]` | The effective configuration, and where each key comes from |
 | `eminzo job lessons [--last N]` | Turns repeated lessons from past jobs into a pull request for `factory/project.md` |
+| `eminzo mcp` | Serves the factory's state as read-only MCP tools on stdin/stdout, for Claude Code, Codex and Ask Eminzo (`eminzo install` registers it) |
 | `eminzo show roles/<role>.md` | Prints a role the agents follow |
 
 </details>
@@ -178,6 +191,9 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `factory:needs-info` | The factory asked a question: answer on the issue, then `/eminzo-factory run` |
 | `factory:needs-human` | The job needs you: merge its pull request, or comment and `/eminzo-factory rework <n>` |
 | `factory:spec-review` | The spec waits for `approve-spec` or `revise-spec` |
+| `factory:base-fix` | The issue that fixes the failing checks of the base branch; the engine creates it (with `factory`) or reuses the open one |
+| `eminzo-brief` | An approved brief created by Eminzo: the record of an initiative, not edited afterwards |
+| `eminzo-deliverable` | A deliverable of an approved brief; it enters the factory when the tech lead adds `factory` |
 
 </details>
 
@@ -193,7 +209,7 @@ Team settings live in `factory/config.json`; personal ones go in the gitignored 
 | `auto_merge` | `true` | Merge approved pull requests after a second gate |
 | `run_mode` | `own` | `queue` makes `run` also start every open `factory` issue |
 | `spec_review` | `false` | Stop after the spec for your approval (`true`, or a list of risks) |
-| `default_provider` | `claude` | `claude` or `codex` |
+| `default_provider` | `claude` | `claude` or `codex`, for jobs made without `--provider` (each skill names its own: `/eminzo-factory` makes Claude jobs, `$eminzo-factory` Codex jobs) |
 | `protected_tests` | `[]` | Tests the builder cannot edit |
 
 Routing, models, lanes and prices are in the same file. See the [user guide](docs/guide.md) for spec review, run mode and issue claims.
@@ -218,7 +234,11 @@ Eminzo desktop shows and runs the same jobs. It uses the CLI, so you don't need 
   <img src=".github/assets/pipeline.webp" alt="Eminzo desktop: the pipeline of a job, with retries and the routed reviewers" width="880">
 </p>
 
-A dashboard with the agents at work and a kanban board, the Pipeline of each job with its retries, Tasks, Issues & PRs, and a terminal for Claude Code or Codex sessions, all for repositories that have the factory installed. Without the desktop app, `eminzo dashboard` serves the same board in your browser.
+A dashboard with the agents at work and a kanban board, the Pipeline of each job with its retries, Tasks, Issues & PRs, and a terminal for Claude Code or Codex sessions, all for repositories that have the factory installed. Ask Eminzo (Cmd+J) is a chat about the factory that runs on your own Claude Code or Codex login: in Engineering mode it answers about jobs and reviews, and in Product mode it takes an idea to an approved brief (see [The product stage](docs/product-stage.md)). The Changes panel (Cmd+Shift+G) shows the code changes of a job as it is built, read-only and live. Without the desktop app, `eminzo dashboard` serves the same board in your browser.
+
+<p align="center">
+  <img src=".github/assets/ask-product.webp" alt="Ask Eminzo in Product mode: a brief in progress with its check" width="880">
+</p>
 
 <p align="center">
   <img src=".github/assets/terminal.webp" alt="The terminal of Eminzo desktop running a job" width="880">
@@ -281,13 +301,13 @@ By default, yes: `auto_merge` is on, and an approved pull request merges after a
 <details>
 <summary><strong>Which stacks does it support?</strong></summary>
 
-Any stack. `factory/checks.sh` holds your repository's own checks, so the gate runs whatever your project already runs. `setup` writes a template for Node, Go, Python, Rust, Ruby, Maven and Gradle.
+Any stack. `factory/checks.sh` holds your repository's own checks, so the gate runs whatever your project already runs. `setup` writes a template for Node, Go, Python, Rust, Ruby, Maven and Gradle. In an Nx or Turborepo workspace the generated script checks only the projects a job changed and their dependents.
 </details>
 
 <details>
 <summary><strong>What happens when a job fails?</strong></summary>
 
-A failed gate sends the job back to the builder for another round. After `max_rounds`, or when the approver escalates, the job stops as a pull request waiting for you. A job that needs more information is parked as a question on the issue.
+A failed gate sends the job back to the builder for another round, unless the base branch fails the same checks: then the job waits at the gate, without spending a round, until the `factory:base-fix` issue is fixed. After `max_rounds`, or when the approver escalates, the job stops as a pull request waiting for you. A job that needs more information is parked as a question on the issue.
 </details>
 
 ## Documentation
@@ -297,6 +317,8 @@ A failed gate sends the job back to the builder for another round. After `max_ro
 | [User guide](docs/guide.md) | Install, enable, every command, updating, removing and troubleshooting |
 | [How a round runs](docs/how-a-round-runs.md) | Focused and full checks, the builder's plan, review policy and what each round leaves |
 | [Discord notifications](docs/notifications.md) | Events, message format, redaction and delivery rules |
+| [eminzo mcp](docs/mcp.md) | The factory's state as read-only MCP tools for Claude Code, Codex and Ask Eminzo |
+| [The product stage](docs/product-stage.md) | From an idea to an approved brief and estimated deliverables, before any issue (Ask Eminzo) |
 | [Codex](docs/codex.md) | How the Codex adapter works (in Spanish) |
 | [Contributing](CONTRIBUTING.md) | Where things live in the engine and the rules the loop keeps |
 

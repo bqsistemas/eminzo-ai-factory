@@ -95,6 +95,25 @@ export const claudeSkill = (source, { version }) => skill(source, { version, cmd
 /** .agents/skills/eminzo-factory/SKILL.md -> the installed Codex skill. */
 export const codexSkill = (source, { version }) => skill(source, { version, cmd: '$eminzo-factory', where: 'Codex skill' });
 
+/**
+ * .claude/skills/eminzo-product/SKILL.md -> the installed product stage skill, for Claude Code or Codex. One source:
+ * the Codex form swaps the slash commands for Codex's `$` form and the skill picker. Every swap is required, so a
+ * source that changes its wording fails the build instead of shipping a skill that names the other tool's commands.
+ */
+export function productSkill(source, { version, provider }) {
+  const where = `${provider === 'codex' ? 'Codex' : 'Claude'} product skill`;
+  const { front, body } = splitFrontmatter(source, where);
+  let text = `---\n${front}\n---\n<!-- ${stamp(version)} -->\n${body}`;
+  if (provider === 'codex') {
+    text = replaceRequired(text, 'run Elephant-Goldfish\'s brainstorm (`/egm:egm-brainstorm`\n  in Claude Code) with their idea', 'run Elephant-Goldfish\'s brainstorm (the `egm-brainstorm` skill from the skill picker)\n  with their idea', where);
+    text = replaceRequired(text, 'with Elephant-Goldfish\'s\n  `/egm:egm-review`', 'with Elephant-Goldfish\'s\n  `egm-review` skill (skill picker)', where);
+    text = replaceRequired(text, 'You may read the repository (Read, Glob, Grep)', 'You may read the repository', where);
+    text = replaceRequired(text, '/eminzo-product', '$eminzo-product', where);
+    if (/\/egm:|\/eminzo-product/.test(text)) throw new Error(`${where}: a Claude-only command survived the rewrite`);
+  }
+  return assertNoEnginePath(text, where);
+}
+
 /** factory/roles/<role>.md as embedded in an agent. */
 const roleText = (role) => engineCommands(role).trim();
 

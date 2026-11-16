@@ -79,14 +79,16 @@ factory/
   bin/route <id>        prints the agent set for intake.md (job does this at intake → spec)
   bin/approve <id>      the deterministic approver: approve | escalate: <reason> | inconclusive: <reasons>
   bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
-  bin/init [review]     writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent
+  bin/init [review|checks]  writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent; `init checks` writes a missing checks.sh and, for an Nx or Turborepo repo that checks everything, only prints an affected-only suggestion
+  bin/base [fix-issue]  runs checks.sh on the tip of the base branch in `.worktrees/.base` (after its prepare step): `base: PASS|FAIL|UNKNOWN`, exit 0, 1, 3 → factory/jobs/.base/; `fix-issue` finds or creates the one open issue (`factory` and `factory:base-fix`) that fixes a failing base
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
-  bin/setup             creates the GitHub labels (`/eminzo-factory setup` runs it)
-  bin/setup-spec-review creates the factory:spec-review label (`/eminzo-factory setup` runs it after bin/setup)
+  bin/setup             creates or updates every GitHub label in lib/labels.js, the one list (`/eminzo-factory setup` runs it)
+  bin/setup-spec-review creates only factory:spec-review; setup already creates it, kept for older docs
   roles/<role>.md       the role bodies, shared by Claude and Codex
   templates/project.md  the project.md template (required sections)
   board.json            all job.json files; the dashboard polls it
   jobs/<id>/            job.json issue.md intake.md spec.md spec-review-notes.md plan.md build.md decision.md merge-checks.md
+                        (build.md is the current round's; a finished round's is round-N/build.md)
                         round-N/checks.md round-N/review-<lens>.md round-N/review-human.md
 <repo>/.worktrees/<id>/ the job's worktree on branch factory/<id>
 ```
@@ -106,9 +108,11 @@ developer's spec review).
   `/eminzo-factory approve-spec` and `/eminzo-factory revise-spec`
   and tell the user to run `/eminzo-factory setup` in this terminal. Do not run it silently for them.
 - Setup runs the normal Git/GitHub preflight, `factory/bin/setup`, which creates or updates
-  the four labels (`factory`, `factory:needs-info`, `factory:needs-human`, `factory:xs`), and then
-  `factory/bin/setup-spec-review`, which creates or updates `factory:spec-review`, without
-  changing issues. If `factory/project.md` is missing, run `factory/bin/init` only to create its
+  every label in the engine's one label list (`factory`, `factory:needs-info`,
+  `factory:needs-human`, `factory:xs`, `factory:spec-review`, `factory:base-fix` and Ask Eminzo's `eminzo-brief` and
+  `eminzo-deliverable`), without changing issues. It tries every label, reports each failure and exits non-zero.
+  Run it again after an update: it also adds labels that did not exist before.
+  `factory/bin/setup-spec-review` is the same script limited to `factory:spec-review`. If `factory/project.md` is missing, run `factory/bin/init` only to create its
   structural draft; that script is deterministic and shallow, so it is **not** the finished setup.
 - Then the LLM must analyze the repository and create or refresh `factory/project.md` using
   `factory/templates/project.md` as the required structure. Inspect evidence from manifests,
@@ -128,13 +132,26 @@ developer's spec review).
   them, update the analysis date, and add the exact marker `<!-- eminzo:setup-complete -->` only
   after completing the analysis. Do not include secrets or environment-specific credentials.
 - `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
-- Report labels and the sections refreshed. No job, issue or agent is started by setup.
+- Report labels and the sections refreshed. No job, issue or agent is started by setup, apart from the fix issue below when the user asks for it.
+<!-- rule: base-check -->
+- Before the first job, setup checks `<base>` once. Run `factory/bin/init checks`, then `factory/bin/base`
+  in the foreground with a long timeout: it installs dependencies in `.worktrees/.base` and runs
+  the checks there, so it can take as long as the gate plus an install.
+  - `suggestion:` from `init checks` (an Nx or Turborepo repo whose checks.sh checks everything): show the
+    proposed file to the user. Never write it over the existing `factory/checks.sh`.
+  - `base: PASS <sha>`: report that the checks pass on `<branch>`.
+  - `base: FAIL <sha>: <command>`: tell the user that `<command>` fails on `<branch>`, name the
+    `report:` file, and ask whether to create an issue to fix it. Only after the user says yes, run
+    `factory/bin/base fix-issue`: `fix: #<n> created`, or `fix: #<n> open` when one is already open. It
+    carries `factory` and `factory:base-fix`; run it like any other issue (`/eminzo-factory issue <n>`).
+  - `base: UNKNOWN <sha>: <reason>`: report the reason. The factory never holds a job on a check that
+    could not run, and it never blocks setup.
 - `/eminzo-factory run`: continue every unfinished local job, `concurrency` jobs at a time.
   It takes new issues from the queue (every open `factory` issue) only when `run_mode` in
   `factory/config.json` is `"queue"`; with `"own"` (the default when `run_mode` is missing) a new
   issue enters only through `issue <n>`, `<feature>` or `xs <request>`.
 - `/eminzo-factory issue <n>`: run issue `<n>` now (it must be open and labeled `factory`).
-  `factory/bin/job new <n>` claims the issue when it creates the job: it assigns it to the
+  `factory/bin/job new <n> --provider claude` claims the issue when it creates the job: it assigns it to the
   `gh` user, and refuses when someone else is assigned or `factory/<id>` already exists on the
   remote of `base`. A refusal stops the command: show its reason to the user.
 - `/eminzo-factory <feature>`: write the request to a temp file, run
@@ -203,7 +220,7 @@ the next `/eminzo-factory run` moves the job to `merged`.
    command: tell the user. With `own`, skip step 1: `run` takes no new issue and applies
    steps 2-5 to every job in `factory/jobs/`. With `queue`, run step 1 first.
 1. Only with `queue`: `gh issue list --label factory --state open --json number --limit 100`, then
-   `factory/bin/job new <n>` for each issue. It prints the job id and is idempotent,
+   `factory/bin/job new <n> --provider claude` for each issue. It prints the job id and is idempotent,
    so existing jobs keep theirs. A refusal means the issue isn't open or labeled, is
    assigned to someone else, or already has its `factory/<id>` branch on the remote: skip it.
 2. PR checks (both modes): for every `needs-info` job try `job <id> to intake`. For every job in
@@ -211,7 +228,11 @@ the next `/eminzo-factory run` moves the job to `merged`.
    `pr`, try `job <id> to merged`. If that is refused, try `job <id> to rejected` (the
    PR was closed without merging). If that is also refused and the stage is `approve` or
    `awaiting-merge`, try `job <id> to needs-human` with no `--note` (a trusted
-   "Request changes" review on the PR). A refusal just means "still waiting". This runs before
+   "Request changes" review on the PR). A refusal just means "still waiting". A job at `gate` whose
+   `job.json` has `base_wait` is held by a broken `<base>` (**red-base**): it needs no PR check beyond
+   `to merged`: on every `run`, after the PR checks, run `factory/bin/job <id> base` for each such job (it
+   re-runs the checks only when `<base>` has a new commit; otherwise it prints `wait:` at once), act on its
+   first word as above, and run it again after any job of this run merges. This runs before
    any agent is spawned. Repeat the check right before spawning any agent for a job
    with a `pr`, or before moving that job, and skip a job that ends up `merged` or
    `rejected`. Ignore output from agents still running for such a job.
@@ -219,7 +240,7 @@ the next `/eminzo-factory run` moves the job to `merged`.
    first. Read `concurrency` with `factory/bin/job config concurrency` (the last field of
    its line), never from `factory/config.json` directly: `factory/config.local.json` may lower it. A job resumes from its `stage` in `job.json` (see **Stages**). When one
    finishes or parks, start the next. `awaiting-merge` is parked: it uses no
-   `concurrency` slot, and neither does `spec-review`. `run` never approves or revises a spec: it
+   `concurrency` slot, and neither do `spec-review` and a job held at `gate` by a broken `<base>`. `run` never approves or revises a spec: it
    reports each job in `spec-review` as waiting for the developer (`approve-spec <n>` or
    `revise-spec <n> <notes>`) and moves on.
 <!-- rule: sync-after-worker -->
@@ -260,7 +281,10 @@ the next `/eminzo-factory run` moves the job to `merged`.
 
 <!-- rule: delete-stale-output -->
 - Before spawning, delete that agent's old output, so a missing file always means the
-  agent failed.
+  agent failed. Exception: `build.md`. Do not delete `build.md` yourself when a round changes: the
+  engine moves it into `round-<n>/` (the round that ends) when the job goes back to build, so the
+  next builder reads it there. The one `build.md` you may delete is the current round's own
+  malformed file, before a retry in that same round.
 
 | Agent | File | First line |
 |---|---|---|
@@ -337,8 +361,8 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
 - **build**: the builder is one named agent per job, `eminzo-builder-<id>`, with
   `model` = `agents.builder`.
   - Round 1, or a new session: spawn `eminzo-builder` with `name: "eminzo-builder-<id>"` and the
-    prompt above plus `First build.` (or `Resume: read build.md (## Notes for the next round)
-    and round-<round - 1>/ first.` when `round` > 1).
+    prompt above plus `First build.` (or `Resume: read round-<round - 1>/build.md (## Notes for the next round)
+    and the rest of round-<round - 1>/ first.` when `round` > 1).
   <!-- rule: overlap-wait -->
   - **Overlap.** Before the first build of a job (round 1, or round 2 of a promoted job), run
     `factory/bin/job <id> overlap`. `wait: <id> (<files>)` means a job ahead of this one changes
@@ -347,12 +371,13 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     Only exact paths in the spec's `## Design` (intake's `## Scope` in lane xs) count.
   <!-- rule: builder-handoff -->
   - **Handoff.** The builder ends every `build.md` with `## Notes for the next round` (files it
-    changed and why, decisions not to undo, anything deferred). A fresh builder for a later
-    round reads those notes and the findings first, and opens only the files they name.
+    changed and why, decisions not to undo, anything deferred). When a round ends the engine moves
+    it to `round-<n>/build.md`. A fresh builder for a later round reads those notes
+    (`round-<round - 1>/build.md`) and the findings first, and opens only the files they name.
   - Later rounds in the same session: resume it with `SendMessage` to
     `eminzo-builder-<id>`: `Round <round - 1> needs changes. Read
-    factory/jobs/<id>/round-<round - 1>/, fix every finding, run the checks, commit,
-    push and rewrite build.md.`
+    factory/jobs/<id>/round-<round - 1>/ (your previous build.md is there now), fix every
+    finding, run the checks, commit, push and write a new build.md.`
   <!-- rule: spec-amendment -->
   - **Spec amendment.** (Lane xs has no spec to amend: there `invalid`, `unverified` and
     `needed` run `job <id> promote`, and `escalate` still goes to `needs-human`.) When `build.md` says `STATUS: READY`, run `factory/bin/job <id> amend`
@@ -391,10 +416,22 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     not run; see its `Reason:`) never do. `eminzo-review-ui` reads `visual.md` first instead of re-measuring,
     and measures itself when it is SKIPPED or ERROR.
   - `GATE: PASS`: `job <id> to review`.
-  - `GATE: FAIL`: `job <id> to build`, then resume the builder (it reads
+  <!-- rule: red-base -->
+  - `GATE: FAIL`: first run `factory/bin/job <id> base` (foreground, long timeout: it may
+    install dependencies and run the checks on `<base>`) and act on its first word.
+    `own:` means the failure is the job's: `job <id> to build`, then resume the builder (it reads
     `checks.md`). If that is refused because it was the last round:
     `job <id> to needs-human --note "gate failed in the last round"`. In lane xs run
-    `job <id> promote` instead.
+    `job <id> promote` instead. `wait:` means `<base>` fails the same checks: the job is held at
+    **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it
+    uses no `concurrency` slot and spends no round, even in its last one. `to build` and `promote`
+    refuse a real gate failure that `base` has not answered, and a held job. When `<base>` passes
+    again `base` itself merges it into the job's branch (in the job's worktree), pushes the branch and
+    runs the gate again: `resumed: GATE: PASS` means `job <id> to review`; `resumed: GATE: FAIL`
+    means the failure is now the job's own, so go back to build as for `own:`; `needs-human:` means
+    the merge conflicted or the push failed: report it and spawn nothing. A held job is not gated
+    again on a later `run`: only `factory/bin/job <id> base` runs for it (it re-gates by itself when
+    `<base>` passes).
 - **review**: spawn the reviewers that `factory/bin/job <id> prompt` lists on its
   `Review lenses:` line (`review-<lens>`,
   with the model in `agents.reviewers`) in ONE message, so they run in parallel.

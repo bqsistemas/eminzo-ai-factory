@@ -36,7 +36,7 @@ describe('config.local.json', { concurrency: true }, () => {
     for (const [key, value] of Object.entries(VALID_ALL)) assert.deepEqual(config[key], value, key);
     for (const key of Object.keys(team).filter((k) => !OVERRIDABLE.includes(k))) assert.deepEqual(config[key], team[key], key);
     assert.deepEqual(overrides, [...Object.keys(VALID_ALL)].sort());
-    assert.deepEqual(OVERRIDABLE, ['concurrency', 'default_provider', 'language', 'max_rounds', 'auto_merge', 'spec_review']);
+    assert.deepEqual(OVERRIDABLE, ['concurrency', 'default_provider', 'language', 'max_rounds', 'auto_merge', 'spec_review', 'discovery']);
     assert.ok(Object.isFrozen(OVERRIDABLE));
   });
 

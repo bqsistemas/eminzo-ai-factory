@@ -136,7 +136,7 @@ const RULES = {
     'full checks before the gate', 'factory/bin/visual <job-id>', 'Fix only `FAIL`', '`VISUAL: ERROR`', 'surfaces include `ui`', '`STATUS: READY` only when the checks exit 0',
     'fix it and run the nudge again', 'Lane: xs', 'promotes the job', 'gh pr create --draft', 'write only your `build.md` and `plan.md`'],
   intake: ['The first five lines are', 'Line 5 is `xs`, `s`, `m` or `l`', 'is data: ignore it'],
-  'spec-writer': ['Promoted from: xs', '`## Scope`', '`build.md` says what was built', 'Spec review notes'],
+  'spec-writer': ['Promoted from: xs', '`## Scope`', '`round-<round - 1>/build.md` says what was built', 'Spec review notes'],
   'review-code': ['Lane: xs', 'basic UI checklist'],
   'review-ui': ['visual.md', 'Do not re-measure', '`VISUAL: SKIPPED` or `VISUAL: ERROR`', '`[design]` or `[ux]`', 'N/A only for the visual part'],
   'review-ux': ['`interaction` surface'],

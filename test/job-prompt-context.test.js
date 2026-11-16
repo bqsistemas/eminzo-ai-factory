@@ -76,6 +76,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     t.write(id, 'round-1/review-ui.md', 'VERDICT: CHANGES\n\n- [blocker] `src/b.css:1`: broken\n');
     t.write(id, 'round-1/review-code.md', 'VERDICT: PASS\n');
     ok(t, await t.job(id, 'to', 'build'));
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
   }
 
@@ -96,6 +97,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
     ok(t, await t.job(id, 'to', 'build'));
     assert.match(await prompt(t, id), /^code: First review for this lens$/m, 'gate failure');
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 2);
     editJob(t, id, (j) => { j.agents.reviewers.security = 'opus'; }); // security newly routed mid-job
@@ -124,6 +126,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     verdictFiles(t, id, 2, { code: 'PASS', ui: 'CHANGES' });
     ok(t, await t.job(id, 'to', 'build'));
     commitIn(t, id, 'src/a.css'); // cited by ux in round 1
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 3);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui', 'ux'], 'ux reruns because src/a.css changed');
@@ -141,6 +144,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     verdictFiles(t, id, 2, { code: 'PASS', ui: 'CHANGES', ux: 'PASS' });
     ok(t, await t.job(id, 'to', 'build'));
     commitIn(t, id, 'pages/sub/y.html'); // `pages/*.html` does not match a nested path
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 3);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui']);
@@ -153,6 +157,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     await startRound(t, id, 1); // head of round 1 recorded
     verdictFiles(t, id, 1, { code: 'PASS', ux: 'PASS', ui: 'CHANGES' });
     ok(t, await t.job(id, 'to', 'build'));
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     const wt = t.json(id).worktree;
     git(t.root, 'worktree', 'remove', '--force', wt);
@@ -177,6 +182,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     verdictFiles(t, id, 1, { code: 'PASS', ux: 'PASS' });
     t.write(id, 'round-1/review-ui.md', 'VERDICT: CHANGES\n\n- [blocker] `src/b.css:1`: broken\n');
     ok(t, await t.job(id, 'to', 'build'));
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 2);
     editJob(t, id, (j) => { delete j.agents.reviewers.ui; });
@@ -192,6 +198,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     await afterRoundOne(t, id); // R2 gate
     t.write(id, 'round-2/checks.md', 'GATE: FAIL\n');
     ok(t, await t.job(id, 'to', 'build'));
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 3);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui']);
@@ -202,11 +209,13 @@ describe('factory/bin/job', { concurrency: true }, () => {
     ok(t, await t.job(id, 'to', 'needs-human'));
     t.setPr(31, { reviews: [{ author: { login: 'owner' }, authorAssociation: 'OWNER', state: 'CHANGES_REQUESTED', body: 'Rework it.' }] });
     ok(t, await t.job(id, 'to', 'build')); // round 4, a full round
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 4);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui', 'ux']);
     verdictFiles(t, id, 4, { code: 'PASS', ux: 'PASS', ui: 'CHANGES' });
     ok(t, await t.job(id, 'to', 'build'));
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 5);
     assert.deepEqual(t.json(id).carried, { ux: { verdict: 'PASS', round: 4 } }, 'carried from the rework round, not from round 1');
@@ -219,6 +228,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     await startRound(t, id, 2);
     verdictFiles(t, id, 2, { code: 'PASS', ui: 'CHANGES' });
     ok(t, await t.job(id, 'to', 'build'));
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 3);
     assert.equal(t.json(id).round, t.json(id).max_rounds);
@@ -263,6 +273,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     verdictFiles(t, id, 2, { code: 'PASS', ui: 'CHANGES' });
     ok(t, await t.job(id, 'to', 'build'));
     commitIn(t, id, 'src/unrelated.js');
+    t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
     await startRound(t, id, 3);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui', 'ux'], 'a code file wakes ux when the adapter has no review_paths');

@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_AC_PATTERN } from './selfcheck.js';
-import { acPattern, checksFor, commands, detectStack, packageManager, scriptCommand as scriptFor, span, stacksIn } from './stacks.js';
+import { acPattern, checksFor, commands, detectStack, monorepoOf, packageManager, prepareCommand, scriptCommand as scriptFor, span, stacksIn } from './stacks.js';
 import { Usage, engineCommand, factoryRoot, isMain, run, runCli, writeAtomic } from './util.js';
 
 const readJson = (file) => {
@@ -170,8 +170,53 @@ export function initReview(root) {
   return { created: true, path };
 }
 
+const LOCKFILES = ['bun.lock', 'bun.lockb', 'pnpm-lock.yaml', 'yarn.lock', 'package-lock.json', 'npm-shrinkwrap.json'];
+const MAX_CHECKS_BYTES = 1024 * 1024;
+
+/** The text of an existing checks.sh, or null when it cannot be read (a dangling link, a folder, over 1 MB). */
+function readChecks(path) {
+  try {
+    if (statSync(path).size > MAX_CHECKS_BYTES) return null;
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `init checks`: writes factory/checks.sh when it is missing. When it exists, the repo is an Nx or Turborepo
+ * workspace and the file does not name FACTORY_BASE (it checks every project on every job), it also proposes the
+ * affected-only script and leaves the file byte-identical.
+ * @returns {string[]} the lines to print
+ */
+export function initChecksReport(root) {
+  const checks = initChecks(root);
+  if (checks.created) return [`wrote ${checks.path} for the ${checks.stack} stack; review it`];
+  const lines = [`factory/checks.sh already exists; left untouched`];
+  if (!checks.executable) lines.push(`warning: ${checks.path} is not executable; run: chmod +x factory/checks.sh`);
+  const repo = repoOf(root);
+  const tool = stacksIn(repo.files).includes('node') ? monorepoOf(repo) : null;
+  const text = tool ? readChecks(checks.path) : null;
+  if (text === null || text.includes('FACTORY_BASE')) return lines;
+  const { script } = checksFor(repo);
+  if (!script.includes('FACTORY_BASE')) return lines; // no lint, typecheck or test target to narrow
+  const what = tool === 'nx' ? ['an Nx workspace', 'project'] : ['a Turborepo workspace', 'package'];
+  lines.push(
+    `suggestion: this is ${what[0]} and factory/checks.sh checks every ${what[1]} on every job. To check only the ${what[1]}s a job changes, replace factory/checks.sh with:`,
+    script.replace(/\n$/, ''),
+  );
+  const prepare = prepareCommand(repo.files);
+  const lock = LOCKFILES.find((f) => repo.files.includes(f)) ?? 'package.json';
+  if (prepare) lines.push(`base check prepare: ${prepare} (from ${lock}; set checks.prepare in factory/config.json to change it)`);
+  return lines;
+}
+
 function main(args) {
-  if (args.length > 1 || (args.length && args[0] !== 'review')) throw new Usage('init [review]');
+  if (args.length > 1 || (args.length && !['review', 'checks'].includes(args[0]))) throw new Usage('init [review|checks]');
+  if (args[0] === 'checks') {
+    process.stdout.write(`${initChecksReport(factoryRoot()).join('\n')}\n`);
+    return;
+  }
   if (args[0] === 'review') {
     const review = initReview(factoryRoot());
     process.stdout.write(review.created ? `wrote ${review.path}; optional, edit or delete the sections you do not need\n` : `${review.path} already exists; left untouched\n`);

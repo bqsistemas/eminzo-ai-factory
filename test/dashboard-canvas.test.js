@@ -111,6 +111,9 @@ test('AC-4: artifact allowlist and GitHub links reject arbitrary paths and URLs'
   assert.deepEqual(artifactFiles({ round: 1, reviews: { code: 'PASS', '<img>': 'PASS' } }), [
     'issue.md', 'intake.md', 'spec.md', 'plan.md', 'build.md', 'round-1/checks.md', 'round-1/review-code.md', 'decision.md', 'merge-checks.md',
   ]);
+  assert.deepEqual(artifactFiles({ round: 3, history: [{}, {}], reviews: {}, gate: 'PASS' }).filter((name) => name.endsWith('build.md')), [
+    'build.md', 'round-1/build.md', 'round-2/build.md',
+  ]);
   assert.equal(artifactFiles({ round: 999, history: [{}, {}, {}] }).some((name) => name.includes('999')), false);
   assert.match(html, /openDrawer\(selectedJob\.id, button\.dataset\.artifact\)/);
   assert.deepEqual(githubLinks({ issue: 41, pr: 12 }, 'https://github.com/example/repo').map((link) => link.href), [

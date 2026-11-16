@@ -48,14 +48,24 @@ install it under the Node version that terminal uses).
 ### 3. Install the skill and agents (once per machine)
 
 ```sh
-eminzo install --dry-run   # optional: lists what it would write
+eminzo install --dry-run   # optional: lists what it would write and register
 eminzo install
 ```
 
-It writes the `eminzo-factory` skill and the eight factory agents for both tools:
-`~/.claude/skills/eminzo-factory/`, `~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`
+It writes the `eminzo-factory` skill, the `eminzo-product` skill (the product stage, see
+[The product stage](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/product-stage.md)) and the eight
+factory agents for both tools: `~/.claude/skills/eminzo-factory/`, `~/.claude/skills/eminzo-product/`,
+`~/.claude/agents/eminzo-*.md`, `~/.agents/skills/eminzo-factory/`, `~/.agents/skills/eminzo-product/`
 and `~/.codex/agents/eminzo-*.toml`, and records them in `~/.eminzo/install.json`. It never
 overwrites a file it did not write or that you changed (it names each one; `--force` overwrites).
+
+It also registers the `eminzo` MCP server (the factory's read-only tools, see
+[eminzo mcp](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/mcp.md)) in both tools, with their own
+commands: `claude mcp add --scope user eminzo -- eminzo mcp` and `codex mcp add eminzo -- eminzo mcp`. Only that
+entry is added; the rest of `~/.claude.json` and `~/.codex/config.toml` is left as it was. An `eminzo` entry you set
+up yourself is kept, a tool that is not installed is skipped with the command to run later, and `--no-mcp` skips
+the registration. Before it changes anything, `install` lists what it puts on the machine, and every file and
+entry it adds is printed.
 
 Then close and reopen Claude Code (or Codex): a session loads its skills when it starts.
 
@@ -116,7 +126,7 @@ Before merging, check two files:
   - `auto_merge` is `true` by default: the factory merges a pull request it approved. Set it to
     `false` to merge every pull request yourself.
   - `lessons.required` (`false`): when `true`, moving a job to `merging` is refused unless its `decision.md` has a `## Lessons` section (lines, or `None`). The default is `false` on purpose and is a pending human decision: turning it on by default means updating the protected job test fixtures, which write a `decision.md` without `## Lessons`.
-  - `concurrency` (3 jobs at a time), `max_rounds` (3 build rounds per job), `checks.max_runs_per_round` (6 check runs per round; an invalid value falls back to 6), `selfcheck.ac_pattern` (regex that finds an `AC-n` in the test lines a branch adds; default `AC-\d+`, Python `(?:AC-|test_ac_)\d+`; `eminzo selfcheck <id>` uses it), `spec_review` (off) and the
+  - `concurrency` (3 jobs at a time), `max_rounds` (3 build rounds per job), `checks.max_runs_per_round` (6 check runs per round; an invalid value falls back to 6), `checks.prepare` (the command `eminzo base` runs in `.worktrees/.base` to install the dependencies before the checks; by default the one the lockfile names, `""` turns it off), `checks.base_timeout_minutes` (how long `eminzo base` lets `factory/checks.sh` run before it kills it and answers UNKNOWN; 30), `selfcheck.ac_pattern` (regex that finds an `AC-n` in the test lines a branch adds; default `AC-\d+`, Python `(?:AC-|test_ac_)\d+`; `eminzo selfcheck <id>` uses it), `spec_review` (off) and the
     models per risk level can stay as they are to start.
   - Before `STATUS: READY` the builder runs `selfcheck`: it fails when an `AC-n` has no test, a protected test changed or something is uncommitted (a Module map that misses new modules is only a warning, as in the gate). The Claude builder also has a `PreToolUse` hook (`protect-tests`) that denies Edit/Write/MultiEdit/NotebookEdit on protected tests and on the main checkout (except the job's `build.md`/`plan.md`). Bash is out of scope and the gate is the backstop. With the installed CLI, a stale or partial install makes `eminzo` exit 1, which Claude treats as non-blocking: that protection is off until you run `eminzo install`.
 
@@ -130,8 +140,8 @@ In Claude Code, inside the repository:
 /eminzo-factory setup
 ```
 
-It creates the five GitHub labels (`factory`, `factory:needs-info`, `factory:needs-human`,
-`factory:xs`, `factory:spec-review`) and analyzes the repository to complete `factory/project.md`:
+It creates the GitHub labels (`factory`, `factory:needs-info`, `factory:needs-human`,
+`factory:xs`, `factory:spec-review`, `factory:base-fix`) and analyzes the repository to complete `factory/project.md`:
 what the product does, stack, commands, module map and conventions. Every agent reads this file
 before working, and every other factory command refuses until setup has run. Setup starts no job.
 
@@ -164,7 +174,7 @@ git push                   # or open a pull request if your default branch is pr
 ### 10. Day to day
 
 Every command is listed in "Command reference" below. Personal settings that do not affect the team
-(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`)
+(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`, `discovery`)
 go in `factory/config.local.json`, which is gitignored.
 
 ### Other developers of the same repository
@@ -187,7 +197,7 @@ engine refuses with `engine 0.2.0 does not satisfy "0.1.x" in factory/config.jso
 
 ### Removing it
 
-`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept), and
+`eminzo uninstall` removes only the files `eminzo install` wrote (files you changed are kept) and the `eminzo` MCP entries it registered (one you added yourself is kept), and
 `npm rm -g @eminzo/factory` removes the command. To remove the factory from a repository, delete
 `factory/config.json`, `factory/checks.sh` and `factory/project.md`, the factory lines in
 `.gitignore` and `Bash(eminzo:*)` in `.claude/settings.json`.
@@ -254,18 +264,21 @@ reach the builder.
 
 | Command | What it does |
 |---|---|
-| `eminzo install [--dry-run] [--force]` | installs the skill and agents for Claude Code and Codex in your home folder |
-| `eminzo uninstall [--dry-run]` | removes what `install` wrote (files you changed are kept) |
+| `eminzo install [--dry-run] [--force] [--no-mcp]` | installs the skill and agents for Claude Code and Codex in your home folder and registers the `eminzo` MCP server in both; it lists everything it adds |
+| `eminzo uninstall [--dry-run]` | removes what `install` added (files you changed and MCP entries you added yourself are kept) |
 | `eminzo doctor` | checks Node, git, gh, the PATH, the installed files and, inside a repository, its engine range and setup |
 | `eminzo enable [--dry-run]` | the same as `/eminzo-factory enable`, from a terminal |
+| `eminzo base` | does the repo's `factory/checks.sh` pass on the tip of the base branch? Runs in the reused worktree `.worktrees/.base` after the prepare step (`checks.prepare` in `config.json`, else the one the lockfile names, `""` turns it off). Prints `base: PASS <sha>`, `base: FAIL <sha>: <command>` or `base: UNKNOWN <sha>: <reason>` and the report path; exit 0, 1 or 3. UNKNOWN means it could not run and is never a failure. `eminzo base fix-issue` (only after a FAIL of the current tip) finds the one open `factory:base-fix` issue or creates it with the labels `factory` and `factory:base-fix`: `fix: #<n> created` or `fix: #<n> open`. The issue holds the sha, the failing command and its exit code, and how to reproduce it, never log lines; the public command shows only known words (check tools, verbs, a script name that package.json defines, a few binaries after exec), anything else is dropped and the full command stays in the local report |
+| `eminzo init checks` | writes `factory/checks.sh` when it is missing; in an Nx or Turborepo repo whose file checks every project, prints the affected-only script as a `suggestion:` and never overwrites |
 | `eminzo dashboard [port]` | serves the dashboard of the current repository (default port 8000) |
+| `eminzo mcp` | the factory's state (jobs, rounds, waits, cost, queue) as read-only tools for Claude Code, Codex and the desktop's Ask Eminzo, over stdin/stdout; see [eminzo mcp](https://github.com/bqsistemas/eminzo-ai-factory/blob/main/docs/mcp.md) |
 | `eminzo job summary` | one line per job (issue, stage, cost, time) and the total |
 | `eminzo job lessons [--last N]` | collects the `## Lessons` of the last N job decisions (default 20), drops duplicates (case and punctuation ignored), writes the 15 most repeated into `## Things the builder gets wrong` of `factory/project.md` on a branch and opens a PR for a human to merge; the PR touches only `project.md` |
 | `eminzo job metrics [--last N] [--json]` | over the last N jobs (default 20): the `GATE: PASS` rate in round 1 and rounds per job (median), both over finished jobs only (`merged` or `rejected`), the `CHANGES` rate per lens, minutes per kind of work (from `time_by_kind` when a job has it) and repeated lessons; `--json` prints the same as JSON. The dashboard shows it as a collapsible table (`board.json` carries it as `metrics`) |
 | `eminzo job config [<key>]` | the effective configuration, and whether each key comes from `config.json` or `config.local.json` |
 | `eminzo profile <job-id>` | where the builder's time went in a job (checks, waits, git, other) from its Claude transcripts; stored in `job.json` and shown on the dashboard's build stage. A repository adds its own check commands in `config.json` `profile.patterns` (`{ "check": ["run e2e"] }`) |
 | `eminzo selfcheck <job-id>` | what the builder runs before `STATUS: READY`: every `AC-n` has a test in the diff, `plan.md` exists with its four sections, no protected test changed and nothing is uncommitted (a stale Module map is only a warning); exits 1 and names each problem, or prints `selfcheck: ok` |
-| `eminzo nudge <job-id> [--full]` | runs the repository's `factory/checks.sh` for a job: focused by default (only what the change touches, when `checks.sh` reads `FACTORY_CHECK_MODE`; see How a round runs), `--full` runs everything; the gate and the merge always run full |
+| `eminzo nudge <job-id> [--full]` | runs the repository's `factory/checks.sh` for a job: focused by default (only what the change touches, when `checks.sh` reads `FACTORY_CHECK_MODE`; see How a round runs), `--full` runs everything; the gate and the merge run the job's scope (`FACTORY_BASE`, `FACTORY_HEAD`), which is everything for a `checks.sh` that ignores them |
 | `eminzo show roles/<role>.md` | prints a role the agents follow (`intake`, `spec-writer`, `builder`, `review-code`, `review-ui`, `review-ux`, `review-security`, `approver`) |
 | `eminzo --version`, `eminzo help` | the version, and every command |
 
@@ -281,6 +294,7 @@ the rest while a job runs; you do not need to run those yourself.
 | `factory:needs-info` | the factory asked the issue author a question; answer on the issue, then `/eminzo-factory run` |
 | `factory:needs-human` | the job needs you: merge its pull request, or comment and run `/eminzo-factory rework <n>` |
 | `factory:spec-review` | the spec is posted on the issue and waits for `approve-spec` or `revise-spec` |
+| `factory:base-fix` | the issue that fixes the failing checks of the base branch; `eminzo base fix-issue` creates it (with `factory`) or reuses the open one, and its text never holds log lines |
 
 ## How a round runs
 
@@ -305,6 +319,7 @@ engine's source repository) keeps running that engine; `eminzo` hands the comman
 ```
 eminzo show roles/<role>.md | templates/<file>   print a role or template of the engine
 eminzo dashboard [port]                          the dashboard for the current repository
+eminzo mcp [--help]                              read-only factory tools for agents (MCP on stdin/stdout)
 eminzo --version | help
 ```
 
@@ -343,7 +358,12 @@ for tools such as the Eminzo desktop app. The exit status is the same as without
 - With `--dry-run`: the same fields, `"dryRun": true` and no `url`; nothing is written.
 - A failed check: `{ "ok": false, "problems": [{ "code": "dirty", "message": "..." }] }` (codes: `not-git`,
   `install-in-progress`, `bad-branch`, `dirty`, `not-default-branch`, `ignored-paths`, `no-remote`,
-  `not-github`, `gh-auth`, `node-version`, `no-default-branch`).
+  `not-github`, `gh-auth`, `node-version`, `no-default-branch`, `empty-repo`).
+  `empty-repo` also carries `commands`. With no commit at all it says so and gives the lines that make the first
+  one (`[ -e README.md ] || echo "# <name>" > README.md`, add, commit, `git push -u origin <branch>`: an existing
+  README.md is never overwritten). With commits here but none on GitHub it says "GitHub has no commits for this
+  repository yet: push your branch, then enable the factory." and gives only `git push -u origin <branch>`. The
+  remote is asked with `git ls-remote` under a 20 second limit and no prompt. The plain-text output prints them indented after the message.
 - Any other refusal or failure: `{ "ok": false, "error": "..." }`.
 
 ## Building the package (this repository)

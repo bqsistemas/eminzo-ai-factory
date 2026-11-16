@@ -23,7 +23,7 @@ export function jobScope(root, job) {
 /**
  * The jobs ahead of `job` that share a file with it: any job past the build, or an older job
  * still in build. A younger job never counts, so two jobs can never wait for each other. A job
- * whose spec names no exact path never waits; the merge still syncs with the base.
+ * whose spec names no exact path never waits, and a job held at gate by a broken base is never ahead (the fix job would deadlock on it); the merge still syncs with the base.
  * @returns {{id: string, files: string[]}[]}
  */
 export function overlaps(root, job, jobs) {
@@ -32,6 +32,7 @@ export function overlaps(root, job, jobs) {
   const found = [];
   for (const other of jobs) {
     if (other.id === job.id) continue;
+    if (other.base_wait) continue; // held by a broken base: it waits for the job that fixes the base, which must not wait for it
     const ahead = AHEAD.has(other.stage) || (other.stage === 'build' && jobNumber(other) < jobNumber(job));
     if (!ahead) continue;
     const shared = [...jobScope(root, other)].filter((f) => mine.has(f)).sort();

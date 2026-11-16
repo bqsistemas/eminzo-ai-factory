@@ -41,7 +41,9 @@ local jobs; it drains the queue only with `run_mode: "queue"` (see **run** under
 - Each worker writes exactly its assigned artifact (`intake.md`, `spec.md`,
   `build.md`, `round-N/review-*.md` or `decision.md`) and replies with its first
   line. Delete stale output before starting a new round (except `spec.md` in
-  `Mode: amend`, which is edited in place).
+  `Mode: amend`, which is edited in place; and `build.md`: do not delete `build.md`
+  yourself when a round changes, because the engine moves it into `round-<n>/` then. The one
+  `build.md` you may delete is the current round's own malformed file, before a retry in that round).
   <!-- rule: delete-stale-output -->
   <!-- rule: own-file-only -->
 <!-- rule: ux-opt-in -->
@@ -107,7 +109,9 @@ Use the scripts for every transition. The stage contract is:
    `factory/bin/job new <n> --provider codex` idempotently for each; a refusal (not open or labeled, assigned to someone else, or `factory/<id>` already on the remote) skips that issue. With `own`, take no new issue. In both modes: reconcile PRs and resume unfinished local jobs in `factory/jobs/` up to
    `concurrency`, read with `factory/bin/job config concurrency` (the last field of its line), never from
    `factory/config.json` directly: the gitignored `factory/config.local.json` may lower it.
-   `spec-review` is parked like `awaiting-merge`: it uses no `concurrency` slot. `run` never
+   `spec-review` is parked like `awaiting-merge`, and so is a job held at `gate` by a broken `<base>` (`base_wait` in its `job.json`, see **red-base**): none uses a `concurrency` slot. On every `run`, for each job whose `job.json` has `base_wait`, run
+   `factory/bin/job <id> base` (it re-runs the checks only when `<base>` has a new commit; otherwise it prints `wait:`
+   at once), act on its first word as above, and run it again after any job of this run merges. `run` never
    approves or revises a spec: it reports each job in `spec-review` as waiting for the developer
    (`approve-spec <n>` or `revise-spec <n> <notes>`) and moves on.
 2. **intake**: spawn one `eminzo-intake` per job using `job.models.intake`. On `ACCEPT`, run
@@ -132,8 +136,8 @@ Use the scripts for every transition. The stage contract is:
    with `needs-human` (in lane xs, run `job <id> promote` instead). In lane xs, `to gate`
    also checks the xs limits in the branch diff (at most 2 non-test files, none added or
    deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
-   Codex starts a fresh builder every round: for round > 1 add `Resume: read build.md
-   (## Notes for the next round) and round-<round - 1>/ first.` to its prompt.
+   Codex starts a fresh builder every round: for round > 1 add `Resume: read round-<round - 1>/build.md
+   (## Notes for the next round) and the rest of round-<round - 1>/ first.` to its prompt.
    <!-- rule: overlap-wait -->
    - **Overlap.** Before the first build of a job (round 1, or round 2 of a promoted job), run
      `factory/bin/job <id> overlap`. `wait: <id> (<files>)` means a job ahead of this one changes
@@ -142,10 +146,22 @@ Use the scripts for every transition. The stage contract is:
      Only exact paths in the spec's `## Design` (intake's `## Scope` in lane xs) count.
    <!-- rule: builder-handoff -->
    - **Handoff.** The builder ends every `build.md` with `## Notes for the next round` (files it
-     changed and why, decisions not to undo, anything deferred). A fresh builder for a later
-     round reads those notes and the findings first, and opens only the files they name.
-5. **gate**: run `factory/bin/gate <id>`. A failure returns to build with the
-   check log (in lane xs: `job <id> promote`); a pass moves to review. Never spawn reviews before this step.
+     changed and why, decisions not to undo, anything deferred). When a round ends the engine moves
+     it to `round-<n>/build.md`. A fresh builder for a later round reads those notes
+     (`round-<round - 1>/build.md`) and the findings first, and opens only the files they name.
+5. **gate**: run `factory/bin/gate <id>`. A pass moves to review. Never spawn reviews before this step.
+   <!-- rule: red-base -->
+   On `GATE: FAIL` first run `factory/bin/job <id> base` (foreground, long timeout: it may install
+   dependencies and run the checks on `<base>`) and act on its first word. `own:` returns the job to build with
+   the check log (in lane xs: `job <id> promote`). `wait:` means `<base>` fails the same checks: the job is
+   held at **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it uses
+   no `concurrency` slot and spends no round, even in its last one. `to build` and `promote` refuse a real gate
+   failure that `base` has not answered, and a held job. When `<base>` passes again `base` itself merges it into
+   the job's branch (in the job's worktree), pushes the branch and runs the gate again: `resumed: GATE: PASS`
+   means `job <id> to review`; `resumed: GATE: FAIL` means the failure is now the job's own, so return to build as
+   for `own:`; `needs-human:` means the merge conflicted or the push failed: report it and spawn nothing.
+   A held job is not gated again on a later `run`: only `factory/bin/job <id> base` runs for it (it re-gates by
+   itself when `<base>` passes).
    <!-- rule: round-context -->
    - **Round context.** The gate also writes `round-N/context.md`: the changed files, what changed
      this round, the acceptance criteria and the blockers still open. Every reviewer and the
@@ -309,9 +325,11 @@ never interpret a displayed `$0.00` as verified Codex cost.
 
 <!-- rule: setup-command -->
 - `$eminzo-factory setup`: a required user-run command (the user types it in their session) before using the factory
-  in this repository. Run Git/GitHub preflight, `factory/bin/setup` to create/update the four
-  labels and then `factory/bin/setup-spec-review` to create/update `factory:spec-review`, without
-  changing issues. If `factory/project.md` is missing, `factory/bin/init` may
+  in this repository. Run Git/GitHub preflight, `factory/bin/setup` to create/update every label in
+  the engine's one label list (the factory labels, `factory:spec-review`, `factory:base-fix` and Ask Eminzo's
+  `eminzo-brief` and `eminzo-deliverable`; it tries all, reports each failure and exits non-zero),
+  without changing issues. `factory/bin/setup-spec-review` is the same script limited to
+  `factory:spec-review`. Run setup again after an update. If `factory/project.md` is missing, `factory/bin/init` may
   create its structural draft, but that is not sufficient setup. Analyze repository manifests,
   README/docs, source/module layout, tests, CI/build scripts, runtime config and conventions;
   then understand the repository as a functional product, not just a codebase: identify the
@@ -326,8 +344,23 @@ never interpret a displayed `$0.00` as verified Codex cost.
   guess or claim commands were run unless they were, preserve valid repo-specific guidance,
   remove stale TODOs, update the date, and add `<!-- eminzo:setup-complete -->` only after the
   analysis is complete. Do not include credentials or secrets. Report labels and refreshed
-  sections. No job, issue or agent is started.
+  sections. No job, issue or agent is started by setup, apart from the fix issue below when the user asks for it.
+<!-- rule: base-check -->
+- Before the first job, setup checks `<base>` once. Run `factory/bin/init checks`, then `factory/bin/base`
+  in the foreground with a long timeout: it installs dependencies in `.worktrees/.base` and runs
+  the checks there, so it can take as long as the gate plus an install.
+  - `suggestion:` from `init checks` (an Nx or Turborepo repo whose checks.sh checks everything): show the
+    proposed file to the user. Never write it over the existing `factory/checks.sh`.
+  - `base: PASS <sha>`: report that the checks pass on `<branch>`.
+  - `base: FAIL <sha>: <command>`: tell the user that `<command>` fails on `<branch>`, name the
+    `report:` file, and ask whether to create an issue to fix it. Only after the user says yes, run
+    `factory/bin/base fix-issue`: `fix: #<n> created`, or `fix: #<n> open` when one is already open. It
+    carries `factory` and `factory:base-fix`; run it like any other issue (`$eminzo-factory issue <n>`).
+  - `base: UNKNOWN <sha>: <reason>`: report the reason. The factory never holds a job on a check that
+    could not run, and it never blocks setup.
 - `factory/bin/init review` copies the commented `factory/templates/review.md` to `factory/review.md` only when the repo has none: the optional review policy the four reviewers read after `project.md`. The template is fully commented, so it has no effect until someone edits it. Never overwrite an existing one.
+- `factory/bin/init checks` writes `factory/checks.sh` only when it is missing. For an Nx or Turborepo repo whose existing file checks every project it prints a `suggestion:` with the affected-only script and never overwrites the file.
+- `factory/bin/base` runs `factory/checks.sh` on the tip of the base branch in the reused worktree `.worktrees/.base`, after the prepare step (`checks.prepare` in config.json, else the one the lockfile names). It prints `base: PASS <sha>`, `base: FAIL <sha>: <command>` or `base: UNKNOWN <sha>: <reason>` and the `report:` file; exit 0, 1 or 3. A check that could not run is UNKNOWN, never a failure. `factory/bin/base fix-issue` finds or creates the one open issue (labels `factory` and `factory:base-fix`) that fixes a failing base: `fix: #<n> created` or `fix: #<n> open`; it is refused when the last check did not fail or the base moved since. The issue holds the sha, the failing command and how to reproduce it, never log lines.
 - `$eminzo-factory run`: resume every unfinished local job, respecting `concurrency` (from
   `factory/bin/job config concurrency`). It drains
   the queue of open `factory` issues only when `run_mode` in `factory/config.json` is `"queue"`;

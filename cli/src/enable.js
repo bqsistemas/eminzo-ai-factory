@@ -6,7 +6,7 @@
 // merged, `/eminzo-factory setup` finishes project.md and creates the labels.
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { preflight } from './installer/preflight.js';
 import { normalizeGithubRemote } from './installer/remote.js';
@@ -20,6 +20,9 @@ export const COMMIT_MESSAGE = 'chore: enable software factory';
 export const PERMISSION = 'Bash(eminzo:*)';
 /** Every path enable may write, in the order it writes them. */
 export const FOOTPRINT = ['factory/config.json', 'factory/checks.sh', 'factory/project.md', '.gitignore', '.claude/settings.json'];
+
+const SAFE_REF = /^[A-Za-z0-9._][A-Za-z0-9._/-]*$/;
+const SAFE_TITLE = /^[A-Za-z0-9._-]{1,100}$/;
 
 const firstLine = (s) => String(s ?? '').trim().split('\n')[0] ?? '';
 
@@ -81,7 +84,7 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     else for (const line of lines) out.write(`${line}\n`);
   };
   const failChecks = (problems) => {
-    report({ ok: false, problems }, problems.map((p) => `FAIL ${p.message}`));
+    report({ ok: false, problems }, problems.flatMap((p) => [`FAIL ${p.message}`, ...(p.commands ?? []).map((c) => `  ${c}`)]));
     return 1;
   };
   let root = null;
@@ -111,9 +114,11 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
   }
 
   const branch = firstLine(git('rev-parse', '--abbrev-ref', 'HEAD').stdout) || null;
+  const hasCommits = git('rev-parse', '--verify', '-q', 'HEAD').code === 0;
   const symbolic = git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD');
   let defaultBranch = symbolic.code === 0 ? firstLine(symbolic.stdout).replace(/^origin\//, '') || null : null;
-  if (!defaultBranch) {
+  // With no local commits the repository is empty as far as enable cares: no network call needed.
+  if (!defaultBranch && hasCommits) {
     const view = run(gh, ['repo', 'view', '--json', 'defaultBranchRef', '-q', '.defaultBranchRef.name']);
     defaultBranch = view.code === 0 ? firstLine(view.stdout) || null : null;
   }
@@ -130,8 +135,36 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     ignoredPaths: ignored.code === 0 ? ignored.stdout.split('\n').map((l) => l.trim()).filter(Boolean) : [],
     installing: existsSync(join(root, 'factory', '.installing')),
   };
+  // Origin has no branches: gh says the repository is empty, or ls-remote lists no heads.
+  const remoteIsEmpty = () => {
+    if (firstLine(run(gh, ['repo', 'view', '--json', 'isEmpty', '-q', '.isEmpty']).stdout) === 'true') return true;
+    // Never wait for a person or a network: no prompt, and a hung remote is not an empty one.
+    const heads = run('git', ['ls-remote', '--heads', 'origin'], { env: { ...env, GIT_TERMINAL_PROMPT: '0' }, timeout: 20_000, killSignal: 'SIGKILL' });
+    return heads.code === 0 && heads.stdout.trim() === '';
+  };
   const problems = preflight(facts);
-  if (!defaultBranch && facts.remoteUrl) {
+  if (!defaultBranch && facts.remoteUrl && (!hasCommits || remoteIsEmpty())) {
+    const current = firstLine(git('symbolic-ref', '--short', 'HEAD').stdout);
+    const ref = SAFE_REF.test(current) && !current.includes('..') ? current : 'main';
+    const folder = basename(root);
+    // Two different cases: a repository with no commit at all, and one that has commits here but none on GitHub yet.
+    problems.push(hasCommits
+      ? {
+        code: 'empty-repo',
+        message: 'GitHub has no commits for this repository yet: push your branch, then enable the factory.',
+        commands: [`git push -u origin ${ref}`],
+      }
+      : {
+        code: 'empty-repo',
+        message: 'This repository has no commits yet. Push a first commit to GitHub (for example a README), then enable the factory.',
+        commands: [
+          `[ -e README.md ] || echo "# ${SAFE_TITLE.test(folder) ? folder : 'README'}" > README.md`,
+          'git add README.md',
+          'git commit -m "chore: initial commit"',
+          `git push -u origin ${ref}`,
+        ],
+      });
+  } else if (!defaultBranch && facts.remoteUrl) {
     problems.push({ code: 'no-default-branch', message: 'The default branch of origin is unknown (no origin/HEAD and gh could not tell). Run "git remote set-head origin --auto" and try again.' });
   }
   if (problems.length) return failChecks(problems);

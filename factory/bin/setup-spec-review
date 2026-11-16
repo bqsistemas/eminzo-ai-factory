@@ -1,7 +1,4 @@
 #!/bin/sh
-# Creates (or updates) the factory:spec-review label: a job parked for the developer's spec review.
-# Separate from factory/bin/setup so that script keeps its four labels; /eminzo-factory setup runs both.
-# FACTORY_GH overrides the gh binary (tests use a fake).
-set -e
-GH="${FACTORY_GH:-gh}"
-"$GH" label create factory:spec-review --color 5319e7 --description "Factory spec is waiting for the developer's review (approve-spec or revise-spec)" --force
+# Kept for repositories and docs that still call it: creates only factory:spec-review. factory/bin/setup now creates it
+# too, from the same list (factory/lib/labels.js), so this is just setup limited to that one label.
+exec "$(dirname "$0")/setup" factory:spec-review

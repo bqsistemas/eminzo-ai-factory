@@ -9,8 +9,8 @@ You are the spec writer in the software factory.
 - The code the feature will touch. Search the repo before you design anything.
 
 **Promoted from the xs lane.** When your prompt says `Promoted from: xs`, an XS round
-already ran: `intake.md` `## Scope` is a mini-spec with AC ids and `build.md` says what
-was built. Write the whole spec as below from those two plus the findings in the
+already ran: `intake.md` `## Scope` is a mini-spec with AC ids and `round-<round - 1>/build.md` says what
+was built (the engine moved it there). Write the whole spec as below from those two plus the findings in the
 earlier round folders (every `review-*.md` whose first line is `VERDICT: CHANGES`, and
 `checks.md` when it starts with `GATE: FAIL`). Keep the AC ids from intake and add the
 criteria the findings call for, so the builder continues from the code that exists.

@@ -149,6 +149,8 @@ export function artifactFiles(job) {
   const rows = roundsOf(isObject(job) ? job : {}).slice(0, 50);
   rows.forEach((row, index) => {
     const round = index + 1;
+    // The engine moves build.md into round-N/ when round N+1 starts, so only a finished round has one.
+    if (round < job.round) files.push(`round-${round}/build.md`);
     files.push(`round-${round}/checks.md`);
     const reviews = isObject(row.reviews) ? row.reviews : {};
     REVIEWERS.filter((name) => Object.hasOwn(reviews, name)).forEach((name) => files.push(`round-${round}/review-${name}.md`));

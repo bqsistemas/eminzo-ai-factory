@@ -68,7 +68,9 @@ export function loadConfig(root, opts) {
 /** A per-developer, gitignored override of a few config.json keys, read from the main checkout. */
 export const LOCAL_CONFIG = 'factory/config.local.json';
 /** The only keys config.local.json may set. Every other key (routing, models, protected tests, ...) is team policy. */
-export const OVERRIDABLE = Object.freeze(['concurrency', 'default_provider', 'language', 'max_rounds', 'auto_merge', 'spec_review']);
+export const OVERRIDABLE = Object.freeze(['concurrency', 'default_provider', 'language', 'max_rounds', 'auto_merge', 'spec_review', 'discovery']);
+/** The discovery methods of the product stage (see discovery.js): Eminzo's basic one, and Google's Elephant-Goldfish. */
+export const DISCOVERY_METHODS = Object.freeze(['eminzo', 'elephant-goldfish']);
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isCount = (v) => Number.isInteger(v) && v >= 1;
@@ -93,6 +95,9 @@ function localProblem(team, key, value) {
     case 'spec_review':
       // No limit from the team value: a developer turns the review on or off for themselves.
       return specReviewProblem(value);
+    case 'discovery':
+      // A person's own way of exploring an idea; it never changes what the factory builds.
+      return typeof value === 'string' && DISCOVERY_METHODS.includes(value) ? null : `must be one of ${DISCOVERY_METHODS.join(', ')}`;
     default:
       return `not an overridable key (allowed: ${OVERRIDABLE.join(', ')})`;
   }
