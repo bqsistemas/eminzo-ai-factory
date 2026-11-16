@@ -4,6 +4,7 @@ import {
   roundsOf, splitMerged,
 } from './activity.js';
 import { costStatParts, formatCost, headerStats } from './office.js';
+import { createArtifactCache } from './artifact-cache.js';
 import { hasMetrics, renderMetricsTable } from './metrics-table.js';
 import { createOffice } from './office-renderer.js';
 import { CANVAS_STAGES, artifactFiles, bindPipelineControls, branchLink, derivePipeline, githubLinks, isSafeJobId, jobsNewestFirst, laneChip, pickJobId, stageCardsHtml, stageDetails, taskDuration, taskHeaderHtml } from './pipeline-canvas.js';
@@ -17,7 +18,7 @@ const DONE = new Set(['merged', 'rejected']);
 const I18N = JSON.parse(document.getElementById('i18n').textContent);
 let board = { jobs: [] }, loaded = false, lastText = '', openJob = null, openFile = null, olderOpen = false;
 let selectedJobId = null, selectedStage = 'intake';
-const cache = new Map();
+const cache = createArtifactCache((url) => fetch(url, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : null)));
 // Board data only selects a dictionary key; it is never interpolated as markup.
 let T = I18N.en;
 function setLanguage() {
@@ -135,6 +136,7 @@ async function poll() {
       if (openJob) { cache.clear(); openDrawer(openJob, openFile); }
     }
     status.textContent = T.statusLive.replace('{ago}', ago(board.updated) || 'just now');
+    retryMissing();
   } catch (err) {
     if (err instanceof SyntaxError && lastText) return;   // mid-write; try again next poll
     const status = $('status');
@@ -216,7 +218,7 @@ async function updatePipelineArtifacts(job, files) {
     button.disabled = !available;
     button.setAttribute('aria-disabled', String(!available));
     button.querySelector('.artifact-status').textContent = available ? T.pipelineAvailable : T.pipelineNotWritten;
-    if (!available) button.classList.add('pipeline-missing');
+    button.classList.toggle('pipeline-missing', !available);
   });
 }
 
@@ -236,11 +238,22 @@ $('pipeline-inspector').addEventListener('click', (event) => {
 async function load(job, file) {
   if (!isSafeJobId(job?.id) || !filesOf(job).includes(file)) return null;
   const key = `${job.id}/${file}`;
-  if (!cache.has(key)) {
-    cache.set(key, fetch(`${BASE}jobs/${encodeURIComponent(job.id)}/${file}`, { cache: 'no-store' })
-      .then(r => (r.ok ? r.text() : null)).catch(() => null));
-  }
-  return cache.get(key);
+  return cache.load(key, `${BASE}jobs/${encodeURIComponent(job.id)}/${file}`);
+}
+
+// A stage writes its files while board.json stays the same: look again for the files the open drawer or the selected job's
+// inspector marked as not written (a few small reads of the open job, only while one is missing).
+let retrying = false;
+async function retryMissing() {
+  if (retrying || document.hidden) return;
+  const drawerJob = openJob && $('files').querySelector('.file.missing') ? (board.jobs || []).find((j) => j.id === openJob) : null;
+  const inspectorJob = $('pipeline-inspector').querySelector('.pipeline-artifact.pipeline-missing') ? (board.jobs || []).find((j) => j.id === selectedJobId) : null;
+  if (!drawerJob && !inspectorJob) return;
+  retrying = true;
+  try {
+    if (drawerJob && (await Promise.all(filesOf(drawerJob).map((f) => load(drawerJob, f)))).some((t, i) => t !== null && $('files').querySelector(`.file.missing[data-file="${esc(filesOf(drawerJob)[i])}"]`))) openDrawer(openJob, openFile);
+    if (inspectorJob && selectedJobId === inspectorJob.id) await updatePipelineArtifacts(inspectorJob, filesOf(inspectorJob));
+  } finally { retrying = false; }
 }
 
 let returnFocus = null;
