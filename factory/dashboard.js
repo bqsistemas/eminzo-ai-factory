@@ -4,7 +4,7 @@ import {
   roundsOf, splitMerged,
 } from './activity.js';
 import { costStatParts, formatCost, headerStats } from './office.js';
-import { createArtifactCache } from './artifact-cache.js';
+import { FINAL_STAGES, createArtifactCache, newlyWritten } from './artifact-cache.js';
 import { hasMetrics, renderMetricsTable } from './metrics-table.js';
 import { createOffice } from './office-renderer.js';
 import { CANVAS_STAGES, artifactFiles, bindPipelineControls, branchLink, derivePipeline, githubLinks, isSafeJobId, jobsNewestFirst, laneChip, pickJobId, stageCardsHtml, stageDetails, taskDuration, taskHeaderHtml } from './pipeline-canvas.js';
@@ -133,10 +133,11 @@ async function poll() {
       loaded = true;
       renderStats();
       renderOffice();
-      if (openJob) { cache.clear(); openDrawer(openJob, openFile); }
+      cache.clear(); // hits are dropped on every board change, whichever view reads them
+      if (openJob) openDrawer(openJob, openFile);
     }
     status.textContent = T.statusLive.replace('{ago}', ago(board.updated) || 'just now');
-    retryMissing();
+    retryMissing().catch(() => {});
   } catch (err) {
     if (err instanceof SyntaxError && lastText) return;   // mid-write; try again next poll
     const status = $('status');
@@ -246,13 +247,29 @@ async function load(job, file) {
 let retrying = false;
 async function retryMissing() {
   if (retrying || document.hidden) return;
-  const drawerJob = openJob && $('files').querySelector('.file.missing') ? (board.jobs || []).find((j) => j.id === openJob) : null;
-  const inspectorJob = $('pipeline-inspector').querySelector('.pipeline-artifact.pipeline-missing') ? (board.jobs || []).find((j) => j.id === selectedJobId) : null;
+  const find = (id) => (board.jobs || []).find((j) => j.id === id);
+  const missingButtons = openJob ? [...$('files').querySelectorAll('.file.missing')] : [];
+  const drawerJob = missingButtons.length ? find(openJob) : null;
+  const inspectorJob = $('pipeline-inspector').querySelector('.pipeline-artifact.pipeline-missing') ? find(selectedJobId) : null;
   if (!drawerJob && !inspectorJob) return;
   retrying = true;
   try {
-    if (drawerJob && (await Promise.all(filesOf(drawerJob).map((f) => load(drawerJob, f)))).some((t, i) => t !== null && $('files').querySelector(`.file.missing[data-file="${esc(filesOf(drawerJob)[i])}"]`))) openDrawer(openJob, openFile);
-    if (inspectorJob && selectedJobId === inspectorJob.id) await updatePipelineArtifacts(inspectorJob, filesOf(inspectorJob));
+    if (drawerJob) {
+      const urlOf = (f) => `${BASE}jobs/${encodeURIComponent(drawerJob.id)}/${f}`;
+      const found = await newlyWritten(drawerJob, missingButtons.map((b) => b.dataset.file).filter((f) => filesOf(drawerJob).includes(f)), cache, urlOf);
+      if (openJob === drawerJob.id) {
+        for (const { file, text } of found) {
+          // Only that button changes; the pane is filled only when it is the file being read, so scroll and focus stay put.
+          const button = [...$('files').querySelectorAll('.file.missing')].find((b) => b.dataset.file === file);
+          if (!button) continue;
+          button.classList.remove('missing');
+          if (button.getAttribute('aria-selected') === 'true') $('doc').innerHTML = md(text);
+        }
+      }
+    }
+    const inspectorDue = inspectorJob && !FINAL_STAGES.has(inspectorJob.stage)
+      && [...$('pipeline-inspector').querySelectorAll('.pipeline-artifact.pipeline-missing')].filter((b) => cache.due(`${inspectorJob.id}/${b.dataset.artifact}`)).length > 0;
+    if (inspectorDue && selectedJobId === inspectorJob.id) await updatePipelineArtifacts(inspectorJob, filesOf(inspectorJob));
   } finally { retrying = false; }
 }
 
