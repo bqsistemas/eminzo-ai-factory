@@ -120,6 +120,7 @@ function render() {
 }
 
 async function poll() {
+  cache.beginPoll(); // the back-off counts polls, however many views look at the same file in one
   try {
     const res = await fetch(BASE + 'board.json', { cache: 'no-store' });
     if (!res.ok) throw new Error(res.status === 404 ? 'no board.json yet. Run /eminzo-factory run to create it' : `HTTP ${res.status}`);

@@ -9,15 +9,21 @@ export function createArtifactCache(fetchText) {
   const pending = new Map();
   const misses = new Map();
   const skipped = new Map();
+  const missedIn = new Map(); // key -> the poll that last counted a miss for it
+  const askedIn = new Map(); // key -> { poll, answer }: `due` is answered once per poll
+  const missed = new Map(); // key -> the poll whose miss is still being served from `pending`
+  let poll = 0;
   return {
     load(key, url) {
+      // A miss is kept for the rest of the poll that found it (a second view gets the same answer without another read), then forgotten.
+      if (pending.has(key) && missed.has(key) && missed.get(key) !== poll) { pending.delete(key); missed.delete(key); }
       if (!pending.has(key)) {
         const p = Promise.resolve().then(() => fetchText(url)).catch(() => null).then((text) => {
           const hit = typeof text === 'string' && text.length > 0 ? text : null;
           if (hit === null) {
-            if (pending.get(key) === p) pending.delete(key);
-            misses.set(key, (misses.get(key) ?? 0) + 1);
-          } else misses.delete(key);
+            if (pending.get(key) === p) missed.set(key, poll);
+            if (missedIn.get(key) !== poll) { missedIn.set(key, poll); misses.set(key, (misses.get(key) ?? 0) + 1); } // once per poll, whoever asks
+          } else { misses.delete(key); missed.delete(key); }
           return hit;
         });
         pending.set(key, p);
@@ -26,13 +32,19 @@ export function createArtifactCache(fetchText) {
     },
     /** Whether a file that was not found should be asked for again now: always at first, then one poll in a few. */
     due(key) {
-      if ((misses.get(key) ?? 0) < EAGER_MISSES) return true;
-      const n = (skipped.get(key) ?? 0) + 1;
-      if (n >= LAZY_EVERY) { skipped.delete(key); return true; }
-      skipped.set(key, n);
-      return false;
+      const seen = askedIn.get(key);
+      if (seen?.poll === poll) return seen.answer; // a second view in the same poll gets the same answer and does not advance the back-off
+      let answer = true;
+      if ((misses.get(key) ?? 0) >= EAGER_MISSES) {
+        const n = (skipped.get(key) ?? 0) + 1;
+        if (n >= LAZY_EVERY) skipped.delete(key); else { skipped.set(key, n); answer = false; }
+      }
+      askedIn.set(key, { poll, answer });
+      return answer;
     },
-    clear() { pending.clear(); misses.clear(); skipped.clear(); },
+    /** Call once at the start of each poll: the back-off counts polls, not callers. */
+    beginPoll() { poll += 1; },
+    clear() { pending.clear(); misses.clear(); skipped.clear(); missedIn.clear(); askedIn.clear(); missed.clear(); },
   };
 }
 
