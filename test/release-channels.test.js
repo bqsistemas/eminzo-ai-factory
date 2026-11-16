@@ -75,3 +75,26 @@ test('README is precise about signing and updates per platform', () => {
   assert.match(r, /\.deb/);
   assert.match(r, /install(ing)? the new `?\.deb/i);
 });
+
+test('the CLI reaches npm only through the Publish CLI workflow: from a vX.Y.Z tag, approved, with provenance', () => {
+  const y = read('.github/workflows/publish-cli.yml');
+  assert.match(y, /tags:\s*\['v\*'\]/);
+  assert.match(y, /^permissions:\s*\n\s+contents:\s*read\s*$/m, 'read-only by default: only the publish job gets id-token');
+  assert.match(y, /needs:\s*verify/);
+  assert.match(y, /environment:\s*npm/);
+  assert.match(y, /id-token:\s*write/);
+  assert.match(y, /test "v\$\(jq -r \.version cli\/package\.json\)" = "\$GITHUB_REF_NAME"/, 'the tag must match the CLI version');
+  assert.match(y, /npm publish --provenance --access public/);
+  assert.match(y, /persist-credentials:\s*false/);
+  for (const m of y.matchAll(/uses:\s*(\S+)/g)) assert.match(m[1], /@[0-9a-f]{40}$/, `unpinned action ${m[1]}`);
+  for (const m of y.matchAll(/^\s*run:\s*(.*)$/gm)) assert.doesNotMatch(m[1], /\$\{\{/);
+});
+
+test('docs/releasing.md hands npm publishing to the workflow and explains the one-time setup', () => {
+  const d = read('docs/releasing.md');
+  assert.match(d, /publish-cli\.yml/);
+  assert.match(d, /Trusted Publisher/);
+  assert.match(d, /provenance/);
+  assert.doesNotMatch(d, /cd cli && npm publish/);
+  assert.doesNotMatch(read('scripts/release-cli.mjs'), /manual step/);
+});
