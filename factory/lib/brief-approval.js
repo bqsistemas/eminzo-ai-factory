@@ -19,14 +19,13 @@
 // `can_create_issues` is true. Pure and linear in the size of the text: no I/O, no clock (the caller passes `at`).
 import { createHash } from 'node:crypto';
 
-import { APPROVAL_ISO_AT as ISO_AT, APPROVAL_PATTERN, parseBrief, validateBrief } from './brief.js';
+import { APPROVAL_ISO_AT as ISO_AT, APPROVAL_PATTERN, LOGIN, parseBrief, validateBrief } from './brief.js';
 
 export { APPROVAL_PATTERN };
 
 /** A line longer than this blocks approval (and is never scanned with a regular expression). */
 export const MAX_LINE = 10_000;
 const MAX_MARKER = 200;
-const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 const isoDate = (s) => typeof s === 'string' && s.length <= 40 && new RegExp(`^${ISO_AT}$`).test(s) && Number.isFinite(Date.parse(s));
 const isBlank = (line) => { for (let i = 0; i < line.length; i += 1) if (line[i] !== ' ' && line[i] !== '\t') return false; return true; };
@@ -97,7 +96,7 @@ export function approveBrief(text, { by, at } = {}) {
   if (!longLine(text) && scan(text).malformed.length) throw new Error('The brief has an approval line that is not valid; remove it before approving.');
   const result = check(text);
   if (!result.ok) throw new Error(`The brief cannot be approved yet: ${result.problems[0]}.`);
-  if (typeof by !== 'string' || !LOGIN.test(by)) throw new Error('"by" must be a GitHub login (letters, digits and hyphens, up to 39 characters).');
+  if (typeof by !== 'string' || !LOGIN.test(by)) throw new Error('"by" must be a GitHub login (letters, digits and hyphens, with the _ and 3 to 8 letters or digits that end an Enterprise Managed User login, up to 39 characters).');
   if (!isoDate(at)) throw new Error('"at" must be an ISO 8601 date and time, for example 2026-11-12T15:00:00Z.');
   return `${canonicalBrief(text)}\n\n<!-- eminzo:approved sha256=${briefHash(text, { by, at })} by=${by} at=${at} -->\n`;
 }

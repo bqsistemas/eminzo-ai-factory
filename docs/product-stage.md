@@ -302,7 +302,7 @@ Code: `factory/lib/product-map.js` (`parseProductMap`, `productMapTemplate`, `ma
 These were chosen to keep moving and are pending the owner's confirmation:
 
 - Approval is a marker inside the brief bound to a content hash (no separate approval store).
-- `by` must look like a GitHub login (`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`); `at` is an ISO 8601 date and time.
+- `by` must look like a GitHub login: letters, digits and hyphens, optionally followed by the `_` and 3 to 8 letters or digits that end an Enterprise Managed User login (`mona-cat_octo`), 39 characters in all (`^(?=.{1,39}$)[A-Za-z0-9][A-Za-z0-9-]*(?:_[A-Za-z0-9]{3,8})?$`); `at` is an ISO 8601 date and time.
 - A brief with two approval markers is never trusted (`changed`).
 - The functional map is a committed markdown file at a fixed path, `factory/product-map.md`, reviewed by a person
   and stale after 90 days.

@@ -424,6 +424,13 @@ for (const [name, args, message] of [
   });
 }
 
+test('golden: approve_brief accepts an Enterprise Managed User login through the real argument validation', async () => {
+  const result = await ask('approve_brief', { text: COMPLETE_BRIEF, by: 'mona-cat_octo' });
+  assert.notEqual(result.isError, true, JSON.stringify(result));
+  assert.equal(result.structuredContent.approval.by, 'mona-cat_octo');
+  for (const by of ['ana_ab', 'a'.repeat(40)]) assert.equal((await ask('approve_brief', { text: COMPLETE_BRIEF, by })).isError, true, by);
+});
+
 test('golden: handoff_drafts refuses a changed brief with the gate reason, and unknown arguments', async () => {
   const changed = await ask('handoff_drafts', { text: (await approved()).replace('Menos tiempo.', 'Mucho menos tiempo.'), brief_issue: 40 });
   assert.equal(changed.isError, true);

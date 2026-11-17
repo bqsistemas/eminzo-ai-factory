@@ -7,7 +7,7 @@ import { isAbsolute, join, relative } from 'node:path';
 
 import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
 import { approveBrief, briefStatus, canonicalBrief } from '../brief-approval.js';
-import { fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../brief.js';
+import { LOGIN_PATTERN, fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../brief.js';
 import { discoveryMethods } from '../discovery.js';
 import { briefIssueDraft, deliverableIssueDrafts } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
@@ -335,7 +335,7 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
       description: 'Returns the brief with an approval marker bound to its content (who approved and when), or an error when the brief is not complete. It stores nothing: the caller saves the returned text. Call it only after the person explicitly approved this brief, for example from an Approve button; never on your own initiative.',
       inputSchema: {
         type: 'object', additionalProperties: false, required: ['text', 'by'],
-        properties: { text: briefText, by: { type: 'string', pattern: '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$', description: 'The GitHub login of the person who approved.' } },
+        properties: { text: briefText, by: { type: 'string', pattern: LOGIN_PATTERN, maxLength: 39, description: 'The GitHub login of the person who approved, including an Enterprise Managed User login such as mona-cat_octo.' } },
       },
       answer: (args, c) => {
         const at = new Date(c.now).toISOString();
