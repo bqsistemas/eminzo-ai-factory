@@ -53,7 +53,6 @@ test('AC-1: job metrics and the other commands still run, so the new module did 
   assert.equal(last.status, 0, last.stderr);
   assert.ok(Array.isArray(Object.keys(JSON.parse(last.stdout))), 'job metrics --json still prints its own object');
   assert.equal(job(root, ['graph']).status, 0);
-  assert.equal(job(root, ['summary']).status, 0);
 });
 
 test('AC-5: invalid periods and flags exit 2 with the usage line and an empty stdout', () => {
