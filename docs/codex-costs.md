@@ -70,6 +70,11 @@ Un costo verificable usa `cost_status: "available"`, `cost_reason: null` y un
 `no_associated_usage`, `ambiguous_session`, `missing_model`, `missing_price` o
 `invalid_usage`. Un costo parcial desconocido invalida el total del job.
 
+Un job de Claude nuevo, o cuyo sync no encontró uso con precio, tiene
+`cost_status: "pending"` y `cost_usd: null`; se muestra y cuenta como
+desconocido, nunca como `$0.00`. Un job que ya estaba `available` conserva su
+costo si un sync no encuentra uso.
+
 El dashboard localiza el estado de costo no disponible, las indicaciones y los
 agregados en `en`, `es` y `pt` según `board.language`. El CLI conserva
 `Cost unavailable`. Los agregados señalan que son
