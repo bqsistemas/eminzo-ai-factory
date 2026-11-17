@@ -9,6 +9,7 @@ The gate reports uncovered added/moved modules as a non-blocking freshness warni
 - 2026-11-17: after engine release 0.2.3 (CLI `@eminzo/factory`, published on npm); no local
   factory jobs yet. Setup refreshed this file. Run `/eminzo-factory setup` to refresh it again
   and create the labels.
+- Engine baseline: 2026-11-01, after job 040, plus the eminzo CLI.
 - eminzo-ai-factory is the Eminzo AI software factory product: the portable engine, its
   dashboard, the Claude Code and Codex adapters, the `eminzo` CLI that installs them for any
   team's repository, and Ask Eminzo (the product stage and its read-only MCP server). It builds
