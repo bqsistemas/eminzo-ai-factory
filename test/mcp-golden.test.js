@@ -521,12 +521,21 @@ test('golden: product_map with an oversize file says why it is missing', async (
 test('golden: tools/list offers exactly the read-only tools', async () => {
   const res = await client.call('tools/list', {});
   const tools = res.result.tools;
-  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'product_map', 'handoff_drafts', 'initiative', 'initiative_report', 'factory_config', 'factory_queue']);
+  assert.deepEqual(tools.map((t) => t.name), ['factory_overview', 'list_jobs', 'job_detail', 'waiting_on_people', 'changes_since', 'period_summary', 'factory_diagnosis', 'delivery_metrics', 'estimate_work', 'discovery_methods', 'check_brief', 'brief_template', 'import_egm_brief', 'brief_review_prompts', 'merge_brief_review', 'brief_status', 'approve_brief', 'product_map', 'handoff_drafts', 'initiative', 'initiative_report', 'factory_config', 'factory_queue']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true, `${t.name} is read-only`);
     assert.equal(t.annotations.destructiveHint, false);
     assert.equal(t.inputSchema.type, 'object');
   }
+});
+
+test('AC-8: delivery_metrics refuses days together with from, and answers a plain call with schema 1', async () => {
+  const refused = await ask('delivery_metrics', { days: 7, from: '2026-09-01' });
+  assert.equal(refused.isError, true);
+  const ok = await ask('delivery_metrics', { days: 7, weeks: 2 });
+  assert.notEqual(ok.isError, true);
+  assert.equal(ok.structuredContent.schema, 1);
+  assert.equal(ok.structuredContent.weeks.length, 2);
 });
 
 test('golden: a path outside the repository is never read', async () => {
