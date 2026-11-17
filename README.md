@@ -174,6 +174,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `eminzo dashboard [port]` | Serves the dashboard of the current repository (port 8000 by default) |
 | `eminzo job summary` | One line per job (issue, stage, cost, time) and the total |
 | `eminzo job metrics [--last N] [--json]` | Gate pass rate, rounds per job, review changes and time over the last jobs |
+| `eminzo job metrics delivery [--days <n> \| --from <date>] [--to <date>] [--weeks <n>] [--json]` | Delivery metrics (deployments, lead time, failures, rework, cost, work in progress) of a period, from the local jobs only |
 | `eminzo job config [<key>]` | The effective configuration, and where each key comes from |
 | `eminzo job lessons [--last N]` | Turns repeated lessons from past jobs into a pull request for `factory/project.md` |
 | `eminzo mcp` | Serves the factory's state as read-only MCP tools on stdin/stdout, for Claude Code, Codex and Ask Eminzo (`eminzo install` registers it) |

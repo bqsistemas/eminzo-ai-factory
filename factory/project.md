@@ -63,7 +63,7 @@ The gate reports uncovered added/moved modules as a non-blocking freshness warni
   labels. Tests: `brief*.test.js`, `handoff.test.js`, `product-map.test.js`, `discovery.test.js`,
   `initiative.test.js`, `client-report.test.js`, `factory-estimate.test.js`, `labels.test.js`.
 - **`eminzo mcp` / `factory/bin/mcp`:** stdio JSON-RPC (MCP) server, strictly read-only; the only
-  GitHub calls are `gh` reads. Tools: jobs/queue/waits/diagnosis/estimate (factory state), brief
+  GitHub calls are `gh` reads. Tools: jobs/queue/waits/diagnosis/`delivery_metrics`/estimate (factory state), brief
   tools (`check_brief`, `brief_status`, `approve_brief`, `handoff_drafts`, review prompts),
   `product_map`, `initiative`, `initiative_report`, `discovery_methods`. `eminzo install`
   registers it in Claude Code and Codex. Tests: `mcp-*.test.js`, `cli-mcp-register.test.js`.
@@ -156,7 +156,9 @@ Portable factory engine:
   method detection, weekly client report); none talks to GitHub.
 - `factory/lib/mcp.js`, `factory/lib/mcp/`: the read-only MCP server (stdio protocol, JSON schema
   validation, tool definitions). `factory/lib/state/`: read-only state queries behind its tools
-  (jobs, queries, github, history, estimate, diagnosis, initiative, stats); `job.js` stays the
+  (jobs, queries, github, history, estimate, diagnosis, delivery, initiative, stats); `delivery.js` computes the
+  schema 1 delivery metrics for `job metrics delivery` and the `delivery_metrics` tool (test: `delivery-metrics*.test.js`; `job.js` loads it
+  with `import()` only for that command, never statically); `job.js` stays the
   only writer of job state.
 - `factory/pipeline.json`: generated stage/transition graph consumed by dashboards and the desktop.
 - `factory/roles/`: eight provider-neutral worker contracts; `factory/templates/`:

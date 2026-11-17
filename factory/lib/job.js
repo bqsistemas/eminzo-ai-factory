@@ -38,6 +38,9 @@
 //   job metrics [--last N] [--json]    GATE: PASS rate in round 1, rounds per job (median), CHANGES rate per lens, minutes per kind
 //                                      (job.json time_by_kind) and repeated lessons, over the last N jobs (default 20); a read.
 //                                      board.json also carries the same object as `metrics` for the dashboard
+//   job metrics delivery [--days <n> | --from <date>] [--to <date>] [--weeks <n>] [--json]
+//                                      delivery metrics (DORA), cost and work in progress of a period (default: 30 days, 4 weeks), from
+//                                      the local jobs only, no GitHub; --json is one line (schema 1, the contract of the desktop); a read
 //
 // Issue and comment text is attacker-controlled. It reaches agents only as
 // "> "-quoted data in issue.md, and gh gets every text through --body-file.
@@ -2063,7 +2066,7 @@ function configLines(c, key) {
   return line(key);
 }
 
-const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> profile | job <id> prompt | job <id> amend | job <id> overlap | job <id> base [--fresh] | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator] | job lessons [--last N] | job metrics [--last N] [--json]';
+const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> profile | job <id> prompt | job <id> amend | job <id> overlap | job <id> base [--fresh] | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator] | job lessons [--last N] | job metrics [--last N] [--json] | job metrics delivery [--days <n> | --from <date>] [--to <date>] [--weeks <n>] [--json]';
 
 /** `job <id> selfcheck`: warnings, then one line per problem, or `selfcheck: ok`. Exit 1 on any problem. */
 function selfcheck(c, id) {
@@ -2072,6 +2075,9 @@ function selfcheck(c, id) {
   const lines = [...warnings.map((w) => `selfcheck: warning: ${w}`), ...(problems.length ? problems.map((p) => `selfcheck: ${p}`) : ['selfcheck: ok'])];
   return { out: lines.join('\n'), code: problems.length ? 1 : 0 };
 }
+
+/** `job metrics delivery ...`: the module is loaded by the entry point (see below), never imported statically. */
+let delivery = null;
 
 function main(args) {
   const [first, second, third, ...rest] = args;
@@ -2089,6 +2095,16 @@ function main(args) {
     out = JSON.stringify(buildGraph(), null, 2);
   } else if (first === 'summary' && (args.length === 1 || (args.length === 2 && second === '--orchestrator'))) {
     out = summary(context(), args.length === 2);
+  } else if (first === 'metrics' && second === 'delivery') {
+    if (!delivery) throw new Error('the delivery metrics module is not loaded');
+    try {
+      const { options, json } = delivery.parseDeliveryArgs(args.slice(2));
+      const result = delivery.deliveryMetrics(factoryRoot(), options);
+      out = json ? JSON.stringify(result) : delivery.deliveryText(result);
+    } catch (err) {
+      if (err instanceof delivery.PeriodError) throw new Usage(USAGE);
+      throw err;
+    }
   } else if (first === 'metrics') {
     const json = args.includes('--json');
     const m = computeMetrics(factoryRoot(), parseLast(args.slice(1).filter((a) => a !== '--json'), USAGE));
@@ -2132,4 +2148,14 @@ function main(args) {
   return code;
 }
 
-if (isMain(import.meta.url)) runCli(main);
+if (isMain(import.meta.url)) {
+  // state/delivery.js sits behind state/jobs.js, which imports this file and calls buildGraph() while loading:
+  // a static import here would evaluate jobs.js first and fail for every command. Load it only for its own command,
+  // with import() and no top-level await (an await here would wait for a module that waits for this one).
+  const [a, b] = process.argv.slice(2);
+  if (a === 'metrics' && b === 'delivery') {
+    import('./state/delivery.js').then((m) => { delivery = m; runCli(main); }, (err) => { process.stderr.write(`error: ${err.message}\n`); process.exitCode = 1; });
+  } else {
+    runCli(main);
+  }
+}

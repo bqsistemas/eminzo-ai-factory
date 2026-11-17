@@ -12,6 +12,7 @@ import { discoveryMethods } from '../discovery.js';
 import { briefIssueDraft, deliverableIssueDrafts } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
 import { configLanguage, effectiveConfig } from '../util.js';
+import { deliveryMetrics } from '../state/delivery.js';
 import { diagnosis } from '../state/diagnosis.js';
 import { initiativeReport } from '../client-report.js';
 import { initiative } from '../state/initiative.js';
@@ -208,6 +209,22 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
         if (args.from !== undefined && args.to !== undefined && Date.parse(args.from) >= Date.parse(args.to)) throw new ToolError('from must be before to');
         return diagnosis(c.root, { ...args, now: c.now, config: effectiveConfig(c.root, { warn: () => {} }).config });
       },
+    }, ctx),
+    tool({
+      name: 'delivery_metrics',
+      title: 'Delivery metrics',
+      description: 'The delivery metrics (DORA), cost and work in progress of a period, computed from the jobs on this machine only (never GitHub): deployments per week, change lead time, failures caused by a broken base branch and how long they took to recover, change fail rate, rework rate, first-pass rate, extra rounds, cost with the jobs whose cost is unknown counted apart, and the jobs in progress now. The result has the period, the period before it and one block per week. Default: the last 30 days up to now and 4 weeks; give `days`, or `from` and `to`, and `weeks` (0 to 12). Only jobs on this machine count, so a job another person ran is not included. Use it for "how is our delivery doing".',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          days: { type: 'integer', minimum: 1, maximum: 365, description: 'Length of the period in days (default 30); not together with `from`.' },
+          from: dateTime('Start of the period; a date alone is the local midnight that starts it (default: `days` before `to`).'),
+          to: dateTime('End of the period; a date alone includes that whole day (default: now).'),
+          weeks: { type: 'integer', minimum: 0, maximum: 12, description: 'Weekly blocks ending at `to` (default 4, 0 for none).' },
+        },
+      },
+      answer: (args, c) => deliveryMetrics(c.root, { ...args, now: c.now }),
     }, ctx),
     tool({
       name: 'estimate_work',
