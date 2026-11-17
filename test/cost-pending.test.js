@@ -170,18 +170,18 @@ test('AC-6: facts and local records give no cost for a pending job', () => {
   const root = emptyRoot();
   const base = { stage: 'merged', started: '2026-09-10T10:00:00.000Z', approve_entered: '2026-09-10T10:30:00.000Z', finished: '2026-09-10T12:00:00.000Z' };
   const jobs = {
-    '1-null': { ...base, issue: 1, cost_status: 'pending', cost_usd: null },
-    '2-old': { ...base, issue: 2, cost_status: 'pending', cost_usd: 4 },
-    '3-legacy': { ...base, issue: 3, cost_status: undefined, cost_usd: 2.5 },
-    '4-available': { ...base, issue: 4, cost_status: 'available', cost_usd: 1 },
+    '101-null': { ...base, issue: 1, cost_status: 'pending', cost_usd: null },
+    '102-old': { ...base, issue: 2, cost_status: 'pending', cost_usd: 4 },
+    '103-legacy': { ...base, issue: 3, cost_status: undefined, cost_usd: 2.5 },
+    '104-available': { ...base, issue: 4, cost_status: 'available', cost_usd: 1 },
   };
   for (const [id, fields] of Object.entries(jobs)) addJob(root, id, { id, ...fields });
   const costs = Object.fromEntries(localRecords(root).map((r) => [r.job ?? r.id, r.cost_usd]));
   assert.deepEqual(Object.values(costs).sort(), [1, 2.5, null, null].sort());
-  assert.equal(jobFacts({ id: 'x', ...jobs['1-null'] }).cost_usd, null);
-  assert.equal(jobFacts({ id: 'x', ...jobs['2-old'] }).cost_usd, null);
-  assert.equal(jobFacts({ id: 'x', ...jobs['3-legacy'] }).cost_usd, 2.5);
-  assert.equal(jobFacts({ id: 'x', ...jobs['4-available'] }).cost_usd, 1);
+  assert.equal(jobFacts({ id: 'x', ...jobs['101-null'] }).cost_usd, null);
+  assert.equal(jobFacts({ id: 'x', ...jobs['102-old'] }).cost_usd, null);
+  assert.equal(jobFacts({ id: 'x', ...jobs['103-legacy'] }).cost_usd, 2.5);
+  assert.equal(jobFacts({ id: 'x', ...jobs['104-available'] }).cost_usd, 1);
 });
 
 test('AC-7: a mixed period counts pending and unavailable jobs as without cost, in every delivery reader', () => {
