@@ -207,3 +207,8 @@ test('AC-7: a mixed period counts pending and unavailable jobs as without cost, 
   const cli = JSON.parse(res.stdout).current.cost;
   assert.deepEqual([cli.known_usd, cli.jobs_with_cost, cli.jobs_without_cost], [1.25, 1, 2]);
 });
+
+test('AC-8: the repo declares the dashboard pages that factory/bin/visual checks (run by the builder and the gate)', () => {
+  const config = JSON.parse(readFileSync(join(repo, 'factory/config.json'), 'utf8'));
+  assert.ok(Array.isArray(config.visual?.pages) && config.visual.pages.length > 0);
+});
