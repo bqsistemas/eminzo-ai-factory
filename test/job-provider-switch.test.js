@@ -56,9 +56,9 @@ test('provider claude rebinds a Codex job: re-routes agents and models from its 
   for (const key of ['stage', 'round', 'pr', 'note', 'parked_from', 'lane', 'intake']) {
     assert.deepEqual(job[key], codexJob()[key], key);
   }
-  // Claude cost comes from transcripts again; the Codex marker is gone.
-  assert.equal(job.cost_usd, 0);
-  assert.equal(job.cost_status, undefined);
+  // Claude cost is unknown (pending) until the next sync finds usage; the Codex marker is gone.
+  assert.equal(job.cost_usd, null);
+  assert.equal(job.cost_status, 'pending');
   assert.equal(job.cost_reason, undefined);
   assert.equal(job.provider_switches.length, 1);
   const [entry] = job.provider_switches;

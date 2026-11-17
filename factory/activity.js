@@ -157,7 +157,7 @@ export function formatDuration(ms) {
 
 /** Legacy numeric costs remain compatible; explicit unknown always wins. */
 export function costAvailable(job) {
-  return job?.cost_status !== 'unavailable' && (job?.provider !== 'codex' || job?.cost_status === 'available')
+  return job?.cost_status !== 'unavailable' && job?.cost_status !== 'pending' && (job?.provider !== 'codex' || job?.cost_status === 'available')
     && typeof job?.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
 }
 
@@ -178,7 +178,7 @@ const COST_HINT_KEYS = Object.freeze({
   no_associated_usage: 'costHint_no_associated_usage', ambiguous_session: 'costHint_ambiguous_session',
   invalid_usage: 'costHint_invalid_usage',
 });
-const unknownCost = (job) => job?.cost_status === 'unavailable' || (job?.provider === 'codex' && !costAvailable(job));
+export const unknownCost = (job) => job?.cost_status === 'unavailable' || job?.cost_status === 'pending' || (job?.provider === 'codex' && !costAvailable(job));
 
 export function costLabel(job, text = COST_TEXT_EN) {
   if (unknownCost(job)) return text.costUnavailable ?? COST_TEXT_EN.costUnavailable;

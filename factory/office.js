@@ -1,5 +1,5 @@
 // Pure projection of the existing board jobs. No independent lifecycle or persistence.
-import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone, costAvailable, COST_TEXT_EN } from './activity.js';
+import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone, costAvailable, unknownCost, COST_TEXT_EN } from './activity.js';
 import { AREAS, MAP, WAYPOINTS, SEATS, LOUNGE_SPOTS, MEETING_SEATS, SHORT } from './office-map.js';
 export { AREAS, MAP, WAYPOINTS, SEATS, LOUNGE_SPOTS, MEETING_SEATS, FURNITURE, WALL_H, PARTITION, DOOR_W, layoutOffice, officeBackdrop } from './office-map.js';
 export { SPRITES, CHARACTER_FOR } from './sprite-atlas.js';
@@ -27,7 +27,7 @@ export function headerStats(jobs) {
     agents += activeAgents(job).length;
     cost += finiteCost(job);
   }
-  const unknown = jobs.filter((j) => j?.cost_status === 'unavailable' || (j?.provider === 'codex' && !costAvailable(j))).length;
+  const unknown = jobs.filter(unknownCost).length;
   return { total: jobs.length, running, agents, cost, ...(unknown ? { cost_unavailable: unknown } : {}) };
 }
 

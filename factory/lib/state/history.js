@@ -14,7 +14,7 @@ const at = (value) => {
   return Number.isFinite(ms) ? ms : null;
 };
 const minutes = (from, to) => (from !== null && to !== null && to >= from ? Math.round(((to - from) / MINUTE) * 10) / 10 : null);
-const knownCost = (job) => job.cost_status !== 'unavailable' && typeof job.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
+const knownCost = (job) => job.cost_status !== 'unavailable' && job.cost_status !== 'pending' && typeof job.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
 const decisionOf = (d) => (d === 'ESCALATE' ? true : d === 'APPROVE' ? false : null);
 
 /** Minutes from a facts line's start until the job was ready for approval (what an estimate measures), or null. */

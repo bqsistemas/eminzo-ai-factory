@@ -17,7 +17,7 @@ const DECISIONS = new Set(['APPROVE', 'ESCALATE']);
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isoOrNull = (v) => (typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(Date.parse(v)).toISOString() : null);
-const knownCost = (job) => job.cost_status !== 'unavailable' && typeof job.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
+const knownCost = (job) => job.cost_status !== 'unavailable' && job.cost_status !== 'pending' && typeof job.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
 
 /** The facts of one job, from job.json. */
 export function jobFacts(job) {

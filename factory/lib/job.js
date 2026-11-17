@@ -1404,8 +1404,7 @@ function switchProvider(c, id, provider) {
   if (provider === 'codex') {
     Object.assign(job, { cost_usd: null, cost_status: 'unavailable', cost_reason: 'no_associated_usage' });
   } else {
-    job.cost_usd = 0;
-    delete job.cost_status;
+    Object.assign(job, { cost_usd: null, cost_status: 'pending' });
     delete job.cost_reason;
   }
   saveJob(c, job);
@@ -1934,8 +1933,8 @@ function newJob(c, n, requestedProvider) {
     provider, intake: null, agents: null, models: stageModels(c.config, provider), gate: null, reviews: {}, history: [],
     ...(xsRequested(issue) ? { xs_requested: true } : {}),
     ...(baseFixRequested(issue) ? { base_fix: true } : {}),
-    decision: null, note: '', parked_from: null, cost_usd: provider === 'codex' ? null : 0,
-    ...(provider === 'codex' ? { cost_status: 'unavailable', cost_reason: 'no_associated_usage' } : {}), started: now(), finished: null, updated: now(),
+    decision: null, note: '', parked_from: null, cost_usd: null,
+    ...(provider === 'codex' ? { cost_status: 'unavailable', cost_reason: 'no_associated_usage' } : { cost_status: 'pending' }), started: now(), finished: null, updated: now(),
   };
   writeAtomic(file(c, job, 'issue.md'), issueMarkdown(issue));
   saveJob(c, job);
@@ -1945,6 +1944,7 @@ function newJob(c, n, requestedProvider) {
 function sync(c, id) {
   const { job } = loadJob(c, id);
   refreshFromFiles(c, job);
+  const before = { cost_usd: job.cost_usd, cost_status: job.cost_status, cost_reason: job.cost_reason, cost_by_agent: job.cost_by_agent };
   delete job.cost_by_agent; // rebuilt below; an unavailable cost must not keep a stale breakdown
   if (job.provider === 'codex') {
     Object.assign(job, codexJobCost(readCodexRollouts(codexSessionsDir(), c.root), job,
@@ -1952,10 +1952,18 @@ function sync(c, id) {
   } else {
     const transcripts = readAgentTranscripts(transcriptsDir(c.root));
     const { cost_usd, ...byAgent } = jobCostBreakdown(transcripts, job.id, c.config.prices ?? {});
-    job.cost_usd = cost_usd;
-    job.cost_by_agent = byAgent;
-    job.cost_status = 'available';
-    job.cost_reason = null;
+    if (Object.keys(byAgent.by_role ?? {}).length) {
+      job.cost_usd = cost_usd;
+      job.cost_by_agent = byAgent;
+      job.cost_status = 'available';
+      job.cost_reason = null;
+    } else if (before.cost_status === 'available') {
+      // No usage found (transcripts can be pruned): the cost already known stays.
+      Object.assign(job, before);
+      if (before.cost_by_agent === undefined) delete job.cost_by_agent;
+    } else {
+      Object.assign(job, { cost_usd: null, cost_status: 'pending', cost_reason: null });
+    }
     // The builder's time is refreshed with the cost. With no transcript left (pruned), the last profile stays,
     // dated by profiled_at.
     const profile = jobProfile(transcripts, job.id, c.config.profile?.patterns);
