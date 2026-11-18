@@ -257,7 +257,9 @@ Invalid arguments exit with code 2. The result has the period, the period before
 
 Ask Eminzo and any agent with the `eminzo` MCP server read the same numbers with the read-only `delivery_metrics` tool (`days` or `from`/`to`, and `weeks`). See [eminzo mcp](docs/mcp.md).
 
-<!-- screenshot: desktop Metrics page, delivery (DORA) view with the weekly trend and cost; save as docs/images/desktop-metrics.png -->
+<p align="center">
+  <img src=".github/assets/metrics-throughput.webp" alt="Eminzo desktop: the Delivery metrics page, Throughput view, with deployment frequency, change lead time, recovery time and deployments per day" width="880">
+</p>
 
 ## The desktop app
 
@@ -275,7 +277,9 @@ A dashboard with the agents at work and a kanban board, the Pipeline of each job
 
 The Metrics page shows the [delivery metrics](#delivery-metrics) of the repository with their weekly trend and cost. The Skills page is a marketplace of cards, with a detail view built from each skill's `SKILL.md`. In Settings → Appearance → Branding you can set the app name, a one-word name for Ask, and a logo. These are desktop features: the engine and its skills are unchanged.
 
-<!-- screenshot: desktop Skills marketplace, cards view; save as docs/images/desktop-skills.png (optional) -->
+<p align="center">
+  <img src=".github/assets/skills-marketplace.webp" alt="Eminzo desktop: the Skills marketplace, with skill cards grouped by source and folder" width="880">
+</p>
 
 <p align="center">
   <img src=".github/assets/ask-product.webp" alt="Ask Eminzo in Product mode: a brief in progress with its check" width="880">
