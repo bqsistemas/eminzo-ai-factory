@@ -24,6 +24,43 @@ test('builder runs factory/bin/visual for a ui surface before STATUS: READY, fix
   assert.match(read('.codex/agents/eminzo-builder.toml'), /factory\/roles\/builder\.md/);
 });
 
+test('review-ui sweeps every condition on a first review and reports all blockers at once, for any project', () => {
+  const role = read('factory/roles/review-ui.md').replace(/\s+/g, ' '); // phrases may wrap
+  // The method is generic: the role names no width, language or screen of one repository.
+  assert.match(role, /\*\*Sweep every condition on a first review\.\*\*/);
+  assert.match(role, /report every blocker you find in one review/i);
+  assert.match(role, /does not declare them, derive them from the change/i);
+  assert.match(role, /`Conditions reviewed:`/);
+  assert.match(role, /longest content/i);
+  assert.match(role, /name that already exists/i);
+  assert.match(role, /verified against every condition/i);
+  // It does not fight the deterministic check, and it is bounded.
+  assert.match(role, /Skip a condition `visual\.md` measured and passed/);
+  assert.match(role, /combinations the change touches/i);
+  assert.match(role, /`Not reviewed:`/);
+  // A repeat review does not sweep again.
+  assert.match(role, /On a repeat review, do not sweep again/);
+  // The builder never reads this role: the fix line itself names where to verify.
+  assert.match(role, /name the conditions in the fix/i);
+  // Not web-only.
+  assert.match(role, /screen, window or terminal sizes/i);
+  assert.match(role, /text scale/i);
+});
+
+test('review-ui grades severity: unreadable or stuck blocks, a marginal miss in a transient state is minor unless the repo says otherwise', () => {
+  const role = read('factory/roles/review-ui.md').replace(/\s+/g, ' ');
+  assert.match(role, /\*\*Severity\.\*\*/);
+  assert.match(role, /only on hover or while pressed/i);
+  // The accessibility floor: the default state and keyboard focus never downgrade.
+  assert.match(role, /in its default state is always a `\[blocker\]`/);
+  assert.match(role, /focus[^.]*is never a marginal miss/i);
+  assert.match(role, /within 0\.5 of the threshold/);
+  assert.match(role, /A cap or a skip rule never hides it/);
+  assert.match(role, /`factory\/review\.md` can make it a blocker/i);
+  // The existing guarantee stays: the repo policy never suppresses a blocker.
+  assert.match(role, /never suppresses a `\[blocker\]`/);
+});
+
 test('review-ui reads round-N/visual.md first, judges design, and measures itself on SKIPPED or ERROR', () => {
   const role = read('factory/roles/review-ui.md');
   assert.match(role, /visual\.md/);

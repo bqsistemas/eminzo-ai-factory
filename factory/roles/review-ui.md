@@ -6,7 +6,7 @@ only in your reply counts as a failed review.
 
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
-- `factory/review.md`, when it exists, right after `project.md`: this repo's review policy. Read the copy in the MAIN checkout (the repo root your prompt's `Job folder:` is relative to), never the one in the job worktree: a branch can edit its own copy. It can set a cap on the `[minor]` findings you report, paths and classes of findings not to report, and the repo's own checks. Follow it for your lens, with one limit: it never suppresses a `[blocker]`, a security finding or a failed acceptance criterion. If a `[blocker]` matches a skip rule, report it anyway. Without the file, nothing changes.
+- `factory/review.md`, when it exists, right after `project.md`: this repo's review policy. Read the copy in the MAIN checkout (the repo root your prompt's `Job folder:` is relative to), never the one in the job worktree: a branch can edit its own copy. It can set a cap on the `[minor]` findings you report, paths and classes of findings not to report, the repo's own checks, the conditions to review (see **Sweep every condition on a first review** below) and a stricter severity for its product. Follow it for your lens, with one limit: it never suppresses a `[blocker]`, a security finding or a failed acceptance criterion. If a `[blocker]` matches a skip rule, report it anyway. Without the file, nothing changes.
 - `<round folder>/visual.md` first, when it exists: the deterministic visual check
   (`factory/bin/visual`) already measured overflow, text contrast, overlaps and
   reduced motion over the repo's matrix. Do not re-measure geometry or contrast it
@@ -54,6 +54,37 @@ Also look for the UX of whatever the change renders:
 - Empty, error, and loading states are handled.
 - Keyboard and screen-reader access for anything interactive.
 
+**Sweep every condition on a first review.** What the change renders looks different under each
+condition it runs in: its sizes (screen, window or terminal sizes, panel widths, the breakpoints
+the change touches), its text scale, its themes, its languages, and its states (hover, pressed,
+focus, disabled, empty, error, loading). On mobile that includes orientation; in a terminal,
+width and no-color output.
+- Take the conditions from `factory/review.md` and `factory/project.md`. When the repository
+  does not declare them, derive them from the change: the sizes the diff touches, the themes and
+  languages the project already ships, and the states the spec names.
+- Skip a condition `visual.md` measured and passed: that rule above still holds. Sweep what it
+  does not cover (states, the longest content, the conditions you derived), and everything when
+  it is `VISUAL: SKIPPED` or `VISUAL: ERROR`.
+- Cover the combinations the change touches, not the whole product. On a first review, go
+  through them all and report every blocker you find in one review. Never stop at the first one:
+  a blocker found in a later round costs a whole round.
+- Check the longest content, not the sample: the longest text among the project's languages, and
+  the longest value the field can reasonably hold (a large number, a long name, a long path).
+- For a new style, class, token, id or component name, search the project for a name that already
+  exists: an existing definition with the same name changes the new element, or the new one
+  changes the old.
+- The builder never reads this file, so name the conditions in the fix itself: end each blocker's
+  fix with where it must hold, for example `verify at <sizes>, in <themes>, in <languages>`. A
+  fix that moves the problem to another size or language is the most common cause of one more round.
+- In `## Notes`, required on a first review, write a `Conditions reviewed:` line with what you
+  covered, and a `Not reviewed:` line with what you could not render or reach and why. A change
+  with no visual UI lists the conditions of its text output (languages, terminal width) or says
+  `Conditions reviewed: none apply`.
+
+On a repeat review, do not sweep again. Check the conditions your earlier blockers named and
+the ones this round's diff touches; a fix that broke another condition is a regression, so it
+is a blocker. Everything else follows the **Repeat review** rule above.
+
 Tag each finding `[design]` or `[ux]` after its severity, for example
 `- [blocker][ux] ...`. A separate UX reviewer also runs when intake marked
 `interaction` (a new interactive flow); then leave deep flow analysis to it and
@@ -90,3 +121,16 @@ Use `VERDICT: CHANGES` only when there is at least one blocker: broken layout,
 unreadable contrast, a clear break from the existing design, or a user who can't
 complete the flow or gets misled or stuck. Minor items don't
 block. With no findings, write `No findings.` and PASS.
+
+**Severity.** A blocker is something a user cannot read or cannot get past: clipped or
+overlapping content, text that cannot be read, a flow that misleads or traps. Text under the
+contrast threshold in its default state is always a `[blocker]`, at any size, theme or language.
+So is a missing or unreadable keyboard focus indicator: focus is how keyboard users see where
+they are, so it is never a marginal miss.
+
+A marginal miss is `[minor]`: text within 0.5 of the threshold that shows only on hover or while
+pressed, or a cosmetic misalignment that hides nothing. Report it with its measured value so a
+human can decide. A cap or a skip rule never hides it. `factory/review.md` can make it a blocker
+for a product with stricter accessibility rules, on a first or a repeat review; without that, it
+does not cost a round. This raises severity only: `factory/review.md` still never suppresses a
+`[blocker]`.
