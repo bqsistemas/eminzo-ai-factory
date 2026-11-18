@@ -60,7 +60,13 @@ test('AC-1: the commands block keeps long commands inside the narrow guide colum
   assert.match(css, /\.guide-cmds code\s*\{[^}]*overflow-wrap:\s*anywhere/);
 });
 
-test('pending chips pulse without animating opacity, so text contrast does not depend on the phase', () => {
+test('pending chips breathe a dashed ring, never the chip itself, so text contrast does not depend on the phase', () => {
+  const chip = css.match(/\.chip\.pending\s*\{([^}]*)\}/)[1];
+  assert.match(chip, /border-color:\s*transparent/, 'the ring replaces the chip border');
+  assert.doesNotMatch(chip, /animation|opacity/, 'the chip and its text stay still');
+  assert.match(css, /\.chip\.pending::after\s*\{[^}]*border:\s*1px dashed var\(--pending\)[^}]*animation:\s*breathe\b/);
   const frames = css.match(/@keyframes breathe\s*\{([\s\S]*?\})\s*\}/)[1];
-  assert.doesNotMatch(frames, /opacity/);
+  // opacity on the ring's own box stays on the compositor; border-color repainted the chip every frame.
+  assert.match(frames, /opacity/);
+  assert.doesNotMatch(frames, /border-color/);
 });
