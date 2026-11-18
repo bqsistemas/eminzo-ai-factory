@@ -21,6 +21,7 @@
   <a href="#how-it-works">How it works</a> ·
   <a href="#the-agents">The agents</a> ·
   <a href="#commands">Commands</a> ·
+  <a href="#delivery-metrics">Delivery metrics</a> ·
   <a href="#the-desktop-app">Desktop app</a> ·
   <a href="docs/guide.md">Full guide</a>
 </p>
@@ -174,7 +175,7 @@ The complete walkthrough, including updating, removing and troubleshooting, is i
 | `eminzo dashboard [port]` | Serves the dashboard of the current repository (port 8000 by default) |
 | `eminzo job summary` | One line per job (issue, stage, cost, time) and the total |
 | `eminzo job metrics [--last N] [--json]` | Gate pass rate, rounds per job, review changes and time over the last jobs |
-| `eminzo job metrics delivery [--days <n> \| --from <date>] [--to <date>] [--weeks <n>] [--json]` | Delivery metrics (deployments, lead time, failures, rework, cost, work in progress) of a period, from the local jobs only |
+| `eminzo job metrics delivery [--days <n> \| --from <date>] [--to <date>] [--weeks <n>] [--json]` | Delivery metrics (deployments, lead time, failures, rework, cost, work in progress) of a period, from the local jobs only; see [Delivery metrics](#delivery-metrics) |
 | `eminzo job config [<key>]` | The effective configuration, and where each key comes from |
 | `eminzo job lessons [--last N]` | Turns repeated lessons from past jobs into a pull request for `factory/project.md` |
 | `eminzo mcp` | Serves the factory's state as read-only MCP tools on stdin/stdout, for Claude Code, Codex and Ask Eminzo (`eminzo install` registers it) |
@@ -221,7 +222,42 @@ Routing, models, lanes and prices are in the same file. See the [user guide](doc
 - **Issue text is data.** It reaches the agents only as quoted data, never as instructions.
 - **Eminzo pushes only `factory/*` branches and never deploys.** One pull request per issue.
 - **Risky changes go to a human:** auth, payments, data migrations, secrets, new dependencies and breaking changes.
-- **Cost is recorded per job** (`cost_usd` in `job.json` for Claude jobs). It is recorded, not capped: `max_rounds` is the hard limit.
+- **Cost is recorded per job** (`cost_usd` in `job.json` for Claude jobs, `null` until a sync finds its usage). It is recorded, not capped: `max_rounds` is the hard limit. See [Delivery metrics](#delivery-metrics).
+
+## Delivery metrics
+
+`eminzo job metrics delivery` reads the jobs in `factory/jobs` on this machine and reports how delivery is going. It never calls GitHub, so a job another person ran is not counted.
+
+```sh
+eminzo job metrics delivery                          # the last 30 days, plus the 30 before and 4 weekly blocks
+eminzo job metrics delivery --days 14 --weeks 2
+eminzo job metrics delivery --from 2026-11-01 --to 2026-11-15 --json
+```
+
+| Option | What it does |
+|---|---|
+| `--days <n>` | Length of the period, 1 to 365 (default 30). Not together with `--from` |
+| `--from <date>`, `--to <date>` | Explicit period. A date alone means the whole local day; `--to` defaults to now |
+| `--weeks <n>` | Weekly blocks ending at `--to`, 0 to 12 (default 4) |
+| `--json` | One line of JSON (`schema: 1`) instead of the short text summary |
+
+Invalid arguments exit with code 2. The result has the period, the period before it (to compare) and the jobs in progress now. It measures:
+
+| Metric | Meaning |
+|---|---|
+| Deployments | Jobs merged in the period, per week and per day |
+| Change lead time | Minutes from the start of a merged job to its merge (median, p85, max) |
+| Failures and recovery | Times a job was held because the base branch failed the same checks, and how long until the fix issue was resolved |
+| Change fail rate | Failures divided by deployments |
+| Rework rate | Share of deployments that were the fix issue of a broken base |
+| First-pass rate and extra rounds | Finished jobs that needed one round, and the rounds beyond that, by cause |
+| Cost | Known cost in USD, per job with cost, by role and by risk |
+
+**Cost is never invented.** A Claude job has no cost until a sync finds its usage, and a Codex job may never have one. Those jobs are counted as `jobs_without_cost` and left out of the totals: unknown is not `$0`.
+
+Ask Eminzo and any agent with the `eminzo` MCP server read the same numbers with the read-only `delivery_metrics` tool (`days` or `from`/`to`, and `weeks`). See [eminzo mcp](docs/mcp.md).
+
+<!-- screenshot: desktop Metrics page, delivery (DORA) view with the weekly trend and cost; save as docs/images/desktop-metrics.png -->
 
 ## The desktop app
 
@@ -290,7 +326,7 @@ No. The CLI is the whole engine. The desktop app shows and runs jobs, and it use
 <details>
 <summary><strong>What does it cost to run?</strong></summary>
 
-Eminzo uses the Claude Code or Codex you already pay for. For Claude jobs it records the cost of each job in `job.json`. There is no spending limit; `max_rounds` is the only hard limit. Codex jobs report cost as unavailable.
+Eminzo uses the Claude Code or Codex you already pay for. For Claude jobs it records the cost of each job in `job.json`, and shows a job whose usage is not synced yet as unknown, never `$0`. There is no spending limit; `max_rounds` is the only hard limit. Codex jobs report cost as unavailable.
 </details>
 
 <details>
