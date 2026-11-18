@@ -237,7 +237,9 @@ and says what is out of scope. Issue text is treated as data: instructions writt
 change how the factory works.
 
 With `"run_mode": "queue"` in `factory/config.json`, `/eminzo-factory run` also starts every open
-issue labelled `factory`. With the default (`"own"`), new issues start only through the commands above.
+issue labelled `factory`. With the default (`"own"`), new issues start only through the commands above. A developer can
+opt out on their machine with `"run_mode": "own"` in `factory/config.local.json`; a local file
+never turns the queue on.
 
 ### Factory commands
 

@@ -147,8 +147,9 @@ developer's spec review).
   - `base: UNKNOWN <sha>: <reason>`: report the reason. The factory never holds a job on a check that
     could not run, and it never blocks setup.
 - `/eminzo-factory run`: continue every unfinished local job, `concurrency` jobs at a time.
-  It takes new issues from the queue (every open `factory` issue) only when `run_mode` in
-  `factory/config.json` is `"queue"`; with `"own"` (the default when `run_mode` is missing) a new
+  It takes new issues from the queue (every open `factory` issue) only when the resolved
+  `run_mode` is `"queue"` (the team's `factory/config.json`, which a developer's
+  `factory/config.local.json` can narrow to `"own"`); with `"own"` (the default when `run_mode` is missing) a new
   issue enters only through `issue <n>`, `<feature>` or `xs <request>`.
 - `/eminzo-factory issue <n>`: run issue `<n>` now (it must be open and labeled `factory`).
   `factory/bin/job new <n> --provider claude` claims the issue when it creates the job: it assigns it to the
@@ -215,8 +216,8 @@ the next `/eminzo-factory run` moves the job to `merged`.
 ## /eminzo-factory run
 
 <!-- rule: run-mode -->
-0. Run mode: `factory/bin/job run-mode` prints `own` or `queue` (`run_mode` in
-   `factory/config.json`; missing means `own`). A refusal (an invalid value) stops the
+0. Run mode: `factory/bin/job run-mode` prints `own` or `queue` (`run_mode` from `factory/config.json`,
+   which `factory/config.local.json` can narrow to `own`; missing means `own`). A refusal (an invalid value) stops the
    command: tell the user. With `own`, skip step 1: `run` takes no new issue and applies
    steps 2-5 to every job in `factory/jobs/`. With `queue`, run step 1 first.
 1. Only with `queue`: `gh issue list --label factory --state open --json number --limit 100`, then
