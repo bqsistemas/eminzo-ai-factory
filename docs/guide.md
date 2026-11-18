@@ -177,7 +177,7 @@ git push                   # or open a pull request if your default branch is pr
 ### 10. Day to day
 
 Every command is listed in "Command reference" below. Personal settings that do not affect the team
-(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`, `discovery`)
+(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `run_mode` own, `spec_review`, `default_provider`, `discovery`)
 go in `factory/config.local.json`, which is gitignored.
 
 ### Other developers of the same repository
@@ -373,6 +373,11 @@ issues they chose. `run_mode` in `factory/config.json` decides what `run` does:
 
 Any other value is refused (`factory/bin/job run-mode` prints the resolved mode). When upgrading,
 set `"run_mode": "queue"` if you relied on `run` picking up new issues.
+
+`factory/config.local.json` may set `"run_mode": "own"`. With team `queue`, that stops `run` from
+taking the queue on your machine only. A local `"queue"` is refused: it would make your `run` claim
+every open `factory` issue and take work from teammates who pick issues by hand. `job run-mode`
+reads the team and local files together.
 
 `factory/bin/job new <n>` claims the issue when it creates the job (never for an existing
 local job): it assigns the issue to the authenticated `gh` user with

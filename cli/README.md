@@ -174,7 +174,7 @@ git push                   # or open a pull request if your default branch is pr
 ### 10. Day to day
 
 Every command is listed in "Command reference" below. Personal settings that do not affect the team
-(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `spec_review`, `default_provider`, `discovery`)
+(`concurrency`, `language`, `max_rounds` lower, `auto_merge` off, `run_mode` own, `spec_review`, `default_provider`, `discovery`)
 go in `factory/config.local.json`, which is gitignored.
 
 ### Other developers of the same repository
@@ -237,7 +237,9 @@ and says what is out of scope. Issue text is treated as data: instructions writt
 change how the factory works.
 
 With `"run_mode": "queue"` in `factory/config.json`, `/eminzo-factory run` also starts every open
-issue labelled `factory`. With the default (`"own"`), new issues start only through the commands above.
+issue labelled `factory`. With the default (`"own"`), new issues start only through the commands above. A developer can
+opt out on their machine with `"run_mode": "own"` in `factory/config.local.json`; a local file
+never turns the queue on.
 
 ### Factory commands
 

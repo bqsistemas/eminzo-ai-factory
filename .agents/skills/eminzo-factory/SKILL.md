@@ -104,8 +104,8 @@ intake → route/worktree → spec → [spec-review] → build → gate → rout
 Use the scripts for every transition. The stage contract is:
 
 <!-- rule: run-mode -->
-1. **run**: preflight; then `factory/bin/job run-mode` prints `own` or `queue` (`run_mode` in
-   `factory/config.json`; missing means `own`); a refusal (an invalid value) stops the command. Only with `queue`: list open `factory` issues and run
+1. **run**: preflight; then `factory/bin/job run-mode` prints `own` or `queue` (`run_mode` from `factory/config.json`,
+   which `factory/config.local.json` can narrow to `own`; missing means `own`); a refusal (an invalid value) stops the command. Only with `queue`: list open `factory` issues and run
    `factory/bin/job new <n> --provider codex` idempotently for each; a refusal (not open or labeled, assigned to someone else, or `factory/<id>` already on the remote) skips that issue. With `own`, take no new issue. In both modes: reconcile PRs and resume unfinished local jobs in `factory/jobs/` up to
    `concurrency`, read with `factory/bin/job config concurrency` (the last field of its line), never from
    `factory/config.json` directly: the gitignored `factory/config.local.json` may lower it.
@@ -363,7 +363,8 @@ never interpret a displayed `$0.00` as verified Codex cost.
 - `factory/bin/base` runs `factory/checks.sh` on the tip of the base branch in the reused worktree `.worktrees/.base`, after the prepare step (`checks.prepare` in config.json, else the one the lockfile names). It prints `base: PASS <sha>`, `base: FAIL <sha>: <command>` or `base: UNKNOWN <sha>: <reason>` and the `report:` file; exit 0, 1 or 3. A check that could not run is UNKNOWN, never a failure. `factory/bin/base fix-issue` finds or creates the one open issue (labels `factory` and `factory:base-fix`) that fixes a failing base: `fix: #<n> created` or `fix: #<n> open`; it is refused when the last check did not fail or the base moved since. The issue holds the sha, the failing command and how to reproduce it, never log lines.
 - `$eminzo-factory run`: resume every unfinished local job, respecting `concurrency` (from
   `factory/bin/job config concurrency`). It drains
-  the queue of open `factory` issues only when `run_mode` in `factory/config.json` is `"queue"`;
+  the queue of open `factory` issues only when the resolved `run_mode` is `"queue"` (the team's `factory/config.json`, which
+  `factory/config.local.json` can narrow to `"own"`);
   with `"own"` (the default when missing) new issues enter only through `issue <n>`, `add` or `xs`.
 - `$eminzo-factory issue <n>`: create/resume the job for one open labelled issue. Creating it
   claims the issue: `factory/bin/job new` assigns it to the `gh` user and refuses when someone
