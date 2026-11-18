@@ -273,6 +273,10 @@ Eminzo desktop shows and runs the same jobs. It uses the CLI, so you don't need 
 
 A dashboard with the agents at work and a kanban board, the Pipeline of each job with its retries, Tasks, Issues & PRs, and a terminal for Claude Code or Codex sessions, all for repositories that have the factory installed. Ask Eminzo (Cmd+J) is a chat about the factory that runs on your own Claude Code or Codex login: in Engineering mode it answers about jobs and reviews, and in Product mode it takes an idea to an approved brief (see [The product stage](docs/product-stage.md)). The Changes panel (Cmd+Shift+G) shows the code changes of a job as it is built, read-only and live. Without the desktop app, `eminzo dashboard` serves the same board in your browser.
 
+The Metrics page shows the [delivery metrics](#delivery-metrics) of the repository with their weekly trend and cost. The Skills page is a marketplace of cards, with a detail view built from each skill's `SKILL.md`. In Settings → Appearance → Branding you can set the app name, a one-word name for Ask, and a logo. These are desktop features: the engine and its skills are unchanged.
+
+<!-- screenshot: desktop Skills marketplace, cards view; save as docs/images/desktop-skills.png (optional) -->
+
 <p align="center">
   <img src=".github/assets/ask-product.webp" alt="Ask Eminzo in Product mode: a brief in progress with its check" width="880">
 </p>
