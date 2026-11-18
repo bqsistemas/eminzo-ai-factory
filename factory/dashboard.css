@@ -295,8 +295,12 @@
   .chip.FAIL { background: var(--alert-bg); color: var(--alert); border: 1px solid transparent; }
   .chip.carried { opacity: .6; border-style: dashed; border-color: currentColor; }
   .chip.gate { font-family: var(--mono); letter-spacing: .02em; }
-  .chip.pending { animation: breathe 1.6s ease-in-out infinite; }
-  @keyframes breathe { 50% { border-color: transparent; } }
+  /* A pending chip breathes its dashed ring, drawn on ::after so only the ring fades: the text keeps full contrast, and opacity
+     on the ring's own box runs on the compositor (animating border-color repainted the chip every frame). */
+  .chip.pending { position: relative; border-color: transparent; }
+  .chip.pending::after { content: ""; position: absolute; inset: -1px; border: 1px dashed var(--pending); border-radius: inherit;
+                         pointer-events: none; animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: 0; } }
   .note { margin-top: 4px; font-size: 12px; color: var(--muted); }
   .card.alert .note { color: var(--alert); }
   .cmd { display: inline-block; max-width: 100%; overflow-wrap: anywhere; margin-top: 4px; font: 11px var(--mono); padding: 2px 8px; border-radius: 999px;
@@ -412,7 +416,7 @@
   @keyframes octo-sway { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
   @keyframes octo-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
   @media (prefers-reduced-motion: reduce) {
-    .agent, .agent .avatar, .chip.pending { animation: none; }
+    .agent, .agent .avatar, .chip.pending, .chip.pending::after { animation: none; }
     .pipeline-node, .pipeline-node[data-state="active"], .pipeline-arrow { transition: none; animation: none; }
     .octo, .octo-tentacle, .octo-eye { animation: none; }
     .card, .col { transition: none; }

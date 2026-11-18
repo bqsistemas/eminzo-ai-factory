@@ -135,6 +135,7 @@ test('AC-7: dashboard loads activity.js as a module and honours reduced motion',
   assert.ok(reduced, 'has a prefers-reduced-motion: reduce block');
   assert.match(reduced, /\.agent[^{]*\{[^}]*animation:\s*none/, '.agent animation disabled');
   assert.match(reduced, /\.chip\.pending[^{]*\{[^}]*animation:\s*none/, '.chip.pending animation disabled');
+  assert.match(reduced, /\.chip\.pending::after[^{]*\{[^}]*animation:\s*none/, 'the pending ring stops breathing');
 });
 
 describe('job 004: animated octopus agent characters', () => {
