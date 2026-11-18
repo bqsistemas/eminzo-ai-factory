@@ -14,7 +14,9 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
   canvas.width=backdrop.width=MAP.width;canvas.height=backdrop.height=MAP.height;
   let ready=false,state=officeState([]),jobs=[],raf=0,last=0,scale=1,scaleX=1,scaleY=1,liveKey='',visibleJobIds=new Set();
   const walkers=new Map(),buttons=new Map(),director=createWanderDirector(Math.random),work=createWorkDirector(Math.random),bubbles=createBubbleDirector(Math.random);
-  let wakeTimer=0;
+  let wakeTimer=0,fitKey='',fitView=null;
+  // A stage with no layout box (display:none, detached) is as good as a hidden tab: nothing to paint.
+  const rendered=()=>stage.isConnected!==false&&(stage.clientWidth>0||stage.clientHeight>0);
   const rect=(c,x,y,w,h,color)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
   const text=(c,value,x,y,color='#edf4ff',size=12,align='left')=>{
     c.font=`600 ${size}px system-ui, sans-serif`;c.fillStyle=color;c.textAlign=align;c.textBaseline='middle';c.fillText(value,x,y);
@@ -98,13 +100,16 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
     const w=stage.clientWidth,h=stage.clientHeight||MAP.height*(w/MAP.width);
     // Contain the 768×500 artwork as one proportional scene. The unused stage area
     // remains navy instead of stretching sprites and making labels look smeared.
-    const viewport=viewportOffice(w,h);scale=scaleX=scaleY=viewport.scale;
+    const key=`${w}x${h}`;
+    if(key===fitKey&&fitView)return fitView;
+    const viewport=viewportOffice(w,h);scale=scaleX=scaleY=viewport.scale;fitKey=key;fitView=viewport;
     canvas.style.position='absolute';canvas.style.left=`${viewport.offsetX}px`;canvas.style.top=`${viewport.offsetY}px`;
     canvas.style.width=`${viewport.width}px`;canvas.style.height=`${viewport.height}px`;
     hits.style.left='0px';hits.style.top='0px';hits.style.width=`${w}px`;hits.style.height=`${h}px`;
     return viewport;
   }
   function draw(now=performance.now()) {
+    if(!rendered())return;
     const viewport=fit();ctx.imageSmoothingEnabled=false;ctx.drawImage(backdrop,0,0);
     const boxes=new Map(AREAS.map(a=>[`area:${a.id}`,a.rect]));
     for(const [s,r] of Object.entries(STAGE_REGIONS))boxes.set(`stage:${s}`,r);
@@ -182,7 +187,7 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
   const agentsNow=()=>state.agents;
   // Rest/dwell periods need no frames: one timer wakes the loop when the next decision is due.
   const wake=(now=performance.now())=>Math.min(director.nextWake(walkers),work.nextWake(walkers,now),bubbles.nextWake());
-  const plan=(now=performance.now())=>planWake({reduced:reduced.matches,hidden:document.hidden,moving:moving()||state.gate.status==='running'||state.merging.status==='merging',busy:false,wake:wake(now),now});
+  const plan=(now=performance.now())=>planWake({reduced:reduced.matches,hidden:document.hidden||!rendered(),moving:moving()||state.gate.status==='running'||state.merging.status==='merging',busy:false,wake:wake(now),now});
   const isAnimated=now=>plan(now).frame;
   function schedule() {
     clearTimeout(wakeTimer);wakeTimer=0;
@@ -232,7 +237,7 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
     if(document.hidden){cancelAnimationFrame(raf);raf=0;clearTimeout(wakeTimer);wakeTimer=0;}
     else{last=0;kick();schedule();}
   });
-  if(typeof ResizeObserver==='function')new ResizeObserver(()=>draw()).observe(stage);else window.addEventListener('resize',()=>draw());
+  if(typeof ResizeObserver==='function')new ResizeObserver(()=>{if(!rendered())return;draw();kick();schedule();}).observe(stage);else window.addEventListener('resize',()=>draw());
   atlas.onload=()=>{ready=true;paintBackdrop();draw();};
   atlas.onerror=()=>{status.textContent='Office atlas unavailable; job details remain available.';};
   atlas.src=ATLAS_URL;paintBackdrop();update([]);
