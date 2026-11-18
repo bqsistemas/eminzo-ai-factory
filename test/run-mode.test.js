@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RUN_MODES, runMode } from '../factory/lib/run-mode.js';
-import { Refused } from '../factory/lib/util.js';
+import { OVERRIDABLE, Refused, validateLocal } from '../factory/lib/util.js';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel) => readFileSync(join(repo, rel), 'utf8');
@@ -26,10 +26,11 @@ function tree(dir) {
   return out;
 }
 
-function cli(config) {
+function cli(config, local) {
   const root = mkdtempSync(join(tmpdir(), 'factory-run-mode-'));
   mkdirSync(join(root, 'factory'), { recursive: true });
   writeFileSync(join(root, 'factory/config.json'), JSON.stringify(config));
+  if (local !== undefined) writeFileSync(join(root, 'factory/config.local.json'), JSON.stringify(local));
   const before = tree(root);
   const res = spawnSync(join(repo, 'factory/bin/job'), ['run-mode'], {
     cwd: root, encoding: 'utf8', env: { ...process.env, FACTORY_ROOT: root, FACTORY_GH: '/nonexistent/gh' },
@@ -74,6 +75,40 @@ test('AC-1: job run-mode refuses an invalid run_mode with exit 1 and writes noth
     assert.equal(res.stdout, '');
     assert.deepEqual(res.after, res.before, 'a refused run-mode writes no file');
   }
+});
+
+test('a local file may set run_mode to "own" and never to anything else', () => {
+  assert.ok(OVERRIDABLE.includes('run_mode'));
+  for (const team of [{ run_mode: 'queue' }, { run_mode: 'own' }, {}]) {
+    assert.doesNotThrow(() => validateLocal(team, { run_mode: 'own' }), JSON.stringify(team));
+  }
+  for (const bad of ['queue', 'Own', '', null, 1, true, ['own']]) {
+    assert.throws(() => validateLocal({ run_mode: 'queue' }, { run_mode: bad }), (err) => {
+      assert.ok(err instanceof Refused, `Refused for ${JSON.stringify(bad)}`);
+      assert.equal(err.message, 'config.local.json: run_mode: can only be "own" (a local file may stop taking the queue, never start it)');
+      return true;
+    });
+  }
+});
+
+test('job run-mode resolves the effective config: team queue + local own is own', () => {
+  for (const [team, local, expected] of [
+    [{ run_mode: 'queue' }, { run_mode: 'own' }, 'own'],
+    [{ run_mode: 'queue' }, { concurrency: 1 }, 'queue'],
+    [{ run_mode: 'own' }, { run_mode: 'own' }, 'own'],
+    [{}, { run_mode: 'own' }, 'own'],
+  ]) {
+    const res = cli({ base: 'origin/main', ...team }, local);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout, `${expected}\n`, JSON.stringify([team, local]));
+  }
+});
+
+test('job run-mode refuses a local "queue", even when the team is also queue', () => {
+  const res = cli({ base: 'origin/main', run_mode: 'queue' }, { run_mode: 'queue' });
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /^refused: config\.local\.json: run_mode: can only be "own"/);
+  assert.equal(res.stdout, '');
 });
 
 test('AC-1: job run-mode takes no arguments', () => {
