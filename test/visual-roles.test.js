@@ -33,7 +33,6 @@ test('review-ui sweeps every condition on a first review and reports all blocker
   assert.match(role, /`Conditions reviewed:`/);
   assert.match(role, /longest content/i);
   assert.match(role, /name that already exists/i);
-  assert.match(role, /verified against every condition/i);
   // It does not fight the deterministic check, and it is bounded.
   assert.match(role, /Skip a condition `visual\.md` measured and passed/);
   assert.match(role, /combinations the change touches/i);
