@@ -89,6 +89,11 @@ export function testedBy(text) {
   return { head: SHA.test(head ?? '') ? head : null, inputs: INPUTS.test(inputs ?? '') ? inputs : null };
 }
 
+/** True when a gate report says its checks were the builder's Stop-hook pass, not a run of the gate (a stamp, not a run). */
+export function reusedStopPass(text) {
+  return /^Reused the Stop-hook pass/m.test(text ?? '');
+}
+
 /** The commit the worktree's branch left `base` at (their merge-base), or null. */
 export function mergeBase(worktree, base) {
   const mb = run('git', ['merge-base', base, 'HEAD'], { cwd: worktree });

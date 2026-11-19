@@ -43,6 +43,7 @@ export function summarySentence(f) {
   const why = [];
   if (f.code !== 0) why.push(`the checks command exited with code ${f.code}`);
   if (f.violations) why.push(f.violations === 1 ? 'a protected test was changed' : `${f.violations} protected test problems were found`);
+  if (f.jobsTouched) why.push('the branch touches factory/jobs/');
   if (f.dirty) why.push('the worktree has uncommitted changes');
   if (f.visualFailed) why.push('the visual check failed');
   return `The checks failed: ${why.join('; ') || 'see the sections below'}.`;
