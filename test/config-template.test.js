@@ -14,7 +14,8 @@ test('factory/templates/config.json has the same keys as factory/config.json (no
   const own = read('factory/config.json');
   const template = read('factory/templates/config.json');
   // `visual` is the one deliberate difference: this repo's points at its own dashboard demo, which other repos do not have.
-  const withoutVisual = shape(own).filter((k) => k !== 'visual' && !k.startsWith('visual.'));
+  // `checks.suite_commands` is the other: this repo lists its own full-suite commands, other repos get theirs from setup (absent in the template).
+  const withoutVisual = shape(own).filter((k) => k !== 'visual' && !k.startsWith('visual.') && !k.startsWith('checks.suite_commands'));
   assert.deepEqual(shape(template).sort(), withoutVisual.sort());
   assert.equal('visual' in template, false);
 });
