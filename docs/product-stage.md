@@ -152,16 +152,42 @@ Hidden lines (HTML comments, found with a search on the issue body):
 <!-- eminzo:deliverable v1 brief=<n> id=<Dn> hash=<first 12 hex of the approval hash> est=<low_min>-<high_min>|none -->
 ```
 
-- A deliverable issue is titled with the deliverable title (up to 120 characters) and says: what it delivers, the
-  acceptance criteria it covers (the `BC-n` lines, quoted), size and risk, what it waits for (other deliverables,
-  as `#n` once they exist), the estimate shown when it was created (a range and how many similar finished jobs it
-  rests on, or "too little history"), and `Part of #<brief issue>`. It is written in the brief's language and never
-  mentions the factory label.
+- A deliverable issue is titled with the deliverable title (up to 120 characters) and documents its task on its own,
+  in the brief's language, so a person (or intake, the spec writer and the builder) who reads only that issue knows
+  why it exists, what to deliver, how to check it, what is not part of it and what it depends on. Its `## ` sections,
+  in order:
+  1. Context: the brief's Problem and For whom, verbatim (each labelled with its brief heading).
+  2. What it delivers: the deliverable title.
+  3. Acceptance criteria: one checklist line per criterion it covers, `- [ ] BC-n: <full text>`, never cut.
+  4. Out of scope: the brief's Out of scope, verbatim, and the criteria that another deliverable of the brief covers
+     and this one does not ("BC-5, BC-6 are delivered by D2 (#n)", or by id and title while D2 has no issue).
+  5. How it works today: the brief's section, verbatim.
+  6. Dependencies: Waits for (as `#n (D3: Title)` once created) and Unblocks (the deliverables that wait for this one).
+  7. Open questions: only when the brief has them.
+  8. Size, risk and estimate: the size and risk sentence, and the estimate shown when it was created (a range and how
+     many similar finished jobs it rests on, or "too little history").
+  Then `Part of #<brief issue>` and the hidden marker. It never mentions the factory label.
+- Text copied from the brief goes in as block-quote lines, made inert (no comments, control or bidirectional
+  characters, `@` mentions broken with a zero-width space), so none of its lines can be a `Part of` line or a marker
+  and a code fence opened inside it cannot reach another section. The engine checks its own body (one valid marker, one
+  `Part of` line) before returning it.
+- Never cut silently: the body stays under `MAX_BODY` (65,000 characters). When it would not, the optional sections
+  are dropped whole, in this order, only as many as needed: How it works today, Open questions, Context. Each one is
+  replaced by one line ("See the brief issue #n for ..."). Criteria, Out of scope, Dependencies, `Part of` and the
+  marker are never dropped; if they alone do not fit, the draft fails with a readable error.
+- `sections` is the same content as data, next to `body`: `[{ key, heading, parts }]` with `key` one of `context`,
+  `delivers`, `criteria`, `out_of_scope`, `today`, `dependencies`, `questions`, `estimate`, and each part a `text`
+  (brief text or an engine sentence), `criteria` (`items: [{ id, text }]`), `refs` (`items: [{ id, title, issue,
+  criteria? }]`, with the `none` sentence when empty) or `brief_ref` (replaces a dropped section). Jira and any other
+  destination render from it instead of rebuilding the layout.
 - The brief contract refuses `<!--`, control, invisible and bidirectional characters, and `@login` mentions outside
   backticks, fences and e-mail addresses (GitHub would notify people when the issues are created); the estimate in the marker is rounded to one decimal, or `none` when it
   does not fit.
 - `handoff_drafts` without `brief_issue` returns the brief issue draft. With `brief_issue` it returns one draft per
-  deliverable in dependency order (`after` first), plus `estimate_input`. Pass `created` (`[{ id, issue }]`) so a
+  deliverable in dependency order (`after` first), each with `body` and `sections`, plus `estimate_input`. The
+  optional `kind` (`brief` or `deliverables`) names what is wanted; `kind: "deliverables"` without `brief_issue`
+  returns only the `sections` (`body: null`), with every reference to another deliverable as `issue: null` and nothing
+  dropped, for a destination without GitHub issue numbers. `kind: "brief"` with `brief_issue` is refused. Pass `created` (`[{ id, issue }]`) so a
   draft refers to the deliverables already created as `#n`. It calls the gate first and fails with its `reason`
   when `can_create_issues` is false, including a brief edited after approval.
 - The brief issue is never edited by Eminzo afterwards: it is the approved record. Whoever created it, and when, is
@@ -170,7 +196,7 @@ Hidden lines (HTML comments, found with a search on the issue body):
   200 characters. A body with two markers, or a text inside a code fence, is not trusted.
 
 Code: `factory/lib/handoff.js` (`briefIssueDraft`, `deliverableIssueDrafts`, `parseBriefIssueMarker`,
-`parseDeliverableMarker`, `briefIssueValidity`).
+`parseDeliverableMarker`, `briefIssueValidity`, `deliverableSections`).
 
 ## Following an initiative
 

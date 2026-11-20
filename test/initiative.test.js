@@ -327,3 +327,22 @@ test('an available deliverable takes its time, cost and date from the merged tru
   assert.equal(d.cost_usd, 1.5);
   assert.equal(d.available_at, '2026-11-13T09:00:00.000Z');
 });
+
+test('AC-7: an issue with the old layout and one with the new layout are both recognised, with no lookalike warning', () => {
+  const marker = (id) => drafts[id].body.split('\n').find((l) => l.startsWith('<!-- eminzo:deliverable '));
+  const old = (id, title) => [
+    '## What it delivers', '', `> ${title}`, '', '## Acceptance criteria it covers', '', '> BC-1: A reviewer sees what is pending.', '', 'Size: s. Risk: low.', '',
+    '## Waits for', '', 'Nothing: it can start right away.', '', '## Estimate when this issue was created', '', 'Too little history to estimate.', '', 'Part of #40', '', marker(id), '',
+  ].join('\n');
+  assert.ok(!drafts.D3.body.includes('## What it delivers\n\n> Deliverable 3\n\n## Acceptance criteria it covers'), 'the new body is another layout');
+  const w = world({ deliverables: [issue('D3', 43, { body: old('D3', 'Deliverable 3'), labels: ['factory'] }), issue('D2', 42, { labels: ['factory'] })], closing: { 42: [], 43: [] } });
+  const r = go(w);
+  const d = byId(r);
+  assert.equal(d.D3.issue, 43);
+  assert.equal(d.D2.issue, 42);
+  assert.deepEqual(d.D3.estimate, { low_min: 30, high_min: 60 });
+  assert.deepEqual(d.D2.estimate, { low_min: 60, high_min: 120 });
+  assert.equal(d.D3.status, 'in-factory');
+  assert.equal(d.D2.status, 'in-factory');
+  assert.equal(r.warnings.some((x) => x.includes('looks like a deliverable')), false, r.warnings.join('; '));
+});
