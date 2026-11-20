@@ -83,6 +83,7 @@ export function jobView(job, now = Date.now()) {
     round: intOrNull(job.round) ?? 1,
     max_rounds: intOrNull(job.max_rounds),
     gate: textOrNull(job.gate),
+    gate_retries: intOrNull(job.gate_retries) ?? 0,
     reviews: isObject(job.reviews) ? job.reviews : {},
     decision: textOrNull(job.decision),
     note: textOrNull(job.note),
