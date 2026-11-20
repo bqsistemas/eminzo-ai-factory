@@ -1,7 +1,9 @@
 // factory/bin/protect-tests: the builder's PreToolUse hook (Claude Code). It reads the tool call as
 // JSON on stdin and refuses an Edit, Write, MultiEdit or NotebookEdit that would
 //   1. change a path listed in the MAIN checkout's factory/config.json `protected_tests`, or
-//   2. write anywhere in the MAIN checkout except this job's `factory/jobs/<id>/build.md` and `plan.md`
+//   2. write anywhere under the MAIN checkout's factory/jobs/.stamps/ (the engine-written Stop-hook stamps; the
+//      gate ignores a forged one and the round fails), or
+//   3. write anywhere in the MAIN checkout except this job's `factory/jobs/<id>/build.md` and `plan.md`
 //      (the builder works in its worktree; the main checkout's config, engine and checks stay out of reach).
 // It refuses by exiting 2 with the reason on stderr (the documented "block" form of a hook: Claude gets
 // stderr as the reason and the call does not run).
@@ -24,6 +26,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { JOB_ID, isMain, run } from './util.js';
 
 export const REASON = 'protected test; the gate fails the round';
+const STAMPS_PATH = /^factory\/jobs\/\.stamps(?:\/|$)/i;
+export const STAMP_REASON = 'engine-written stamp; the gate ignores and the round fails';
 export const MAIN_REASON = "the main checkout is read-only for the builder except this job's build.md and plan.md";
 const FILE_KEYS = ['file_path', 'notebook_path'];
 const JOB_FILE = /^factory\/jobs\/(\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*)\/(?:build|plan)\.md$/;
@@ -56,6 +60,21 @@ function existingDir(path) {
   let dir = dirname(path);
   while (!isDir(dir) && dirname(dir) !== dir) dir = dirname(dir);
   return dir;
+}
+
+/**
+ * `target` as written (no symlink followed below the main checkout) relative to the main checkout, or null when
+ * the path does not run through it. It catches a `.stamps` folder replaced by a symlink: the resolved path then
+ * leaves the repository, but the path the tool was given still names the stamp folder.
+ */
+function lexicalRel(cwd, target, main) {
+  const written = resolve(cwd, target);
+  for (let dir = written; ; dir = dirname(dir)) {
+    try {
+      if (realpathSync(dir) === main) return slashes(relative(dir, written));
+    } catch { /* not there: keep climbing */ }
+    if (dirname(dir) === dir) return null;
+  }
 }
 
 const slashes = (p) => p.split(sep).join('/');
@@ -97,6 +116,14 @@ export function decide(input) {
   const cwd = typeof input.cwd === 'string' && isAbsolute(input.cwd) && isDir(input.cwd) ? input.cwd : process.cwd();
   const file = realResolve(cwd, target);
   const repo = repoOf(existingDir(file));
+  // The stamp folder is denied by EITHER reading of the path: as written (lexical, `..` collapsed before any link) or
+  // as it really resolves. A link planted at factory/jobs/.stamps sends the resolved path elsewhere (maybe out of the
+  // repository, where `repo` is null: then the cwd's repository, the only extra git call, names the main checkout).
+  const home = repo ?? repoOf(cwd);
+  if (home && !home.error) {
+    const main = home.main;
+    if (STAMPS_PATH.test(lexicalRel(cwd, target, main) ?? '') || STAMPS_PATH.test(slashes(relative(main, file)))) return { deny: STAMP_REASON };
+  }
   if (!repo) return { allow: true }; // not in a repository: nothing to protect
   if (repo.error) return { allow: true, note: repo.error };
   let config;
@@ -111,6 +138,7 @@ export function decide(input) {
     .filter((p) => typeof p === 'string').map((p) => normalize(p).toLowerCase());
   if (guarded.includes(rel.toLowerCase())) return { deny: REASON };
   if (repo.top === repo.main) {
+    if (STAMPS_PATH.test(rel)) return { deny: STAMP_REASON };
     const own = JOB_FILE.exec(rel);
     const jobId = jobIdAt(input.cwd, repo.main);
     if (!own || (jobId && own[1] !== jobId)) return { deny: MAIN_REASON };

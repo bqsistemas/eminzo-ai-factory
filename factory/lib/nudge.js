@@ -16,7 +16,18 @@
 // of checks.sh + config.json), so the next nudge on exactly the same files does not run
 // the checks again. A focused pass never satisfies a full nudge (nor the hook); a full pass
 // satisfies both. A failure forgets it and keeps the full log in nudge.log. The gate
-// never reads nudge.json: it always runs the checks itself.
+// never reads nudge.json.
+//
+// The Stop-hook stamp (E5): when a FULL run (the Stop hook or --full) really ran checks.sh and it
+// passed, the nudge also writes factory/jobs/.stamps/<job-id>.json in the MAIN checkout (stop-stamp.js:
+// job, round, tree, inputs, base, head, at, engine), and a FULL failure deletes it. A focused pass and a
+// pass reused from nudge.json (no real run) never write one. The gate may reuse the stamp instead of running
+// checks.sh again, only when every field still matches (see gate.js). `base` is the merge-base the gate would
+// scope to, although the full run itself is unscoped (a superset of any scoped run: the checks.sh contract in
+// docs/how-a-round-runs.md). The tree and the head are taken before the run and again after it; if either
+// changed while checks.sh ran, no stamp is written (and an old one goes), so the gate runs the checks itself.
+// The stamp expires after an hour (stop-stamp.js). The builder can forge the file with Bash (accepted, same
+// as job.json); the merge never reuses a gate that rested on a stamp.
 //
 // Cap per round: nudge.json also counts the real runs of checks.sh in the job's current round
 // (`runs: { round, count }`, reset when the round changes). Past `checks.max_runs_per_round`
@@ -38,9 +49,10 @@ import { appendFileSync, existsSync, linkSync, mkdtempSync, readFileSync, readdi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { changedFiles, checksInputs, mergeBase, worktreeTree } from './check-stamp.js';
+import { changedFiles, checksInputs, headSha, mergeBase, worktreeTree } from './check-stamp.js';
 import { runChecks } from './gate.js';
-import { JOB_ID, baseRef, factoryRoot, isMain, loadConfig, readText, runCli, tail, writeAtomic } from './util.js';
+import { removeStamp, writeStamp } from './stop-stamp.js';
+import { JOB_ID, baseRef, engineVersion, factoryRoot, isMain, loadConfig, readText, runCli, tail, writeAtomic } from './util.js';
 
 // Exit codes: 0 checks pass (or nothing to check), 1 another nudge of the job is running,
 // 2 checks failed, 64 bad usage or unknown job.
@@ -210,6 +222,8 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inp
   try {
     if (!wantFull) scopeBaseSha = scopeBase(root, job); // --full and the hook run every project: no scope
   } catch { /* no config or no base: everything runs */ }
+  // What the Stop stamp may vouch for: the tree and head as they are when the checks start (after any lock wait).
+  const before = wantFull ? { tree: worktreeTree(job.worktree), head: headSha(job.worktree) } : null;
   try {
     // A focused nudge sets FACTORY_BASE only (it also sees uncommitted and untracked files, so there is no head to name); a full one sets nothing.
     result = runChecks(root, job.worktree, { ...focus.options, scope: { base: scopeBaseSha ?? undefined }, ...(childFile ? { pidFile: childFile } : {}) });
@@ -221,9 +235,11 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inp
     bestEffort(() => (tree
       ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, base: scopeBaseSha, at: new Date().toISOString(), runs })}\n`)
       : writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`)));
+    if (wantFull) bestEffort(() => writeStopStamp(root, job, before, inputs));
     return 0;
   }
   bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`));
+  if (wantFull) removeStamp(root, job.id);
   const logged = bestEffort(() => writeAtomic(logFile, output));
   process.stderr.write(
     `factory nudge: factory/checks.sh failed (exit ${code}) in ${job.worktree}.\n`
@@ -232,6 +248,22 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inp
     + `${tail(output, 60)}\n`,
   );
   return 2;
+}
+
+/**
+ * The Stop-hook stamp of a FULL pass that really ran. `before` is the tree and head taken as the run began: the
+ * stamp is written only when both are known and still exactly those afterwards (checks.sh that rewrote files or
+ * moved the head tested something else than what is there now) and the base can be told. Otherwise no stamp is
+ * written and an existing one is removed.
+ */
+function writeStopStamp(root, job, before, inputs) {
+  const { tree, head } = before;
+  const base = scopeBase(root, job);
+  if (!tree || !head || !base || worktreeTree(job.worktree) !== tree || headSha(job.worktree) !== head) {
+    removeStamp(root, job.id);
+    return;
+  }
+  writeStamp(root, job.id, { job: job.id, round: job.round, tree, inputs, base, head, at: new Date().toISOString(), engine: engineVersion() });
 }
 
 const alive = (pid) => {
