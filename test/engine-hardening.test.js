@@ -240,9 +240,6 @@ test('nudge uses exit 64 for usage and unknown jobs, and 2 only for failed check
   const nudge = (...args) => spawnSync(join(repo, 'factory/bin/nudge'), args, { encoding: 'utf8', env: { ...process.env, FACTORY_ROOT: root } });
   assert.equal(nudge('not an id').status, 64);
   assert.equal(nudge('002-missing').status, 64);
-  const text = read('.agents/skills/eminzo-factory/SKILL.md');
-  assert.match(text, /exit 2[^.\n]*failed/);
-  assert.match(text, /64/);
 });
 
 // 7: cost role precedence

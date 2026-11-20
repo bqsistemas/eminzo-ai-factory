@@ -176,8 +176,7 @@ const role = (name) => readFileSync(join(repo, `factory/roles/${name}.md`), 'utf
 test('AC-4: the builder, approver and code-review roles carry the rule', () => {
   const builder = role('builder');
   assert.match(builder, /at most 2 times per round/);
-  assert.match(builder, /checks\.max_runs_per_round/);
-  assert.match(builder, /cap reached: write build\.md with what is still failing/);
+  assert.doesNotMatch(builder, /checks\.max_runs_per_round|cap reached/);
   assert.match(builder, /not in files of your diff[\s\S]*## Notes for the next round/);
   assert.match(builder, /## Flaky[\s\S]*`command \| error`/);
   assert.match(builder, /do not fix\s+it in this job/);

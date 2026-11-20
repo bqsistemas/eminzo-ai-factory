@@ -265,13 +265,10 @@ more, then `needs-human`. `none`: continue. The script enforces this: `to gate` 
 `to review` refuse while any status other than `none` is pending.
 
 <!-- rule: checks-before-gate -->
-**Checks before the gate.** Codex has no `Stop` hook, so before `job <id> to gate`
-run `factory/bin/nudge <id> --full` (the builder's own `factory/bin/nudge <id>` is focused: `FACTORY_CHECK_MODE=focused` and `FACTORY_CHANGED_FILES`, which a `factory/checks.sh` may use to run less; your `--full` run is the full pass, and only a full pass counts here). It runs `factory/checks.sh` in the job's worktree, or returns 0 at once when exactly these files already passed in full; exit 2 means the checks failed, with the full log in `<job folder>/nudge.log`; exit 64 means the call was wrong, such as an unknown job, so fix the call) yourself.
-On a failure, give the log to the same builder (`eminzo-builder`) with a resume
-prompt, without consuming a round: do not run `job <id> to gate` or `to build`,
-because both start a round. Only a passing run moves on to `to gate`. The builder
-profile also runs `factory/checks.sh` before it writes `STATUS: READY`; the gate stays
-the authority.
+**Checks before the gate.** The full checks run only in the gate, once per round. The builder
+runs only the test files it wrote or changed (Codex has no hooks, so the role text is its only
+guard), so after a READY build and `amend` go straight to `job <id> to gate`: do not run
+`factory/checks.sh` or `factory/bin/nudge` first. The gate runs `factory/checks.sh` and is the authority.
 
 <!-- rule: sync-after-worker -->
 After every worker finishes, run `factory/bin/job <id> sync`. At the end run

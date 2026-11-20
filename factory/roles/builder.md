@@ -41,32 +41,22 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    (`AC-1: ...`). Watch the tests fail, then implement until they pass. Never edit
    or delete a test listed in `factory/config.json` `protected_tests`; the gate fails
    the round if you do.
-4. Run the repo's checks with `factory/bin/nudge <job-id>` in the foreground, and wait for
-   it to exit: give the command a long timeout (it can take minutes) and never send it to
-   the background or poll for it. A second nudge of the same job is refused while one runs
-   (`refused: nudge running (pid N)`). It runs the main checkout's
-   `factory/checks.sh` inside your worktree; exit 0 is a pass and exit 2 a failure (the
-   full log is in `<job folder>/nudge.log`). It remembers a pass for exactly these files,
-   so the check when you stop does not run them again. To iterate on one failing test,
-   run that test file alone, then run the nudge again. If you start the app, use the
-   port from your prompt. By hand the nudge is focused: a `factory/checks.sh` that reads
-   `FACTORY_CHECK_MODE` and `FACTORY_CHANGED_FILES` may run only what your change touches.
-   The factory runs the full checks before the gate (and again in the gate), so a focused
-   pass is not the final word; `--full` forces everything.
-   Write `STATUS: READY` only when the checks exit 0 and `selfcheck` (step 7) exits 0; on a failure fix it and run the nudge
-   again, within these limits:
-   - Run the same failing check command at most 2 times per round. The nudge also stops
-     running the checks after `checks.max_runs_per_round` runs in a round (default 6) and
-     exits 2 with `cap reached: write build.md with what is still failing`; then stop
-     iterating and write `build.md`.
+4. Targeted tests. Run ONLY the test files you wrote or changed, with the repo's test runner
+   pointed at those files (the test command is in `factory/project.md`).
+   Never run `factory/checks.sh`, the nudge or the repo's whole test suite: the gate runs the full checks, once per round, and a hook may refuse those commands.
+   If you start the app, use the port from your prompt.
+   Write `STATUS: READY` only when your targeted tests pass and `selfcheck` (step 7) exits 0;
+   on a failure fix it and run the same files again, within these limits:
+   - Run the same failing command at most 2 times per round; then stop iterating and write
+     `build.md` with what is still failing.
    - If the failure is not in files of your diff, do not chase it: note it in `build.md`
      under `## Notes for the next round` and move on. The gate decides.
-   - A check that fails and then passes with no code change in between is flaky. Record it
+   - A test that fails and then passes with no code change in between is flaky. Record it
      in `build.md` under a level-2 heading written exactly `## Flaky` (never `### Flaky`, which
-     would be read as part of `## Spec deviations`), one line per check as `command | error`, and do not fix
+     would be read as part of `## Spec deviations`), one line per test as `command | error`, and do not fix
      it in this job.
 5. Visual check. When the spec's surfaces include `ui`, run `factory/bin/visual <job-id>`
-   after the checks and before you write `STATUS: READY`. It writes
+   after your targeted tests and before you write `STATUS: READY`. It writes
    `<round folder>/visual.md`: the first line is `VISUAL: PASS`, `VISUAL: FAIL`,
    `VISUAL: SKIPPED` or `VISUAL: ERROR`. Fix every finding on `FAIL` (overflow,
    contrast, overlap, reduced motion) and run it again until it is not `FAIL`. Fix only
@@ -104,16 +94,15 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    `git fetch origin && git merge <base>` in the worktree, resolve the
    conflicts there, commit and push.
 
-When you stop, the checks run once more, unless the files are the ones that already
-passed. If they report a failure, fix it before you finish. The gate after you is what
-decides, and it always runs the checks itself.
+When you stop, the gate runs the full checks on your commit. It decides: if it fails,
+you are resumed with its log.
 
 **Write** `<job folder>/build.md`, writing it fresh each round (the engine keeps the previous one in `round-<N-1>/`):
 
 ```
 STATUS: READY
 
-<one plain sentence, never starting with `WORD:`: what was built and whether the checks passed>
+<one plain sentence, never starting with `WORD:`: what was built and whether your targeted tests passed>
 
 # Build: <title> (round <n>)
 
@@ -126,11 +115,11 @@ STATUS: READY
 | AC-1 | test/x.test.js "AC-1: ..."        | pass   |
 
 ## Checks
-| Step | Mode | Result |
-|------|------|--------|
-| `factory/bin/nudge` (last run) | full | pass 12, fail 0 |
+| Step | Scope | Result |
+|------|-------|--------|
+| targeted tests: `<command>` | 2 files | pass 12, fail 0 |
 | `factory/bin/selfcheck` | | ok |
-Mode is the one the nudge reported (focused or full). Add a row per other check that ran, and one line under the table naming what failed, if anything.
+Add a row per other check that ran, and one line under the table naming what failed, if anything. The full checks are the gate's, never yours.
 
 ## Review responses
 - security: <finding> → <what you did, or why not>

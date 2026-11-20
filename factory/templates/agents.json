@@ -38,7 +38,6 @@
     "file": "build.md",
     "regex": "^STATUS: (READY|BLOCKED)( |$)",
     "tokens": "`STATUS: READY` or `STATUS: BLOCKED`",
-    "nudge": true,
     "protect": true,
     "alsoWrites": ["plan.md"],
     "inputs": "all relevant files in the supplied job and round folders",

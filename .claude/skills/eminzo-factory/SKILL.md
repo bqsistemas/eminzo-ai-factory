@@ -78,7 +78,7 @@ factory/
   bin/gate <id>         runs checks.sh in the worktree, guards protected tests → round-N/checks.md
   bin/route <id>        prints the agent set for intake.md (job does this at intake → spec)
   bin/approve <id>      the deterministic approver: approve | escalate: <reason> | inconclusive: <reasons>
-  bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
+  bin/nudge             a manual tool: runs checks.sh in a job's worktree (focused by default, `--full` forces all); no agent runs it, the gate runs the full checks
   bin/init [review|checks]  writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent; `init checks` writes a missing checks.sh and, for an Nx or Turborepo repo that checks everything, only prints an affected-only suggestion
   bin/base [fix-issue]  runs checks.sh on the tip of the base branch in `.worktrees/.base` (after its prepare step): `base: PASS|FAIL|UNKNOWN`, exit 0, 1, 3 → factory/jobs/.base/; `fix-issue` finds or creates the one open issue (`factory` and `factory:base-fix`) that fixes a failing base
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
@@ -398,10 +398,9 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
   - In lane xs, `STATUS: BLOCKED` runs `job <id> promote` instead of `needs-human`. `to gate`
     also checks the xs limits in the branch diff (at most 2 non-test files, none added or
     deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
-  - Then `job <id> to gate`. It needs the open PR. The
-    builder's Stop hook (`factory/bin/nudge`, always the full checks) already ran `factory/checks.sh` in the
-    worktree and blocked its stop on a failure (the builder's own `factory/bin/nudge <id>` is focused), so a READY build has passing checks
-    and the gate rarely fails; the gate stays the authority.
+  - Then `job <id> to gate`. It needs the open PR. The builder runs only the tests it wrote or
+    changed, so the full checks run only in the gate,
+    once per round: do not run `factory/checks.sh` or `factory/bin/nudge` yourself first.
 - **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes.
   <!-- rule: round-context -->
   - **Round context.** The gate also writes `round-N/context.md`: the changed files, what changed

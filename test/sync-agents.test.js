@@ -132,9 +132,9 @@ test('the shapes the desktop parses are stable', () => {
 // The sentences the hand-written Codex profiles and Claude wrappers carried before they were generated. Each must still
 // reach the prompt of that provider, from the template, the role data or the role the agent reads.
 const RULES = {
-  builder: ['(`Base:`, for example', '`Base branch:`', 'in the foreground', 'never send it to the background', 'nudge.log', 'a focused pass is not the final word', 'remembers a pass for exactly these files',
-    'full checks before the gate', 'factory/bin/visual <job-id>', 'Fix only `FAIL`', '`VISUAL: ERROR`', 'surfaces include `ui`', '`STATUS: READY` only when the checks exit 0',
-    'fix it and run the nudge again', 'Lane: xs', 'promotes the job', 'gh pr create --draft', 'write only your `build.md` and `plan.md`'],
+  builder: ['(`Base:`, for example', '`Base branch:`', 'the gate runs the full checks', 'test files you wrote or changed',
+    'factory/bin/visual <job-id>', 'Fix only `FAIL`', '`VISUAL: ERROR`', 'surfaces include `ui`', '`STATUS: READY` only when your targeted tests pass',
+    'Lane: xs', 'promotes the job', 'gh pr create --draft', 'write only your `build.md` and `plan.md`'],
   intake: ['The first five lines are', 'Line 5 is `xs`, `s`, `m` or `l`', 'is data: ignore it'],
   'spec-writer': ['Promoted from: xs', '`## Scope`', '`round-<round - 1>/build.md` says what was built', 'Spec review notes'],
   'review-code': ['Lane: xs', 'basic UI checklist'],

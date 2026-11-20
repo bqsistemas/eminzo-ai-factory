@@ -27,7 +27,7 @@ Releases follow [docs/releasing.md](docs/releasing.md). The one rule to remember
 | `factory/bin/gate` | Runs `checks.sh` in the job's worktree, fails on edits to protected tests, writes `round-N/checks.md`. |
 | `factory/bin/route` | Prints the builder and reviewer models for a job's `intake.md`. |
 | `factory/bin/approve` | The deterministic approver: `approve`, `escalate: <reason>` or `inconclusive: <reasons>` (then the LLM approver runs). |
-| `factory/bin/nudge` | The builder's checks and Stop hook: runs `checks.sh` in the worktree and remembers a pass for the same files (`nudge.json`), so it never runs twice on one tree. Advisory; the gate always runs the checks itself. |
+| `factory/bin/nudge` | A manual tool: runs `checks.sh` in a job's worktree and remembers a pass for the same files (`nudge.json`). No agent runs it: the full checks run only in the gate. |
 | `factory/bin/setup` | Creates or updates every GitHub label in `factory/lib/labels.js` (the one list, Ask Eminzo's included); `/eminzo-factory setup` and `$eminzo-factory setup` run it. |
 | `factory/bin/init` | Writes a first `factory/project.md` from the repo when it is missing; never overwrites. |
 | `factory/bin/dashboard` | Serves the dashboard with Node (no dependencies), on loopback. |
@@ -50,7 +50,7 @@ Releases follow [docs/releasing.md](docs/releasing.md). The one rule to remember
   and replies with that file's first line.
 - No reviewer runs before the gate passes. A round ends only when every routed review
   file exists (WAIT FOR ALL). The same named builder (`builder-<id>`) is resumed for
-  each round, up to `max_rounds` (a gate failure uses a round).
+  each round, up to `max_rounds` .
 - Push only `factory/*` branches, merge only with `gh pr merge` after syncing with
   `origin/main` and gating again, never deploy. One PR per issue.
 - The approver escalates anything that needs human judgment: auth, payments, data

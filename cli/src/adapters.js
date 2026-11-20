@@ -168,7 +168,7 @@ export function sharedFragments(text) {
   return out;
 }
 
-// Optional per role: protect (Claude PreToolUse hook), nudge (Stop hook), alsoWrites (extra files it may write), mustPrint.
+// Optional per role: protect (Claude PreToolUse hook), nudge (Stop hook, no role uses it now), alsoWrites (extra files it may write), mustPrint.
 const FIELDS = ['description', 'codexDescription', 'tools', 'model', 'scope', 'file', 'regex', 'tokens', 'inputs', 'rules'];
 
 function check(role, meta) {

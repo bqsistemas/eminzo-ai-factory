@@ -7,8 +7,6 @@ hooks:
   Stop:
     - hooks:
         - type: command
-          command: '"$CLAUDE_PROJECT_DIR"/factory/bin/nudge'
-        - type: command
           command: "\"$CLAUDE_PROJECT_DIR\"/factory/bin/ensure-output '{job}/build.md' '^STATUS: (READY|BLOCKED)( |$)'"
   PreToolUse:
     - matcher: Edit|Write|MultiEdit|NotebookEdit
