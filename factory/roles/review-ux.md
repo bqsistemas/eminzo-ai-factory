@@ -30,7 +30,7 @@ not a blocker when the Goal still holds; at most it is `[minor]`. It is a blocke
 when the Goal is no longer met.
 
 Read-only. Don't edit code, commit, or switch branches. You may run the feature
-inside the worktree to try it.
+inside the worktree to try it. The gate already ran the full checks (`checks.md`): never run `factory/checks.sh`, the nudge or the whole suite; run only a targeted test or command to confirm a specific finding.
 
 **Look for**
 - The flow does what the spec's Goal promises, with no surprising steps.

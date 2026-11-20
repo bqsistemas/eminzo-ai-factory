@@ -156,3 +156,17 @@ test('AC-9: this repo declares its full-suite commands in factory/config.json', 
   const template = JSON.parse(readFileSync(join(repo, 'factory/templates/config.json'), 'utf8'));
   assert.ok(!('suite_commands' in (template.checks ?? {})) || Array.isArray(template.checks.suite_commands));
 });
+
+test('AC-10: the builder runs checks only on what it touched; reviewers and the approver rely on the gate and never rerun the full checks', () => {
+  const role = (name) => readFileSync(join(repo, `factory/roles/${name}.md`), 'utf8');
+  const builder = role('builder');
+  assert.match(builder, /lint and type checks only on the files you touched/);
+  assert.match(builder, /Never run `factory\/checks\.sh`, the nudge or the repo's whole test suite/);
+  for (const name of ['review-code', 'review-security', 'review-ui', 'review-ux', 'approver']) {
+    const text = role(name);
+    assert.match(text, /gate (already )?ran the full checks/i, name);
+    assert.match(text, /never run `factory\/checks\.sh`, the nudge or the whole (test )?suite/i, name);
+  }
+  assert.match(role('review-code'), /only targeted tests/i);
+  for (const name of ['intake', 'spec-writer']) assert.doesNotMatch(role(name), /checks\.sh|nudge|test suite/, name);
+});

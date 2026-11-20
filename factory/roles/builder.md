@@ -46,8 +46,9 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    (`AC-1: ...`). Watch the tests fail, then implement until they pass. Never edit
    or delete a test listed in `factory/config.json` `protected_tests`; the gate fails
    the round if you do.
-4. Targeted tests. Run ONLY the test files you wrote or changed, with the repo's test runner
-   pointed at those files (the test command is in `factory/project.md`).
+4. Targeted checks. Run tests, lint and type checks only on the files you touched, when the tool
+   allows it (the repo's test runner pointed at your test files, for example `eslint <file>`; the
+   test command is in `factory/project.md`): run ONLY the test files you wrote or changed.
    Never run `factory/checks.sh`, the nudge or the repo's whole test suite: the gate runs the full checks, and a hook may refuse those commands.
    If you start the app, use the port from your prompt.
    Write `STATUS: READY` only when your targeted tests pass and `selfcheck` (step 7) exits 0;
