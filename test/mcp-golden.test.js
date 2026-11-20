@@ -385,6 +385,56 @@ for (const { question, tool, args, argsFrom, setup, source = 'local', check, ref
   });
 }
 
+test('AC-5: handoff_drafts with brief_issue keeps today\'s fields and adds sections that mirror the body; the brief draft has none', async () => {
+  const text = await approvedTwo();
+  const d = (await ask('handoff_drafts', { text, brief_issue: 40, created: [{ id: 'D2', issue: 41 }] })).structuredContent;
+  assert.deepEqual(Object.keys(d).filter((k) => ['summary', 'kind', 'drafts', 'estimate_input'].includes(k)).sort(), ['drafts', 'estimate_input', 'kind', 'summary']);
+  assert.equal(d.kind, 'deliverables');
+  for (const x of d.drafts) {
+    assert.deepEqual(Object.keys(x).sort(), ['after', 'body', 'id', 'labels', 'sections', 'title']);
+    assert.match(x.body, /Parte de #40/);
+    assert.match(x.body, /<!-- eminzo:deliverable v1 brief=40 id=D[12] hash=[0-9a-f]{12} est=none -->/);
+    assert.doesNotMatch(x.body, /factory/i);
+    assert.deepEqual(x.body.split('\n').filter((l) => l.startsWith('## ')).map((l) => l.slice(3)), x.sections.map((s) => s.heading));
+  }
+  assert.match(d.drafts[1].body, /#41 \(D2: Guardar el filtro\)/);
+  const waits = d.drafts[1].sections.find((s) => s.key === 'dependencies').parts.find((p) => p.kind === 'refs');
+  assert.equal(waits.items[0].id, 'D2');
+  assert.equal(waits.items[0].issue, 41);
+  const brief = (await ask('handoff_drafts', { text })).structuredContent;
+  assert.equal(brief.kind, 'brief');
+  assert.equal(JSON.stringify(brief).includes('"sections"'), false);
+});
+
+test('AC-6: handoff_drafts with kind deliverables and no brief_issue returns only sections, with ids for references', async () => {
+  const text = await approvedTwo();
+  const d = (await ask('handoff_drafts', { text, kind: 'deliverables' })).structuredContent;
+  assert.equal(d.kind, 'deliverables');
+  assert.deepEqual(d.drafts.map((x) => x.id), ['D2', 'D1']);
+  assert.equal(d.estimate_input.length, 2);
+  for (const x of d.drafts) {
+    assert.equal(x.body, null);
+    assert.deepEqual(x.labels, ['eminzo-deliverable']);
+    assert.ok(x.sections.length > 0);
+    const parts = x.sections.flatMap((s) => s.parts);
+    assert.equal(parts.some((p) => p.kind === 'brief_ref'), false);
+    for (const p of parts.filter((q) => q.kind === 'refs')) for (const i of p.items) assert.equal(i.issue, null);
+  }
+  const waits = d.drafts[1].sections.find((s) => s.key === 'dependencies').parts[0];
+  assert.deepEqual(waits.items.map((i) => [i.id, i.issue]), [['D2', null]]);
+  for (const [args, message] of [
+    [{ text, kind: 'brief', brief_issue: 40 }, /kind/],
+    [{ text, kind: 'deliverables', created: [{ id: 'D1', issue: 41 }] }, /created/],
+    [{ text, kind: 'other' }, /kind/],
+    [{ text: COMPLETE_BRIEF, kind: 'deliverables' }, /^The brief is not approved yet\.$/],
+    [{ text: COMPLETE_BRIEF, kind: 'brief' }, /^The brief is not approved yet\.$/],
+  ]) {
+    const result = await ask('handoff_drafts', args);
+    assert.equal(result.isError, true, JSON.stringify(args));
+    assert.match(result.content[0].text, message);
+  }
+});
+
 test('golden: a job held by a broken base is waiting for the base, never for a person', async () => {
   const dir = join(fixtureRoot, 'factory/jobs/172-held');
   mkdirSync(dir, { recursive: true });

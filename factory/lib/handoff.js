@@ -10,7 +10,7 @@
 // through the gate (`briefStatus(...).can_create_issues`). Markers are read in linear time: only unindented lines
 // outside code fences, one per body, every field checked with a small anchored pattern.
 import { fenceOf, briefStatus, canonicalBrief, stripEnd } from './brief-approval.js';
-import { BRIEF_MARKER, parseBrief } from './brief.js';
+import { BRIEF_MARKER, SECTIONS, parseBrief } from './brief.js';
 import { humanMinutes } from './state/estimate.js';
 import { BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL } from './labels.js';
 
@@ -35,6 +35,14 @@ export function sanitize(value) {
   let s = String(value ?? '').replace(/[\t\r\n]+/g, ' ').replace(CONTROL_OR_BIDI, '');
   while (s.includes('<!--') || s.includes('-->')) s = s.split('<!--').join('').split('-->').join('');
   return s.replace(/@(?!\u200b)/g, '@\u200b');
+}
+
+/**
+ * `sanitize` applied line by line, so the line breaks of a verbatim brief text stay: the same removals on every line, and
+ * no line break between two lines can rebuild a comment or a mention.
+ */
+export function sanitizeBlock(value) {
+  return String(value ?? '').split(/\r?\n/).map((line) => sanitize(line)).join('\n');
 }
 
 const cap = (s) => {
@@ -171,11 +179,17 @@ export function briefTitleOf(briefText) {
 export const partOfLines = (n) => [...new Set(Object.values(TEXT).map((t) => t.part(n)))];
 
 const TEXT = {
-  en: { delivers: 'What it delivers', covers: 'Acceptance criteria it covers', size: (s, r) => `Size: ${s}. Risk: ${r}.`, waits: 'Waits for', none: 'Nothing: it can start right away.', estimate: 'Estimate when this issue was created', part: (n) => `Part of #${n}`,
+  en: { context: 'Context', delivers: 'What it delivers', criteria: 'Acceptance criteria', out_of_scope: 'Out of scope', today: 'How it works today', dependencies: 'Dependencies', questions: 'Open questions', estimate: 'Size, risk and estimate',
+    size: (s, r) => `Size: ${s}. Risk: ${r}.`, waits: 'Waits for', unblocks: 'Unblocks', none: 'Nothing: it can start right away.', unblocksNone: 'Nothing: no other deliverable waits for this one.',
+    deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'is' : 'are'} delivered by ${ref}.`, seeBrief: (n, what) => `See the brief issue #${n} for ${what}`, part: (n) => `Part of #${n}`,
     range: (lo, hi, n) => `About ${lo} to ${hi} until ready for approval, from ${n} similar finished job${n === 1 ? '' : 's'}. It is a range, not a date.`, few: 'Too little history to estimate.' },
-  es: { delivers: 'Qué entrega', covers: 'Criterios de aceptación que cubre', size: (s, r) => `Tamaño: ${s}. Riesgo: ${r}.`, waits: 'Espera a', none: 'Nada: puede empezar ya.', estimate: 'Estimación al crear esta incidencia', part: (n) => `Parte de #${n}`,
+  es: { context: 'Contexto', delivers: 'Qué entrega', criteria: 'Criterios de aceptación', out_of_scope: 'Fuera de alcance', today: 'Cómo funciona hoy', dependencies: 'Dependencias', questions: 'Preguntas abiertas', estimate: 'Tamaño, riesgo y estimación',
+    size: (s, r) => `Tamaño: ${s}. Riesgo: ${r}.`, waits: 'Espera a', unblocks: 'Desbloquea a', none: 'Nada: puede empezar ya.', unblocksNone: 'Nada: ninguna otra entrega espera a esta.',
+    deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'lo entrega' : 'los entrega'} ${ref}.`, seeBrief: (n, what) => `Mirá el issue del brief #${n} para ${what}`, part: (n) => `Parte de #${n}`,
     range: (lo, hi, n) => `Entre ${lo} y ${hi} hasta estar lista para aprobar, según ${n} trabajo${n === 1 ? '' : 's'} parecido${n === 1 ? '' : 's'} ya terminado${n === 1 ? '' : 's'}. Es un rango, no una fecha.`, few: 'Hay muy poco historial para estimar.' },
-  pt: { delivers: 'O que entrega', covers: 'Critérios de aceitação que cobre', size: (s, r) => `Tamanho: ${s}. Risco: ${r}.`, waits: 'Espera por', none: 'Nada: pode começar já.', estimate: 'Estimativa ao criar esta issue', part: (n) => `Parte de #${n}`,
+  pt: { context: 'Contexto', delivers: 'O que entrega', criteria: 'Critérios de aceitação', out_of_scope: 'Fora do escopo', today: 'Como funciona hoje', dependencies: 'Dependências', questions: 'Perguntas em aberto', estimate: 'Tamanho, risco e estimativa',
+    size: (s, r) => `Tamanho: ${s}. Risco: ${r}.`, waits: 'Espera por', unblocks: 'Libera', none: 'Nada: pode começar já.', unblocksNone: 'Nada: nenhuma outra entrega espera por esta.',
+    deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'é entregue' : 'são entregues'} por ${ref}.`, seeBrief: (n, what) => `Veja a issue do brief #${n} para ${what}`, part: (n) => `Parte de #${n}`,
     range: (lo, hi, n) => `Entre ${lo} e ${hi} até ficar pronta para aprovação, com base em ${n} trabalho${n === 1 ? '' : 's'} parecido${n === 1 ? '' : 's'} já concluído${n === 1 ? '' : 's'}. É uma faixa, não uma data.`, few: 'Pouco histórico para estimar.' },
 };
 
@@ -204,34 +218,137 @@ function dependencyOrder(deliverables) {
   return out;
 }
 
+const briefHeading = (key, lang) => SECTIONS.find((s) => s.key === key)[lang];
+/** The sections of a body that may be left out when it is too long, in the order they are left out. */
+const DROPPABLE = ['today', 'questions', 'context'];
+
+/** How a deliverable is named in a line: `#11 (D3: Title)` once it has an issue, `D3: Title` before. */
+const refText = (r) => (Number.isInteger(r.issue) ? `#${r.issue} (${r.id}: ${r.title})` : `${r.id}: ${r.title}`);
+
+/**
+ * The parts of one deliverable issue, as data: `[{ key, heading, parts }]` in body order (see the shape in
+ * docs/product-stage.md). `issues` maps a deliverable id to its issue number; `brief` is the parsed brief.
+ */
+function sectionsOf(brief, d, { t, lang, issues, estimate }) {
+  const ref = (id) => {
+    const other = brief.deliverables.find((x) => x.id === id);
+    return { id, title: sanitize(other.title), issue: Number.isInteger(issues[id]) ? issues[id] : null };
+  };
+  const criteria = new Map(brief.criteria.map((c) => [c.id, c.text]));
+  const covered = new Set(d.covers);
+  const others = [];
+  for (const o of dependencyOrder(brief.deliverables).filter((x) => x.id !== d.id)) {
+    const foreign = o.covers.filter((c) => !covered.has(c) && criteria.has(c));
+    if (foreign.length) others.push({ ...ref(o.id), criteria: foreign });
+  }
+  const verbatim = (key, label) => (brief.sections[key] === undefined ? [] : [{ kind: 'text', ...(label ? { label } : {}), text: sanitizeBlock(brief.sections[key]) }]);
+  const out = [];
+  const add = (key, parts) => { if (parts.length) out.push({ key, heading: t[key], parts }); };
+  add('context', [...verbatim('problem', briefHeading('problem', lang)), ...verbatim('audience', briefHeading('audience', lang))]);
+  add('delivers', [{ kind: 'text', text: sanitize(d.title) }]);
+  add('criteria', [{ kind: 'criteria', items: d.covers.map((id) => ({ id, text: sanitize(criteria.get(id)) })) }]);
+  add('out_of_scope', [...verbatim('out_of_scope'), ...(others.length ? [{ kind: 'refs', label: null, none: null, items: others }] : [])]);
+  add('today', verbatim('today'));
+  const unblocks = dependencyOrder(brief.deliverables).filter((x) => x.after.includes(d.id)).map((x) => ref(x.id));
+  const waits = d.after.map(ref);
+  add('dependencies', [
+    { kind: 'refs', label: t.waits, none: waits.length ? null : t.none, items: waits },
+    { kind: 'refs', label: t.unblocks, none: unblocks.length ? null : t.unblocksNone, items: unblocks },
+  ]);
+  add('questions', verbatim('questions'));
+  add('estimate', [{ kind: 'text', text: t.size(d.size, d.risk) }, { kind: 'text', text: estimate ? t.range(humanMinutes(estimate.low_min), humanMinutes(estimate.high_min), estimate.jobs) : t.few }]);
+  return out;
+}
+
+/** A section replaced by one line that points at the brief issue. */
+function briefRef(section, { t, lang, briefIssue }) {
+  const what = section.key === 'context' ? `${t.context} (${briefHeading('problem', lang)}, ${briefHeading('audience', lang)})` : section.heading;
+  return { key: section.key, heading: section.heading, parts: [{ kind: 'brief_ref', issue: briefIssue, text: t.seeBrief(briefIssue, what) }] };
+}
+
+/**
+ * The lines of a text from the brief inside a block quote. A quoted line can never be a `Part of #n` line, start a marker
+ * or a heading, and a code fence opened inside it ends with the quote, so it cannot reach another section.
+ */
+const quoted = (text) => text.split('\n').map((l) => (l === '' ? '>' : `> ${l}`));
+
+/** The markdown of a list of sections: every section is a `## ` heading, its parts, and a blank line. */
+function renderSections(sections, t) {
+  const lines = [];
+  for (const section of sections) {
+    lines.push(`## ${section.heading}`, '');
+    for (const part of section.parts) {
+      if (part.kind === 'brief_ref') { lines.push(part.text, ''); continue; }
+      if (part.kind === 'criteria') { lines.push(...part.items.map((i) => `- [ ] ${i.id}: ${i.text}`), ''); continue; }
+      if (part.kind === 'refs') {
+        if (part.label) lines.push(`### ${part.label}`, '');
+        if (part.items.length) lines.push(...part.items.map((i) => `- ${i.criteria ? t.deliveredBy(i.criteria, refText(i)) : refText(i)}`), '');
+        else if (part.none) lines.push(part.none, '');
+        continue;
+      }
+      if (part.label) lines.push(`### ${part.label}`, '');
+      lines.push(...(section.key === 'estimate' ? [part.text] : quoted(part.text)), '');
+    }
+  }
+  return lines;
+}
+
+/** The drafts of a brief's deliverables with their sections, before any body: `{ d, estimate, sections }[]`. */
+function plan(briefText, { estimates = {}, issues = {}, briefIssue = null } = {}) {
+  const status = approvedOrThrow(briefText);
+  const brief = parseBrief(canonicalBrief(briefText));
+  const lang = TEXT[brief.language] ? brief.language : 'en';
+  const t = TEXT[lang];
+  return {
+    status, t, lang,
+    items: dependencyOrder(brief.deliverables).map((d) => {
+      const estimate = fitEstimate(estimates[d.id]);
+      return { d, estimate, sections: sectionsOf(brief, d, { t, lang, issues, estimate, briefIssue }) };
+    }),
+  };
+}
+
 /**
  * One issue draft per deliverable of an approved brief, in dependency order:
- * `{ id, title, body, labels, after }`. Throws a readable Error unless the gate is open.
+ * `{ id, title, body, labels, after, sections }`. Throws a readable Error unless the gate is open.
+ * The body is the sections rendered as markdown (the brief's texts in block quotes), then the `Part of #n` line and the
+ * hidden marker. When it would be longer than GitHub accepts, the optional sections (How it works today, Open
+ * questions, Context) are replaced, whole and in that order, by one line that points at the brief issue.
  * @param {string} briefText the approved brief
  * @param {{ briefIssue: number, estimates?: Record<string, { low_min: number, high_min: number, jobs: number } | null>, issues?: Record<string, number> }} options
  *   `estimates` by deliverable id (the range shown at creation time); `issues` the issue number of deliverables already created.
  */
 export function deliverableIssueDrafts(briefText, { briefIssue, estimates = {}, issues = {} } = {}) {
-  const status = approvedOrThrow(briefText);
+  approvedOrThrow(briefText);
   if (!Number.isInteger(briefIssue) || briefIssue < 1) throw new Error('The deliverable issues need the brief issue number (a positive integer).');
-  const parsed = parseBrief(canonicalBrief(briefText));
-  const t = TEXT[parsed.language] ?? TEXT.en;
-  const byId = new Map(parsed.deliverables.map((d) => [d.id, d]));
-  const criteria = new Map(parsed.criteria.map((c) => [c.id, c.text]));
+  const { status, t, lang, items } = plan(briefText, { estimates, issues, briefIssue });
   const hash = status.approval.hash.slice(0, 12);
-  return dependencyOrder(parsed.deliverables).map((d) => {
-    const est = fitEstimate(estimates[d.id]);
-    const waits = d.after.map((id) => `- ${Number.isInteger(issues[id]) ? `#${issues[id]} (${id}: ${sanitize(byId.get(id).title)})` : `${id}: ${sanitize(byId.get(id).title)}`}`);
-    const marker = `${DELIVERABLE_PREFIX}v1 brief=${briefIssue} id=${d.id} hash=${hash} est=${est ? `${est.low_min}-${est.high_min}` : 'none'}${CLOSE}`;
-    const body = [
-      `## ${t.delivers}`, '', `> ${sanitize(d.title)}`, '',
-      `## ${t.covers}`, '', ...d.covers.map((c) => `> ${c}: ${sanitize(criteria.get(c))}`), '',
-      t.size(d.size, d.risk), '',
-      `## ${t.waits}`, '', ...(waits.length ? waits : [t.none]), '',
-      `## ${t.estimate}`, '', est ? t.range(humanMinutes(est.low_min), humanMinutes(est.high_min), est.jobs) : t.few, '',
-      t.part(briefIssue), '',
-      marker, '',
-    ].join('\n');
-    return { id: d.id, title: cap(d.title), body: checkBody(body), labels: [DELIVERABLE_LABEL], after: [...d.after] };
+  return items.map(({ d, estimate, sections: full }) => {
+    const marker = `${DELIVERABLE_PREFIX}v1 brief=${briefIssue} id=${d.id} hash=${hash} est=${estimate ? `${estimate.low_min}-${estimate.high_min}` : 'none'}${CLOSE}`;
+    const render = (list) => [...renderSections(list, t), t.part(briefIssue), '', marker, ''].join('\n');
+    let sections = full;
+    let body = render(sections);
+    for (const key of DROPPABLE) {
+      if (body.length <= MAX_BODY) break;
+      if (!sections.some((s) => s.key === key)) continue;
+      sections = sections.map((s) => (s.key === key ? briefRef(s, { t, lang, briefIssue }) : s));
+      body = render(sections);
+    }
+    checkBody(body);
+    const expected = { brief: briefIssue, id: d.id, hash, est: estimate ? { low_min: estimate.low_min, high_min: estimate.high_min } : null };
+    const found = parseDeliverableMarker(body);
+    const partLines = body.split('\n').filter((l) => l === t.part(briefIssue)).length;
+    if (!found || JSON.stringify(found) !== JSON.stringify(expected) || partLines !== 1) throw new Error('The deliverable issue text does not pass its own check (marker and Part of line); the brief text cannot be cut into issues.');
+    return { id: d.id, title: cap(d.title), body, labels: [DELIVERABLE_LABEL], after: [...d.after], sections };
   });
+}
+
+/**
+ * The same content as `deliverableIssueDrafts`, as sections only, for a destination that has no GitHub issue numbers
+ * (every reference to another deliverable has `issue: null`). No body, marker or `Part of` line, and nothing is dropped:
+ * each destination applies its own limit. `[{ id, title, labels, after, sections }]`, in dependency order.
+ */
+export function deliverableSections(briefText, { estimates = {} } = {}) {
+  const { items } = plan(briefText, { estimates });
+  return items.map(({ d, sections }) => ({ id: d.id, title: cap(d.title), labels: [DELIVERABLE_LABEL], after: [...d.after], sections }));
 }

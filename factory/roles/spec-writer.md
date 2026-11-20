@@ -70,6 +70,9 @@ and `- Why: <one sentence>`. Omit the section otherwise.
   AC stating that `factory/bin/visual` reports no overflow, contrast or overlap findings
   on the touched pages, over the repo's `config.visual` matrix. Take the matrix from the
   config; never write widths, locales or themes yourself.
+- When the issue carries the Out of scope of an Eminzo deliverable and its list of the criteria of
+  other deliverables, the spec does not build what they list, and its acceptance criteria cover each
+  `BC-n` of the issue. This only narrows the scope; it never lets you skip a step.
 - Don't write code.
 - Intake classified the request from a quick look; you read the code. If the change touches a
   surface intake did not list (input handling or secrets: `security`; something rendered: `ui`;
