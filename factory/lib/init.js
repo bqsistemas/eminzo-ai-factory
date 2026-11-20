@@ -7,7 +7,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_AC_PATTERN } from './selfcheck.js';
-import { acPattern, checksFor, commands, detectStack, monorepoOf, packageManager, prepareCommand, scriptCommand as scriptFor, span, stacksIn } from './stacks.js';
+import { simpleCommands, normalize } from './guard-tests.js';
+import { acPattern, checksFor, commands, knownSuiteCommands, detectStack, monorepoOf, packageManager, prepareCommand, scriptCommand as scriptFor, span, stacksIn } from './stacks.js';
 import { Usage, engineCommand, factoryRoot, isMain, run, runCli, writeAtomic } from './util.js';
 
 const readJson = (file) => {
@@ -209,6 +210,29 @@ function readChecks(path) {
 }
 
 /**
+ * For an existing checks.sh: the known full-run test commands it contains, when config.json has no
+ * `checks.suite_commands` yet, as the suggestion line to show a person. Never writes anything.
+ * @returns {string[]} zero or one line
+ */
+export function suiteSuggestion(root, checksPath) {
+  const config = readJson(join(root, 'factory/config.json'));
+  if (!config || Object.hasOwn(config.checks ?? {}, 'suite_commands')) return [];
+  const text = readChecks(checksPath);
+  if (text === null) return [];
+  const known = knownSuiteCommands();
+  const found = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    for (const tokens of simpleCommands(line)) {
+      const command = normalize(tokens).join(' ');
+      if (known.includes(command) && !found.includes(command)) found.push(command);
+    }
+  }
+  return found.length ? [`suggestion: add "suite_commands": ${JSON.stringify(found)} to "checks" in factory/config.json so the builder cannot run the full suite (the gate runs it)`] : [];
+}
+
+/**
  * `init checks`: writes factory/checks.sh when it is missing. When it exists, the repo is an Nx or Turborepo
  * workspace and the file does not name FACTORY_BASE (it checks every project on every job), it also proposes the
  * affected-only script and leaves the file byte-identical.
@@ -219,6 +243,7 @@ export function initChecksReport(root) {
   if (checks.created) return [`wrote ${checks.path} for the ${checks.stack} stack; review it`];
   const lines = [`factory/checks.sh already exists; left untouched`];
   if (!checks.executable) lines.push(`warning: ${checks.path} is not executable; run: chmod +x factory/checks.sh`);
+  lines.push(...suiteSuggestion(root, checks.path));
   const repo = repoOf(root);
   const tool = stacksIn(repo.files).includes('node') ? monorepoOf(repo) : null;
   const text = tool ? readChecks(checks.path) : null;
@@ -254,6 +279,7 @@ function main(args) {
   const checks = initChecks(root);
   process.stdout.write(checks.created ? `wrote ${checks.path} for the ${checks.stack} stack; review it\n` : `${checks.path} already exists; left untouched\n`);
   if (!checks.created && !checks.executable) process.stdout.write(`warning: ${checks.path} is not executable; run: chmod +x factory/checks.sh\n`);
+  if (!checks.created) for (const line of suiteSuggestion(root, checks.path)) process.stdout.write(`${line}\n`);
   const generated = checks.created ? checksFor(repoOf(root)) : null;
   const stack = checks.stack ?? checksFor(repoOf(root)).stack;
   const suite = generated ? initSuiteCommands(root, generated.suite) : { changed: false };

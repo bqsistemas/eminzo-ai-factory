@@ -100,6 +100,16 @@ const TEST_COMMANDS = {
   ruby: ['bundle exec rspec', 'bundle exec rake test'],
 };
 
+/**
+ * Every full-run test command a generated checks.sh can contain, from the same sources as `checksFor().suite`
+ * (the package manager scripts, TEST_COMMANDS and gradle), for recognising them in a checks.sh somebody wrote.
+ */
+export const knownSuiteCommands = () => [
+  ...['npm', 'yarn', 'pnpm', 'bun'].map((pm) => scriptCommand(pm, 'test')),
+  ...Object.values(TEST_COMMANDS).flat(),
+  ...['./gradlew', 'gradle'].map((g) => `${g} test`),
+];
+
 /** The affected-only script for an Nx or Turborepo workspace and the command its full run uses, or null when it has no `test` target (today's node script then). */
 function affectedScript(tool, repo) {
   const targets = monorepoTargets(tool, repo);

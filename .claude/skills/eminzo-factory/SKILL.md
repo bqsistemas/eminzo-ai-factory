@@ -139,6 +139,9 @@ developer's spec review).
   the checks there, so it can take as long as the gate plus an install.
   - `suggestion:` from `init checks` (an Nx or Turborepo repo whose checks.sh checks everything): show the
     proposed file to the user. Never write it over the existing `factory/checks.sh`.
+  - `suggestion: add "suite_commands": [...] to "checks" in factory/config.json ...` from `init checks` (an existing
+    `checks.sh` with a known full-run test command and no `checks.suite_commands` yet): show the line to the user the
+    same way, so the team adds it. Never write `factory/config.json` or `factory/checks.sh` for it.
   - `base: PASS <sha>`: report that the checks pass on `<branch>`.
   - `base: FAIL <sha>: <command>`: tell the user that `<command>` fails on `<branch>`, name the
     `report:` file, and ask whether to create an issue to fix it. Only after the user says yes, run

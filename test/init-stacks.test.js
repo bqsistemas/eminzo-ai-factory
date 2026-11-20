@@ -424,3 +424,54 @@ test('suite_commands: eminzo enable writes it into the new config.json only when
   assert.deepEqual(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: [] })).checks.suite_commands, []);
   assert.deepEqual(JSON.parse(configText(template, { ...fill })).checks.suite_commands, []);
 });
+
+// An existing checks.sh is never rewritten, so setup suggests the checks.suite_commands line instead of writing it.
+const initChecksCmd = (root) => spawnSync(join(repo, 'factory/bin/init'), ['checks'], { cwd: root, encoding: 'utf8', env: { ...process.env, FACTORY_ROOT: root } });
+const SUGGEST = /^suggestion: add "suite_commands": (\[.*\]) to "checks" in factory\/config\.json so the builder cannot run the full suite \(the gate runs it\)$/m;
+
+test('suggestion: an existing checks.sh with a known full-run command gets a suggestion for config.json, and nothing is written', () => {
+  for (const [lines, expected] of [
+    ['npm run lint\nnpm test\n', ['npm test']],
+    ['set -e\ngo vet ./...\ngo test ./...\n', ['go test ./...']],
+    ['CI=1 pnpm test > out.log 2>&1\n', ['pnpm test']],
+    ['bundle exec rspec\nbundle exec rake test\n', ['bundle exec rspec', 'bundle exec rake test']],
+    ['mvn -B -q test\n', ['mvn -B -q test']],
+  ]) {
+    const root = sandbox({ 'go.mod': 'module x\n' });
+    const script = `#!/bin/sh\n${lines}`;
+    writeFileSync(join(root, 'factory/checks.sh'), script);
+    const configBefore = readFileSync(join(root, 'factory/config.json'), 'utf8');
+    const res = initChecksCmd(root);
+    assert.equal(res.status, 0, res.stderr);
+    const m = SUGGEST.exec(res.stdout);
+    assert.ok(m, `suggestion for ${JSON.stringify(lines)}: ${res.stdout}`);
+    assert.deepEqual(JSON.parse(m[1]), expected);
+    assert.equal(readFileSync(join(root, 'factory/checks.sh'), 'utf8'), script);
+    assert.equal(readFileSync(join(root, 'factory/config.json'), 'utf8'), configBefore);
+  }
+});
+
+test('suggestion: nothing when the key exists (even an empty list), when no known command is in checks.sh, or when checks.sh is generated', () => {
+  const has = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(has, 'factory/checks.sh'), '#!/bin/sh\nnpm test\n');
+  writeFileSync(join(has, 'factory/config.json'), '{ "checks": { "suite_commands": [] } }\n');
+  assert.doesNotMatch(initChecksCmd(has).stdout, /suggestion:/);
+
+  const unknown = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(unknown, 'factory/checks.sh'), '#!/bin/sh\nmake check\nnpm run lint\necho "npm test"\n');
+  assert.doesNotMatch(initChecksCmd(unknown).stdout, /suggestion:/);
+
+  const fresh = sandbox({ 'go.mod': 'module x\n' });
+  const res = initChecksCmd(fresh);
+  assert.match(res.stdout, /^wrote /m);
+  assert.doesNotMatch(res.stdout, /suggestion:/);
+});
+
+test('suggestion: both skills tell the orchestrator to show it, like the Nx one, and never write it', () => {
+  for (const f of ['.claude/skills/eminzo-factory/SKILL.md', '.agents/skills/eminzo-factory/SKILL.md']) {
+    const text = readFileSync(join(repo, f), 'utf8');
+    const rule = text.slice(text.indexOf('<!-- rule: base-check -->')).slice(0, 2200);
+    assert.match(rule, /suite_commands/, f);
+    assert.match(rule, /Never write/i, f);
+  }
+});
