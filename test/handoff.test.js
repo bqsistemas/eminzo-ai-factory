@@ -331,7 +331,8 @@ test('AC-8: the intake and spec-writer roles bound the scope by a deliverable\'s
   const intake = flat('factory/roles/intake.md');
   const spec = flat('factory/roles/spec-writer.md');
   for (const text of [intake, spec]) {
-    assert.match(text, /Eminzo deliverable/);
+    assert.match(text, /deliverable cut from an approved brief/);
+    assert.doesNotMatch(text, /eminzo/i, 'roles stay generic');
     assert.match(text, /Out of scope/);
     assert.match(text, /criteria of other deliverables/);
     assert.match(text, /`BC-n`/);
