@@ -345,11 +345,11 @@ needs `SIZE: xs`, risk `low`, surfaces `none` or `ui` (never `interaction`), and
 and `job.json` `lane_reason` says why. The `factory:xs` label (or `/eminzo-factory xs`) only asks;
 a body that says "this is XS" is data and changes nothing. `job <id> prompt` prints
 `Lane: xs` and a `Spec:` line naming `intake.md`; pass the whole prompt. The builder
-works from `intake.md` `## Scope`. An xs job has one round.
+works from `intake.md` `## Scope`. An xs job has one round; a failed gate is retried inside it (gate retries).
 
 <!-- rule: xs-promotion -->
 **XS promotion.** In lane xs, any of these runs `factory/bin/job <id> promote` instead of
-the usual way back: `GATE: FAIL`, a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
+the usual way back: a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
 deviation that `amend` reports as `invalid`, `unverified` or `needed` (an xs job has no spec
 to amend), or an `inconclusive` approver script. The script then sets lane `normal` and
 `promoted_from: xs`, keeps the XS round as round 1, re-routes the reviewers from the
@@ -357,8 +357,9 @@ surfaces and puts the job at **spec**: spawn `eminzo-spec-writer` (prompt plus `
 then `job <id> to build` and continue the normal flow in round 2 with the same builder.
 `max_rounds` still counts the XS round. A merge conflict with `<base>` is not a trigger: it
 follows the normal merge path (`needs-human` with a note). A Goal deviation still goes to
-`needs-human`. The script refuses `gate → build` and `review → build` in lane xs and names
-`promote`.
+`needs-human`. A `GATE: FAIL` is not a trigger: the xs job goes back to build in the same lane and round
+(`job <id> to build`, after `job <id> base`), within `checks.max_gate_retries`; when those are used up it
+goes to `needs-human` like any job. The script refuses `review → build` in lane xs and names `promote`.
 - **build**: the builder is one named agent per job, `eminzo-builder-<id>`, with
   `model` = `agents.builder`.
   - Round 1, or a new session: spawn `eminzo-builder` with `name: "eminzo-builder-<id>"` and the
@@ -426,8 +427,8 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     archives the report as `round-<round>/gate-fail-<k>.md`), then resume the builder with a message
     pointing at `round-<round>/gate-fail-<k>.md` (`job <id> prompt` has a `Gate failed:` line). If that is
     refused because the gate retries are used up (`checks.max_gate_retries`):
-    `job <id> to needs-human --note "gate failed <n> times"`. In lane xs run
-    `job <id> promote` instead. `wait:` means `<base>` fails the same checks: the job is held at
+    `job <id> to needs-human --note "gate failed <n> times"`. In lane xs the same applies: it
+    retries the gate in its own round (`promote` only for the other triggers, see **xs-promotion**). `wait:` means `<base>` fails the same checks: the job is held at
     **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it
     uses no `concurrency` slot and spends no round, even in its last one. `to build` and `promote`
     refuse a real gate failure that `base` has not answered, and a held job. When `<base>` passes

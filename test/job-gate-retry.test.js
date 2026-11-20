@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repo, setup, ok, refused, intaken, xsToGate } from './helpers/lane-xs-harness.js';
+import { repo, setup, ok, refused, intaken, xsToBuild, xsToGate } from './helpers/lane-xs-harness.js';
 
 const READY = 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n';
 
@@ -186,6 +186,76 @@ describe('gate>build keeps the round', { concurrency: true }, () => {
       assert.match(text, /checks\.max_gate_retries/, f);
       assert.match(text, /to needs-human --note "gate failed <n> times"/, f);
       assert.doesNotMatch(text, /a gate failure uses one/, f);
+    }
+  });
+});
+
+describe('lane xs retries the gate inside the lane', { concurrency: true }, () => {
+  test('AC-1: an xs job with GATE: FAIL goes gate>build, stays xs and keeps round 1', async () => {
+    const t = setup();
+    const id = await xsToBuild(t);
+    await xsToGate(t, id, 31, READY);
+    await failGate(t, id);
+    const job = t.json(id);
+    assert.equal(job.stage, 'build');
+    assert.equal(job.lane, 'xs');
+    assert.equal(job.round, 1);
+    assert.equal(job.gate_retries, 1);
+    assert.match(t.read(id, 'round-1/gate-fail-1.md'), /^GATE: FAIL/);
+    assert.match(ok(t, await t.job(id, 'prompt')), /^Gate failed: read round-1\/gate-fail-1\.md$/m);
+    assert.match(ok(t, await t.job(id, 'prompt')), /^Lane: xs$/m);
+    await backToGate(t, id);
+    t.write(id, 'round-1/checks.md', 'GATE: PASS\n');
+    ok(t, await t.job(id, 'to', 'review'));
+  });
+
+  test('AC-2: past the budget the xs job is refused with the needs-human command, not promote, and goes to needs-human', async () => {
+    const t = setup();
+    setConfig(t, (cfg) => { cfg.checks = { ...cfg.checks, max_gate_retries: 1 }; });
+    const id = await xsToBuild(t);
+    await xsToGate(t, id, 31, READY);
+    await failGate(t, id);
+    await backToGate(t, id);
+    t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
+    const res = await t.job(id, 'to', 'build');
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /checks\.max_gate_retries/);
+    assert.match(res.stderr, /to needs-human --note "gate failed 2 times"/);
+    assert.doesNotMatch(res.stderr, /promote/);
+    ok(t, await t.job(id, 'to', 'needs-human', '--note', 'gate failed 2 times'));
+  });
+
+  test('AC-3: promote still works from a failed xs gate and for the other triggers; review CHANGES still refuses to build', async () => {
+    const t = setup();
+    const id = await xsToBuild(t);
+    await xsToGate(t, id, 31, READY);
+    t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
+    ok(t, await t.job(id, 'promote'));
+    assert.equal(t.json(id).lane, 'normal');
+
+    const u = setup();
+    const uid = await xsToBuild(u);
+    await xsToGate(u, uid, 31, READY);
+    u.write(uid, 'round-1/checks.md', 'GATE: PASS\n');
+    ok(u, await u.job(uid, 'to', 'review'));
+    u.write(uid, 'round-1/review-code.md', 'VERDICT: CHANGES\n');
+    await refused(u, uid, 'to', 'build');
+    assert.match((await u.job(uid, 'to', 'build')).stderr, /promote/);
+
+    const w = setup();
+    const wid = await xsToBuild(w);
+    w.write(wid, 'build.md', 'STATUS: READY\n\n## Spec deviations\nAC-1 | Design: moved\n');
+    w.pr(31, `factory/${wid}`);
+    assert.match((await w.job(wid, 'to', 'gate')).stderr, /promote/);
+  });
+
+  test('AC-4: both skills no longer list GATE: FAIL as an xs promotion trigger', () => {
+    for (const f of ['.claude/skills/eminzo-factory/SKILL.md', '.agents/skills/eminzo-factory/SKILL.md']) {
+      const text = readFileSync(join(repo, f), 'utf8');
+      const rule = text.slice(text.indexOf('<!-- rule: xs-promotion -->')).slice(0, 700);
+      assert.doesNotMatch(rule, /the usual way back: `GATE: FAIL`/, f);
+      assert.match(rule, /VERDICT: CHANGES/, f);
+      assert.match(text.slice(text.indexOf('<!-- rule: lane-xs -->')).slice(0, 2200), /gate (is )?retr/i, f);
     }
   });
 });

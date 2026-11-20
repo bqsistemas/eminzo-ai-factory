@@ -808,7 +808,7 @@ function amendStatus(c, job) {
   return out;
 }
 
-/** Lane xs has one round: its failures go forward through `promote`, never back to build. */
+/** Lane xs has one round: a review CHANGES goes forward through `promote`, never back to build (a failed gate retries in the lane). */
 function assertNotXs(job, what) {
   if (job.lane === 'xs') throw new Refused(`lane xs runs one round, and ${what} promotes the job; run: ${engineCommand('job')} ${job.id} promote`);
 }
@@ -1631,8 +1631,7 @@ export const TRANSITIONS = {
   'gate>build'(c, job) {
     const g = gateOf(file(c, job, `round-${job.round}/checks.md`));
     if (g !== 'FAIL') throw new Refused(`round-${job.round}/checks.md does not start with GATE: FAIL`);
-    assertNotXs(job, 'a failed gate');
-    assertBaseAnswered(c, job);
+    assertBaseAnswered(c, job); // lane xs retries a failed gate in its own round, within the same budget
     retryGate(c, job);
     clearDecision(c, job);
   },

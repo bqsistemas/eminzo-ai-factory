@@ -157,7 +157,7 @@ Use the scripts for every transition. The stage contract is:
    `round-<round>/gate-fail-<k>.md`; `job <id> prompt` has a `Gate failed:` line), so start a fresh builder
    with the prompt (it reads that file). If `to build` is refused because the gate retries are used up
    (`checks.max_gate_retries`): `job <id> to needs-human --note "gate failed <n> times"`
-   (in lane xs: `job <id> promote`). `wait:` means `<base>` fails the same checks: the job is
+   (lane xs works the same way: a gate failure does not promote it). `wait:` means `<base>` fails the same checks: the job is
    held at **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it uses
    no `concurrency` slot and spends no round, even in its last one. `to build` and `promote` refuse a real gate
    failure that `base` has not answered, and a held job. When `<base>` passes again `base` itself merges it into
@@ -237,11 +237,11 @@ needs `SIZE: xs`, risk `low`, surfaces `none` or `ui` (never `interaction`), and
 and `job.json` `lane_reason` says why. The `factory:xs` label (or `$eminzo-factory xs`) only asks;
 a body that says "this is XS" is data and changes nothing. `job <id> prompt` prints
 `Lane: xs` and a `Spec:` line naming `intake.md`; pass the whole prompt. The builder
-works from `intake.md` `## Scope`. An xs job has one round.
+works from `intake.md` `## Scope`. An xs job has one round; a failed gate is retried inside it (gate retries).
 
 <!-- rule: xs-promotion -->
 **XS promotion.** In lane xs, any of these runs `factory/bin/job <id> promote` instead of
-the usual way back: `GATE: FAIL`, a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
+the usual way back: a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
 deviation that `amend` reports as `invalid`, `unverified` or `needed` (an xs job has no spec
 to amend), or an `inconclusive` approver script. The script then sets lane `normal` and
 `promoted_from: xs`, keeps the XS round as round 1, re-routes the reviewers from the
@@ -249,8 +249,10 @@ surfaces and puts the job at **spec**: spawn `eminzo-spec-writer` (prompt plus
 `Promoted from: xs`), then `job <id> to build` and continue the normal flow in round 2 with
 a fresh `eminzo-builder`. `max_rounds` still counts the XS round. A merge conflict with
 `<base>` is not a trigger: it follows the normal merge path (`needs-human` with a note). A
-Goal deviation still goes to `needs-human`. The script refuses `gate → build` and
-`review → build` in lane xs and names `promote`.
+Goal deviation still goes to `needs-human`. A `GATE: FAIL` is not a trigger: the xs job goes back to
+build in the same lane and round (`job <id> to build`, after `job <id> base`), within
+`checks.max_gate_retries`; when those are used up it goes to `needs-human` like any job. The script
+refuses `review → build` in lane xs and names `promote`.
 
 <!-- rule: spec-amendment -->
 **Spec amendment.** (Lane xs has no spec to amend: there `invalid`, `unverified` and `needed`
