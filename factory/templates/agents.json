@@ -39,6 +39,7 @@
     "regex": "^STATUS: (READY|BLOCKED)( |$)",
     "tokens": "`STATUS: READY` or `STATUS: BLOCKED`",
     "protect": true,
+    "guardTests": true,
     "alsoWrites": ["plan.md"],
     "inputs": "all relevant files in the supplied job and round folders",
     "rules": [

@@ -6,6 +6,8 @@ What a builder, its reviewers and the approver do in one round, and what each le
 
 The full checks run only in the gate, once per round. The builder runs only the test files it wrote or changed and never `factory/checks.sh`, the nudge or the whole suite; when the gate fails, the builder is resumed with its log. `nudge` stays as a manual command a person can run.
 
+On Claude this is enforced: the builder has a `PreToolUse` hook on `Bash` (`guard-tests`) that refuses `factory/checks.sh`, the nudge and any full-suite command, meaning every plain command line of `factory/checks.sh` plus `checks.suite_commands` in `factory/config.json`. A suite command followed by a file or directory is targeted and passes. The hook fails open (it prints `guard-tests: not enforced: <why>` and allows) when it cannot decide. Codex has no hooks, so the role text is its only guard.
+
 The engine runs your `factory/checks.sh` with these variables:
 
 | Variable | Value |

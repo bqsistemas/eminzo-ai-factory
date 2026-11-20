@@ -133,11 +133,11 @@ Portable factory engine:
 - `factory/config.local.json` (gitignored, optional): per-developer override of `concurrency`,
   `default_provider`, `language`, `max_rounds` (lower only), `auto_merge` (false only), `run_mode` (`own` only),
   `spec_review` (either way; `specReviewFor()` in `util.js` resolves it) and `discovery`.
-- `factory/bin/`: shell entrypoints for job, gate, route, nudge, selfcheck, protect-tests, approve, visual,
+- `factory/bin/`: shell entrypoints for job, gate, route, nudge, selfcheck, protect-tests, guard-tests, approve, visual,
   base, profile, mcp, setup, setup-spec-review, init, ensure-output and dashboard; implementation lives in `factory/lib/`.
 - `factory/lib/`: `job.js` state/transitions/GitHub; `route.js`/`intake.js` classification;
   `gate.js`/`nudge.js`/`check-stamp.js` checks and fingerprinted reuse; `report.js` readable gate
-  reports; `selfcheck.js` the builder's pre-READY check; `protect-tests.js` the builder's PreToolUse
+  reports; `selfcheck.js` the builder's pre-READY check; `guard-tests.js` the builder's Bash hook that refuses the full suite; `protect-tests.js` the builder's PreToolUse
   hook; `approve.js` deterministic approval; `diff.js` scope/XS limits; `overlap.js` shared
   file scheduling; `round-context.js` review handoffs; `cost.js` provider accounting;
   `visual*.js` browser checks; `project-map.js` context freshness; `run-mode.js`

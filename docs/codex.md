@@ -69,7 +69,7 @@ a los repos nuevos.
   ronda. El builder corre únicamente los archivos de test que escribió o cambió, y la skill
   pasa de un build `READY` (más `amend`) directo a `job <id> to gate`, sin correr el nudge.
   Codex no tiene hooks: el texto del rol es su única barrera contra la suite completa
-  (Claude suma además un hook `PreToolUse` que la rechaza).
+  (Claude suma además el hook `PreToolUse` `guard-tests`, que rechaza `factory/checks.sh`, el nudge y los comandos de suite completa).
 - No se agregó persistencia ni una migración a Agents API: GitHub, worktrees,
   scripts y artefactos de etapa siguen siendo la frontera compartida.
 

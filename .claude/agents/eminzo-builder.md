@@ -13,6 +13,10 @@ hooks:
       hooks:
         - type: command
           command: '"$CLAUDE_PROJECT_DIR"/factory/bin/protect-tests'
+    - matcher: Bash
+      hooks:
+        - type: command
+          command: '"$CLAUDE_PROJECT_DIR"/factory/bin/guard-tests'
 ---
 Read `factory/roles/builder.md` and follow it exactly: it is your full role. The hooks above are the only Claude-specific part.
 Work only in the job's worktree; never edit `job.json` or `board.json`, never merge, never push the base branch, never force-push.

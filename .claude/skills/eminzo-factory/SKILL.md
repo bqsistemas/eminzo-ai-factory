@@ -399,7 +399,7 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
     also checks the xs limits in the branch diff (at most 2 non-test files, none added or
     deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
   - Then `job <id> to gate`. It needs the open PR. The builder runs only the tests it wrote or
-    changed, so the full checks run only in the gate,
+    changed (a Bash hook, `guard-tests`, refuses `factory/checks.sh`, the nudge and the full suite), so the full checks run only in the gate,
     once per round: do not run `factory/checks.sh` or `factory/bin/nudge` yourself first.
 - **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes.
   <!-- rule: round-context -->

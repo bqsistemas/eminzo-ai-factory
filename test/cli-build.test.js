@@ -80,6 +80,7 @@ test('every Claude agent is generated, embeds its role and runs its hooks throug
   }
   assert.doesNotMatch(read('adapters/claude/agents/eminzo-builder.md'), /command: .*eminzo nudge/);
   assert.match(read('adapters/claude/agents/eminzo-builder.md'), /PreToolUse:\n    - matcher: Edit\|Write\|MultiEdit\|NotebookEdit\n      hooks:\n        - type: command\n          command: 'eminzo protect-tests'/);
+  assert.match(read('adapters/claude/agents/eminzo-builder.md'), /- matcher: Bash\n      hooks:\n        - type: command\n          command: 'eminzo guard-tests'/);
   for (const role of ROLES.filter((r) => r !== 'builder')) assert.doesNotMatch(read(`adapters/claude/agents/eminzo-${role}.md`), /PreToolUse/, role);
 });
 
