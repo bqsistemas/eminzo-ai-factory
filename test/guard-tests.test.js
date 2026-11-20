@@ -17,20 +17,15 @@ const GIT_ENV = {
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...GIT_ENV }, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 const CHECKS = `#!/bin/sh
-# the repo's checks
 set -e
-expected='node --test test/*.test.js'
-actual=$(node -p "require('./package.json').scripts.test")
-if [ "$actual" != "$expected" ]; then
-  echo "bad: $actual" >&2
-  exit 1
-fi
-echo "running"
+npm run lint
+npm run typecheck
+go vet ./...
 npm test
-pytest -q
 `;
+const LIST = ['node --test test/*.test.js', 'node --test', 'npm test', 'go test ./...', 'mvn -B -q test', './gradlew test', 'pytest -q', 7, null];
 
-function setup({ checks = CHECKS, config = { base: 'origin/main', checks: { suite_commands: ['node --test test/*.test.js', 'node --test', 7, null] } } } = {}) {
+function setup({ checks = CHECKS, config = { base: 'origin/main', checks: { suite_commands: LIST } } } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'factory-guard-')));
   const root = join(dir, 'root');
   mkdirSync(join(root, 'factory'), { recursive: true });
@@ -48,44 +43,27 @@ function setup({ checks = CHECKS, config = { base: 'origin/main', checks: { suit
 }
 
 const DENIED = [
-  'factory/checks.sh',
-  './factory/checks.sh',
-  '/abs/path/to/factory/checks.sh',
-  'sh factory/checks.sh',
-  'bash -x ./factory/checks.sh',
+  'factory/checks.sh', './factory/checks.sh', '/abs/path/to/factory/checks.sh', 'sh factory/checks.sh', 'bash -x ./factory/checks.sh',
   'cd /x && sh factory/checks.sh 2>&1 | tail -20',
-  'factory/bin/nudge 001-wt',
-  './factory/bin/nudge',
-  'eminzo nudge 001-wt --full',
-  'FOO=1 eminzo nudge',
-  'npm test',
-  'npm test 2>&1 | tail -5',
-  'npm test --silent',
-  'timeout 600 npm test',
+  'factory/bin/nudge 001-wt', './factory/bin/nudge', 'eminzo nudge 001-wt --full', 'FOO=1 eminzo nudge',
+  'npm test', 'npm test 2>&1 | tail -5', 'npm test --silent', 'npm test -- --coverage', 'timeout 600 npm test',
   'CI=1 npm test > /tmp/out.log 2>&1',
-  'node --test test/*.test.js',
-  'node --test test/*.test.js 2>&1 | rg x',
-  'node --test',
-  'node --test --test-reporter=spec',
-  'cd sub; pytest -q',
-  'git status\nnpm test',
-  'echo hi && npm test || true',
-  'bash -c "npm test"',
+  'node --test test/*.test.js', 'node --test test/*.test.js 2>&1 | rg x', 'node --test', 'node --test --test-reporter=spec',
+  'go test -race ./...', 'go test ./... -count=1', 'mvn -B -q test -X', './gradlew test --info', 'pytest -q -x',
+  'git status\nnpm test', 'echo hi && npm test || true',
+  // cheap wrappers
+  'time npm test', 'nohup npm test', 'command npm test', 'exec npm test', 'env npm test', 'env CI=1 FOO=2 npm test', 'env -i npm test', 'env -u HOME npm test',
+  'time nohup env A=1 npm test', 'npm test &', 'npm test&', 'time -p npm test',
+  // shell -c
+  'bash -c "npm test"', 'bash -lc "npm test"', 'sh -ec "npm test"', 'zsh -c "cd x && npm test"', 'bash -lc "factory/checks.sh"', "sh -c 'time env A=1 npm test'",
 ];
 const ALLOWED = [
-  'node --test test/handoff.test.js',
-  'node --test test/a.test.js test/b.test.js',
-  'npm test -- test/foo.test.js',
-  'pytest -q tests/test_one.py',
-  'git status',
-  'cd /tmp && ls',
-  'cd factory && cd ..',
-  'rg checks.sh docs',
-  'echo "do not run factory/checks.sh"',
-  'echo running',
-  'cat factory/checks.sh',
-  'npm run build',
-  '',
+  'node --test test/handoff.test.js', 'node --test test/a.test.js test/b.test.js', 'npm test -- test/foo.test.js', 'npm test -- src/a.test.js',
+  'mvn -B -q test -Dtest=UserTest', './gradlew test --tests UserTest', './gradlew test --tests=UserTest', 'pytest -q tests/test_one.py', 'pytest -q -k login',
+  'go test -run TestX ./...', 'go test ./pkg/one', 'npm test -- -t "name"', 'npm test -- --testNamePattern=x', 'npm test -- --grep foo', 'npm test -- -g foo',
+  'time npm test -- src/a.test.js', 'env CI=1 npm test -- src/a.test.js', 'bash -lc "npm test -- src/a.test.js"',
+  'git status', 'cd /tmp && ls', 'cd factory && cd ..', 'rg checks.sh docs', 'echo "do not run factory/checks.sh"', 'echo running', 'echo npm test', 'cat factory/checks.sh',
+  'npm run build', 'npm run lint', 'npm run typecheck', 'go vet ./...', 'eslint src/a.js', 'git commit -m "npm test"', '',
 ];
 
 test('AC-1: the hook denies every full-suite, checks.sh and nudge command with the reason on stderr', () => {
@@ -102,11 +80,12 @@ test('AC-2: the deny message names the matched command', () => {
   const t = setup();
   assert.match(t.call('node --test test/*.test.js 2>&1 | rg x').stderr, /node --test test\/\*\.test\.js/);
   assert.match(t.call('npm test').stderr, /npm test/);
+  assert.match(t.call('time env A=1 go test -race ./...').stderr, /go test \.\/\.\.\./);
   assert.match(t.call('sh factory/checks.sh').stderr, /factory\/checks\.sh/);
   assert.match(t.call('eminzo nudge 1').stderr, /nudge/);
 });
 
-test('AC-3: targeted runs and unrelated commands are allowed silently', () => {
+test('AC-3: targeted runs (a non-option argument or a test-selection option) and unrelated commands are allowed silently', () => {
   const t = setup();
   for (const command of ALLOWED) {
     const r = t.call(command);
@@ -115,22 +94,21 @@ test('AC-3: targeted runs and unrelated commands are allowed silently', () => {
   }
 });
 
-test('AC-3: a suite command followed by a non-flag token is targeted, and flags alone are still the suite', () => {
-  const t = setup();
-  assert.equal(t.call('node --test test/*.test.js extra.js').status, 0);
-  assert.equal(t.call('node --test test/*.test.js --x').status, 2);
-});
-
-test('AC-4: the config list comes from checks.suite_commands and checks.sh only lists its plain commands', () => {
-  const t = setup({ checks: '#!/bin/sh\nmake check\n', config: { checks: { suite_commands: ['go test ./...'] } } });
+test('AC-4: only checks.suite_commands lists suite commands: nothing is derived from checks.sh, and no list means only checks.sh and the nudge', () => {
+  const t = setup({ checks: CHECKS, config: { checks: { suite_commands: ['go test ./...'] } } });
   assert.equal(t.call('go test ./...').status, 2);
-  assert.equal(t.call('go test ./pkg/one').status, 0);
-  assert.equal(t.call('make check').status, 2);
-  assert.equal(t.call('make build').status, 0);
-  const plain = setup({ checks: CHECKS });
-  assert.equal(plain.call('echo running').status, 0, 'echo is never a suite command');
-  assert.equal(plain.call('set -e').status, 0);
-  assert.equal(plain.call('exit 1').status, 0);
+  assert.equal(t.call('npm test').status, 0, 'a plain line of checks.sh is not a suite command');
+  assert.equal(t.call('npm run lint').status, 0);
+  assert.equal(t.call('go vet ./...').status, 0);
+
+  for (const config of [{ base: 'origin/main' }, { checks: {} }, { checks: { suite_commands: 'npm test' } }, { checks: { suite_commands: [] } }]) {
+    const u = setup({ config });
+    const quiet = u.call('npm test');
+    assert.equal(quiet.status, 0, JSON.stringify(config));
+    assert.equal(quiet.stderr, '', 'a missing list is not noise');
+    assert.equal(u.call('factory/checks.sh').status, 2);
+    assert.equal(u.call('eminzo nudge x').status, 2);
+  }
 });
 
 test('AC-5: the hook only looks at Bash commands', () => {
@@ -145,30 +123,21 @@ test('AC-6: it fails open with a note when it cannot decide', () => {
   assert.equal(bad.status, 0);
   assert.match(bad.stderr, /^guard-tests: not enforced: .+/m);
 
-  const noChecks = setup({ checks: null, config: { checks: { suite_commands: ['go test ./...'] } } });
-  assert.equal(noChecks.call('go test ./...').status, 2, 'the config list still applies without checks.sh');
-  assert.equal(noChecks.call('npm test').status, 0);
-  assert.match(noChecks.call('npm test').stderr, /guard-tests: not enforced: .*checks\.sh/);
-
   const noConfig = setup({ config: null });
-  const r = noConfig.call('npm test');
-  assert.equal(r.status, 2, 'checks.sh alone still guards');
-  assert.match(noConfig.call('git status').stderr, /guard-tests: not enforced: .*config/);
+  assert.equal(noConfig.call('npm test').status, 0);
+  assert.equal(noConfig.call('npm test').stderr, '');
+  assert.equal(noConfig.call('factory/checks.sh').status, 2, 'checks.sh and the nudge are denied without a config');
 
   const badConfig = setup({ config: '{nope' });
-  assert.equal(badConfig.call('git status').status, 0);
-  assert.match(badConfig.call('git status').stderr, /guard-tests: not enforced: .*config/);
+  const r = badConfig.call('git status');
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /guard-tests: not enforced: .*config/);
+  assert.equal(badConfig.call('factory/checks.sh').status, 2);
 
   const outside = mkdtempSync(join(tmpdir(), 'factory-guard-out-'));
   const away = t.call('npm test', { cwd: outside });
   assert.equal(away.status, 0);
   assert.match(away.stderr, /guard-tests: not enforced/);
-});
-
-test('AC-7: checks.sh and nudge are still denied when the config has no suite_commands, and a non-array list is ignored', () => {
-  const t = setup({ config: { checks: { suite_commands: 'npm test' } } });
-  assert.equal(t.call('factory/bin/nudge 1').status, 2);
-  assert.equal(t.call('npm test').status, 2, 'checks.sh lists npm test');
 });
 
 test('AC-8: the generated Claude builder agent has the PreToolUse Bash hook; the other roles do not', () => {
@@ -183,7 +152,7 @@ test('AC-8: the generated Claude builder agent has the PreToolUse Bash hook; the
 
 test('AC-9: this repo declares its full-suite commands in factory/config.json', () => {
   const config = JSON.parse(readFileSync(join(repo, 'factory/config.json'), 'utf8'));
-  assert.deepEqual(config.checks.suite_commands, ['node --test test/*.test.js', 'node --test']);
+  assert.deepEqual(config.checks.suite_commands, ['node --test test/*.test.js', 'node --test', 'npm test']);
   const template = JSON.parse(readFileSync(join(repo, 'factory/templates/config.json'), 'utf8'));
   assert.ok(!('suite_commands' in (template.checks ?? {})) || Array.isArray(template.checks.suite_commands));
 });

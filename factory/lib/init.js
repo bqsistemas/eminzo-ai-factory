@@ -161,6 +161,31 @@ export function initAcPattern(root, stack) {
   return { changed: true, pattern };
 }
 
+/**
+ * Writes `checks.suite_commands` (the full-run test commands of the checks.sh setup generated) into
+ * factory/config.json when the key is absent; an existing value, even an empty list, stays. The edit is
+ * anchored inside an existing "checks" object, so the rest of the file keeps its layout; without one the
+ * file is rewritten with the key added.
+ * @returns {{changed: boolean, suite?: string[]}}
+ */
+export function initSuiteCommands(root, suite) {
+  const path = join(root, 'factory/config.json');
+  if (!existsSync(path) || !Array.isArray(suite) || !suite.length) return { changed: false };
+  const config = readJson(path);
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return { changed: false };
+  if (config.checks !== undefined && (config.checks === null || typeof config.checks !== 'object' || Array.isArray(config.checks))) return { changed: false };
+  if (Object.hasOwn(config.checks ?? {}, 'suite_commands')) return { changed: false };
+  const text = readFileSync(path, 'utf8');
+  const list = JSON.stringify(suite);
+  const re = /("checks"\s*:\s*\{)(\s*)(?=\S)/;
+  if (config.checks && re.test(text) && !/^\s*\}/.test(text.slice(text.search(re) + text.match(re)[0].length))) {
+    writeFileSync(path, text.replace(re, (_, head, gap) => `${head}${gap}"suite_commands": ${list},${gap || ' '}`));
+  } else {
+    writeFileSync(path, `${JSON.stringify({ ...config, checks: { ...(config.checks ?? {}), suite_commands: suite } }, null, 2)}\n`);
+  }
+  return { changed: true, suite };
+}
+
 /** Copies the commented factory/review.md template unless the repo has a review.md. @returns {{created: boolean, path: string}} */
 export function initReview(root) {
   const path = join(root, 'factory/review.md');
@@ -229,7 +254,10 @@ function main(args) {
   const checks = initChecks(root);
   process.stdout.write(checks.created ? `wrote ${checks.path} for the ${checks.stack} stack; review it\n` : `${checks.path} already exists; left untouched\n`);
   if (!checks.created && !checks.executable) process.stdout.write(`warning: ${checks.path} is not executable; run: chmod +x factory/checks.sh\n`);
+  const generated = checks.created ? checksFor(repoOf(root)) : null;
   const stack = checks.stack ?? checksFor(repoOf(root)).stack;
+  const suite = generated ? initSuiteCommands(root, generated.suite) : { changed: false };
+  if (suite.changed) process.stdout.write(`set checks.suite_commands to ${JSON.stringify(suite.suite)} in factory/config.json; the builder's guard-tests hook refuses these\n`);
   const ac = initAcPattern(root, stack);
   if (ac.changed) process.stdout.write(`set selfcheck.ac_pattern to ${ac.pattern} in factory/config.json\n`);
 }

@@ -48,7 +48,7 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
    the round if you do.
 4. Targeted tests. Run ONLY the test files you wrote or changed, with the repo's test runner
    pointed at those files (the test command is in `factory/project.md`).
-   Never run `factory/checks.sh`, the nudge or the repo's whole test suite: the gate runs the full checks, once per round, and a hook may refuse those commands.
+   Never run `factory/checks.sh`, the nudge or the repo's whole test suite: the gate runs the full checks, and a hook may refuse those commands.
    If you start the app, use the port from your prompt.
    Write `STATUS: READY` only when your targeted tests pass and `selfcheck` (step 7) exits 0;
    on a failure fix it and run the same files again, within these limits:

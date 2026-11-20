@@ -91,7 +91,16 @@ function monorepoTargets(tool, { packageJson, read }) {
   return tasks && typeof tasks === 'object' ? TARGETS.filter((n) => Object.hasOwn(tasks, n)) : fromScripts();
 }
 
-/** The affected-only script for an Nx or Turborepo workspace, or null when it has no `test` target (today's node script then). */
+/** The full-run test commands of the stacks whose command does not depend on the repo's files; checks.sh and project.md both use them. */
+const TEST_COMMANDS = {
+  go: ['go test ./...'],
+  rust: ['cargo test'],
+  python: ['python -m pytest'],
+  maven: ['mvn -B -q test'],
+  ruby: ['bundle exec rspec', 'bundle exec rake test'],
+};
+
+/** The affected-only script for an Nx or Turborepo workspace and the command its full run uses, or null when it has no `test` target (today's node script then). */
 function affectedScript(tool, repo) {
   const targets = monorepoTargets(tool, repo);
   if (!targets.includes('test')) return null;
@@ -101,7 +110,7 @@ function affectedScript(tool, repo) {
   const fill = tool === 'nx'
     ? { WORKSPACE: 'Nx workspace: only the projects a job changed and the projects that depend on them.', UNIT: 'project', ALL: `${exec} run-many -t ${list}`, SINCE: `${exec} affected -t ${list} --base="$BASE"`, RANGE: `${exec} affected -t ${list} --base="$BASE" --head="$HEAD"` }
     : { WORKSPACE: 'Turborepo workspace: only the packages a job changed and the packages that depend on them.', UNIT: 'package', ALL: `${exec} run ${list}`, SINCE: `${exec} run ${list} --filter="...[$BASE]"`, RANGE: `${exec} run ${list} --filter="...[$BASE...$HEAD]"` };
-  return text.replace(/@(WORKSPACE|UNIT|ALL|SINCE|RANGE)@/g, (_, key) => fill[key]);
+  return { script: text.replace(/@(WORKSPACE|UNIT|ALL|SINCE|RANGE)@/g, (_, key) => fill[key]), all: fill.ALL };
 }
 
 /**
@@ -133,11 +142,11 @@ export function commands(stack, { files, packageJson }) {
     return { run: cmd('start'), test: cmd('test'), build: cmd('build') };
   }
   const table = {
-    go: ['go run .', 'go test ./...', 'go build ./...'],
-    rust: ['cargo run', 'cargo test', 'cargo build'],
-    python: [null, 'python -m pytest', 'python -m build'],
-    ruby: [null, has(files, 'spec') ? (has(files, 'test') ? 'bundle exec rspec && bundle exec rake test' : 'bundle exec rspec') : 'bundle exec rake test', null],
-    maven: [null, 'mvn -B -q test', 'mvn -B -q package'],
+    go: ['go run .', TEST_COMMANDS.go[0], 'go build ./...'],
+    rust: ['cargo run', TEST_COMMANDS.rust[0], 'cargo build'],
+    python: [null, TEST_COMMANDS.python[0], 'python -m build'],
+    ruby: [null, has(files, 'spec') ? (has(files, 'test') ? TEST_COMMANDS.ruby.join(' && ') : TEST_COMMANDS.ruby[0]) : TEST_COMMANDS.ruby[1], null],
+    maven: [null, TEST_COMMANDS.maven[0], 'mvn -B -q package'],
     gradle: [`${gradleCommand(files)} run`, `${gradleCommand(files)} test`, `${gradleCommand(files)} build`],
   }[stack];
   if (!table) return { run: none('run'), test: none('test'), build: none('build') };
@@ -162,15 +171,18 @@ function nodeScript(text, { files, packageJson }) {
 /**
  * The factory/checks.sh for the stack the repo shows. `none` is factory/templates/checks.sh.
  * @param {Repo} repo
- * @returns {{ stack: string, script: string }}
+ * `suite` lists the full-run test commands the script runs (the guard-tests hook refuses them for the builder),
+ * from the same source as the script itself; it is empty for `none`.
+ * @returns {{ stack: string, script: string, suite: string[] }}
  */
 export function checksFor(repo) {
   const stack = detectStack(repo);
-  if (stack === NONE) return { stack, script: template('checks.sh') };
+  if (stack === NONE) return { stack, script: template('checks.sh'), suite: [] };
   const tool = stack === 'node' ? monorepoOf(repo) : null;
   const affected = tool ? affectedScript(tool, repo) : null;
-  if (affected) return { stack, script: affected };
+  if (affected) return { stack, script: affected.script, suite: [affected.all] };
   const text = template(`checks/${stack}.sh`);
   const script = stack === 'node' ? nodeScript(text, repo) : stack === 'gradle' && !has(repo.files, 'gradlew') ? text.replace(/^(?!#).*$/gm, (line) => line.replaceAll('./gradlew', 'gradle')) : text;
-  return { stack, script };
+  const suite = stack === 'node' ? [scriptCommand(packageManager(repo.files), 'test')] : stack === 'gradle' ? [`${gradleCommand(repo.files)} test`] : TEST_COMMANDS[stack] ?? [];
+  return { stack, script, suite };
 }

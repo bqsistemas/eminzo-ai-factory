@@ -358,3 +358,69 @@ test('E2: init checks is silent when checks.sh names FACTORY_BASE or the repo is
   assert.match(checks(fresh), /FACTORY_BASE/);
   assert.doesNotMatch(res.stdout, /suggestion:/);
 });
+
+// The guard-tests hook refuses the commands in checks.suite_commands, so setup writes the list next to the checks.sh it generates.
+const suite = (root) => JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8')).checks?.suite_commands;
+const STACK_SUITES = [
+  ['node npm', { 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) }, ['npm test']],
+  ['node pnpm', { 'package.json': JSON.stringify({ scripts: { test: 'jest' } }), 'pnpm-lock.yaml': '' }, ['pnpm test']],
+  ['node yarn', { 'package.json': JSON.stringify({ scripts: { test: 'jest' } }), 'yarn.lock': '' }, ['yarn test']],
+  ['node bun', { 'package.json': JSON.stringify({ scripts: { test: 'jest' } }), 'bun.lock': '' }, ['bun run test']],
+  ['go', { 'go.mod': 'module x\n' }, ['go test ./...']],
+  ['python', { 'pyproject.toml': '[tool.pytest]\n', 'pytest.ini': '' }, ['python -m pytest']],
+  ['rust', { 'Cargo.toml': '[package]\n' }, ['cargo test']],
+  ['maven', { 'pom.xml': '<project/>' }, ['mvn -B -q test']],
+  ['gradle wrapper', { 'build.gradle': '', gradlew: '' }, ['./gradlew test']],
+  ['gradle', { 'build.gradle': '' }, ['gradle test']],
+  ['ruby', { Gemfile: '', 'spec/': '' }, ['bundle exec rspec', 'bundle exec rake test']],
+  ['nx', { 'package.json': JSON.stringify({ scripts: { test: 'nx test' } }), 'nx.json': '{}', 'pnpm-lock.yaml': '' }, ['pnpm exec nx run-many -t test']],
+  ['turbo', { 'package.json': JSON.stringify({ scripts: { test: 'turbo run test' } }), 'turbo.json': '{"tasks":{"test":{}}}' }, ['npx --no-install turbo run test']],
+];
+for (const [name, files, expected] of STACK_SUITES) {
+  test(`suite_commands: ${name}: init writes ${JSON.stringify(expected)} with the checks.sh it generates`, () => {
+    const root = sandbox(files);
+    assert.equal(init(root).status, 0);
+    assert.deepEqual(suite(root), expected);
+    assert.deepEqual(checksFor({ files: Object.keys(files).map((f) => f.replace(/\/$/, '')), packageJson: files['package.json'] ? JSON.parse(files['package.json']) : null, read: (f) => files[f] ?? '' }).suite, expected);
+  });
+}
+
+test('suite_commands: an existing value is never overwritten, a hand-written checks.sh gets none, a second init changes nothing', () => {
+  const mine = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(mine, 'factory/config.json'), '{\n  "checks": { "suite_commands": ["make test"] },\n  "selfcheck": { "ac_pattern": "AC-\\\\d+" }\n}\n');
+  init(mine);
+  assert.deepEqual(suite(mine), ['make test']);
+
+  const hand = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(hand, 'factory/checks.sh'), '#!/bin/sh\nexit 0\n');
+  init(hand);
+  assert.equal(suite(hand), undefined);
+
+  const twice = sandbox({ 'go.mod': 'module x\n' });
+  init(twice);
+  const before = readFileSync(join(twice, 'factory/config.json'), 'utf8');
+  init(twice);
+  assert.equal(readFileSync(join(twice, 'factory/config.json'), 'utf8'), before);
+
+  const none = sandbox({ 'README.md': 'x' });
+  init(none);
+  assert.equal(suite(none), undefined, 'no stack, no list');
+});
+
+test('suite_commands: init keeps the layout of a config that has a checks object', () => {
+  const root = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(root, 'factory/config.json'), '{\n  "checks": { "max_runs_per_round": 6 },\n  "selfcheck": { "ac_pattern": "AC-\\\\d+" }\n}\n');
+  init(root);
+  const text = readFileSync(join(root, 'factory/config.json'), 'utf8');
+  assert.match(text, /"checks": \{ "suite_commands": \["go test \.\/\.\.\."\], "max_runs_per_round": 6 \}/);
+  assert.deepEqual(suite(root), ['go test ./...']);
+});
+
+test('suite_commands: eminzo enable writes it into the new config.json only when it generates checks.sh', () => {
+  const template = readFileSync(join(repo, 'factory/templates/config.json'), 'utf8');
+  const fill = { repoUrl: 'https://github.com/a/b', defaultBranch: 'main', version: '1.2.3' };
+  const checks = detectChecks({ files: ['go.mod'], packageJson: null, read: () => '' });
+  assert.deepEqual(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: checks.suite })).checks.suite_commands, ['go test ./...']);
+  assert.deepEqual(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: [] })).checks.suite_commands, []);
+  assert.deepEqual(JSON.parse(configText(template, { ...fill })).checks.suite_commands, []);
+});

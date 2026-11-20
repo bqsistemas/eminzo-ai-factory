@@ -2,11 +2,13 @@
 // the gate, once per round, so a Bash command is refused when any of its simple commands
 //   1. runs `factory/checks.sh` (directly or through sh or bash),
 //   2. runs the nudge (`factory/bin/nudge`, `eminzo nudge`), or
-//   3. is a full-suite command: a plain command line of the MAIN checkout's `factory/checks.sh`, or one of the
-//      strings in `checks.suite_commands` of its `factory/config.json`.
-// A suite command followed by a file, a directory or any other non-flag word is targeted and allowed.
+//   3. is one of the commands listed in `checks.suite_commands` of the MAIN checkout's `factory/config.json`
+//      (`eminzo setup` writes the list for the checks.sh it generates; there is no guessing from checks.sh).
+// A listed command followed by a non-option argument (a file, a directory, a package, a test name) or by a
+// test-selection option (`-k`, `--tests`, `-Dtest`, ...) is targeted and allowed; followed only by other
+// flags it is still the full suite. Without a list only 1 and 2 apply.
 // It refuses like protect-tests does: exit 2 with the reason on stderr; exit 0 allows. A hook that cannot decide
-// (bad JSON, no repository, no checks.sh or config) allows and prints one `guard-tests: not enforced: <why>` line,
+// (bad JSON, no repository, an unreadable config) allows and prints one `guard-tests: not enforced: <why>` line,
 // so it can never wedge the builder. Codex has no hooks: the builder role text is its only guard.
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
@@ -17,9 +19,10 @@ import { isMain } from './util.js';
 const OPERATOR = /^(\d*|&)(>>?|<)(&\d+|\S*)$/;
 const REDIRECT_ONLY = /^(\d*|&)(>>?|<)$/;
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-// Shell words that never are a test command; a checks.sh line starting with one is not a suite command.
-const NOT_A_SUITE = new Set(['if', 'then', 'elif', 'else', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'in', 'set', 'unset', 'exit', 'export', 'return',
-  'function', 'local', 'readonly', 'cd', 'echo', 'printf', 'true', 'false', ':', 'test', '[', '[[', 'source', '.', 'trap', 'eval', 'shift', 'read', '{', '}', '(', ')']);
+const SHELL = /^(sh|bash|zsh|dash|ksh)$/;
+const SHELL_C = /^-[a-z]*c$/;
+// Options that select which tests run: a command carrying one is targeted.
+const SELECTION = new Set(['-Dtest', '--tests', '-k', '-run', '--test-name-pattern', '-t', '--testNamePattern', '-g', '--grep', '-p', '--package']);
 
 /** Splits a command into simple commands (on && || ; | & and newlines, outside quotes), each as shell-like tokens. */
 export function simpleCommands(text) {
@@ -56,7 +59,7 @@ export function simpleCommands(text) {
   return commands;
 }
 
-/** The tokens of a simple command without its leading VAR=value words, a leading `timeout [flags] <n>`, and its redirections. */
+/** The tokens of a simple command without its redirections and the cheap wrappers in front of it (VAR=value, time, nohup, command, exec, env, timeout). */
 export function normalize(tokens) {
   const out = [];
   for (let i = 0; i < tokens.length; i++) {
@@ -65,22 +68,50 @@ export function normalize(tokens) {
     if (OPERATOR.test(t) && /[<>]/.test(t)) continue;
     out.push(t);
   }
-  while (out.length && ASSIGNMENT.test(out[0])) out.shift();
-  if (out[0] === 'timeout') {
-    out.shift();
-    while (out.length && /^-/.test(out[0])) out.shift();
-    if (out.length && /^\d+[smhd]?$/.test(out[0])) out.shift();
+  for (let again = true; again && out.length;) {
+    again = false;
+    if (ASSIGNMENT.test(out[0])) { out.shift(); again = true; continue; }
+    const head = out[0];
+    if (head === 'time' || head === 'nohup' || head === 'command' || head === 'exec') {
+      out.shift();
+      while (out.length && /^-/.test(out[0])) out.shift();
+      again = true;
+    } else if (head === 'env') {
+      out.shift();
+      while (out.length && (/^-/.test(out[0]) || ASSIGNMENT.test(out[0]))) {
+        const opt = out.shift();
+        if (/^-[uCS]$|^--(unset|chdir|split-string)$/.test(opt)) out.shift(); // an option with a separate value
+      }
+      again = true;
+    } else if (head === 'timeout') {
+      out.shift();
+      while (out.length && /^-/.test(out[0])) out.shift();
+      if (out.length && /^\d+(\.\d+)?[smhd]?$/.test(out[0])) out.shift();
+      again = true;
+    }
   }
   return out;
 }
 
 const sameWords = (a, b) => a.length === b.length && a.every((w, i) => w === b[i]);
 
-/** True when `candidate` is `suite`, optionally followed only by flags (`-x`, `--y`). Any other extra word makes it targeted. */
+/** True when `word` selects tests: `-k`, `--tests`, `-Dtest=X`, `-run=X`, ... */
+const selects = (word) => SELECTION.has(word.split('=')[0]) || word.startsWith('-Dtest');
+
+/**
+ * True when `candidate` runs the whole `suite` command: it starts with the suite's first word, carries the suite's
+ * words in order and has nothing else but flags. A non-option argument or a test-selection option makes it targeted.
+ */
 export function runsSuite(candidate, suite) {
-  if (!suite.length || candidate.length < suite.length) return false;
-  if (!sameWords(candidate.slice(0, suite.length), suite)) return false;
-  return candidate.slice(suite.length).every((w) => w.startsWith('-'));
+  if (!suite.length || candidate[0] !== suite[0]) return false;
+  let next = 1;
+  const extra = [];
+  for (const word of candidate.slice(1)) {
+    if (next < suite.length && word === suite[next]) next += 1;
+    else extra.push(word);
+  }
+  if (next < suite.length) return false;
+  return extra.every((w) => w.startsWith('-') && !selects(w));
 }
 
 const endsWithPath = (word, tail) => word === tail || word.endsWith(`/${tail}`);
@@ -88,39 +119,30 @@ const endsWithPath = (word, tail) => word === tail || word.endsWith(`/${tail}`);
 /** What a normalized simple command is when it runs the checks or the nudge, else null. */
 function checksOrNudge(words) {
   let rest = words;
-  if (/^(sh|bash|zsh)$/.test(rest[0] ?? '')) { rest = rest.slice(1); while (rest.length && rest[0].startsWith('-') && rest[0] !== '-c') rest = rest.slice(1); }
+  if (SHELL.test(rest[0] ?? '')) { rest = rest.slice(1); while (rest.length && rest[0].startsWith('-') && !SHELL_C.test(rest[0])) rest = rest.slice(1); }
   if (rest[0] && endsWithPath(rest[0], 'factory/checks.sh')) return 'factory/checks.sh';
   if (words[0] && endsWithPath(words[0], 'factory/bin/nudge')) return 'factory/bin/nudge';
   if (words[0] === 'eminzo' && words[1] === 'nudge') return 'eminzo nudge';
   return null;
 }
 
-/** The suite commands (normalized word lists, with the original text) a main checkout declares. `notes` collects why a source was not read. */
+/** The suite commands (word lists, with their text) listed in `checks.suite_commands` of the main checkout. `notes` collects why they could not be read. */
 export function suiteCommands(main, notes = []) {
   const out = [];
-  const add = (text) => {
-    const [first] = simpleCommands(text);
-    const words = first ? normalize(first) : [];
-    if (words.length && !out.some((c) => sameWords(c.words, words))) out.push({ text: words.join(' '), words });
-  };
+  let list;
   try {
-    for (const raw of readFileSync(join(main, 'factory/checks.sh'), 'utf8').split('\n')) {
-      const line = raw.trim();
-      if (!line || line.startsWith('#') || /[$`(){}\\]/.test(line)) continue;
-      const parts = simpleCommands(line);
-      if (parts.length !== 1) continue;
-      const words = normalize(parts[0]);
-      if (!words.length || NOT_A_SUITE.has(words[0])) continue;
-      add(line);
-    }
+    list = JSON.parse(readFileSync(join(main, 'factory/config.json'), 'utf8'))?.checks?.suite_commands;
   } catch (err) {
-    notes.push(`no readable factory/checks.sh in the main checkout (${err.code ?? err.message})`);
+    if (err.code !== 'ENOENT') notes.push(`no readable factory/config.json in the main checkout (${err.code ?? err.message})`);
+    return out;
   }
-  try {
-    const list = JSON.parse(readFileSync(join(main, 'factory/config.json'), 'utf8'))?.checks?.suite_commands;
-    if (Array.isArray(list)) for (const entry of list) if (typeof entry === 'string') add(entry);
-  } catch (err) {
-    notes.push(`no readable factory/config.json in the main checkout (${err.code ?? err.message})`);
+  if (Array.isArray(list)) {
+    for (const entry of list) {
+      if (typeof entry !== 'string') continue;
+      const [first] = simpleCommands(entry);
+      const words = first ? normalize(first) : [];
+      if (words.length && !out.some((c) => sameWords(c.words, words))) out.push({ text: words.join(' '), words });
+    }
   }
   return out;
 }
@@ -134,7 +156,7 @@ export function findViolation(command, suites, depth = 0) {
     if (hit) return { matched: hit };
     const suite = suites.find((s) => runsSuite(words, s.words));
     if (suite) return { matched: suite.text };
-    const shell = /^(sh|bash|zsh)$/.test(words[0]) ? words.indexOf('-c') : -1;
+    const shell = SHELL.test(words[0]) ? words.findIndex((w, i) => i > 0 && SHELL_C.test(w)) : -1;
     if (shell > 0 && words[shell + 1] && depth < 3) {
       const inner = findViolation(words[shell + 1], suites, depth + 1);
       if (inner) return inner;

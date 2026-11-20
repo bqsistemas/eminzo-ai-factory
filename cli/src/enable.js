@@ -46,9 +46,10 @@ export function settingsText(current) {
 }
 
 /** factory/config.json from the engine's template: `engine` first, then the template with repo and base filled. */
-export function configText(template, { repoUrl, defaultBranch, version, stack }) {
+export function configText(template, { repoUrl, defaultBranch, version, stack, suite }) {
   const filled = template.split('__REPO__').join(repoUrl).split('__BASE__').join(`origin/${defaultBranch}`);
   const config = { engine: minorRange(version), ...JSON.parse(filled) };
+  if (Array.isArray(suite) && suite.length && config.checks) config.checks = { ...config.checks, suite_commands: suite };
   if (stack && config.selfcheck) config.selfcheck = { ...config.selfcheck, ac_pattern: acPattern(stack) };
   return `${JSON.stringify(config, null, 2)}\n`;
 }
@@ -191,7 +192,8 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     read: (f) => showBase(f) ?? '',
   });
   const engine = engineFolder(dist);
-  const config = configText(readFileSync(join(engine, 'templates', 'config.json'), 'utf8'), { repoUrl, defaultBranch, version, stack: checks.stack });
+  const generatesChecks = !atBase('factory/checks.sh'); // a checks.sh already on the base is hand-written: its suite is not ours to name
+  const config = configText(readFileSync(join(engine, 'templates', 'config.json'), 'utf8'), { repoUrl, defaultBranch, version, stack: checks.stack, suite: generatesChecks ? checks.suite : [] });
   const gitignoreBefore = showBase('.gitignore');
   const settingsBefore = showBase('.claude/settings.json');
   const gitignoreAdd = gitignoreText(gitignoreBefore);

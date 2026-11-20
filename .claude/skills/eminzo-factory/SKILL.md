@@ -404,7 +404,7 @@ goes to `needs-human` like any job. The script refuses `review → build` in lan
     deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
   - Then `job <id> to gate`. It needs the open PR. The builder runs only the tests it wrote or
     changed (a Bash hook, `guard-tests`, refuses `factory/checks.sh`, the nudge and the full suite), so the full checks run only in the gate,
-    once per round: do not run `factory/checks.sh` or `factory/bin/nudge` yourself first.
+    do not run `factory/checks.sh` or `factory/bin/nudge` yourself first.
 - **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes.
   <!-- rule: round-context -->
   - **Round context.** The gate also writes `round-N/context.md`: the changed files, what changed
