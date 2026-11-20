@@ -52,7 +52,7 @@ import { dirname, join } from 'node:path';
 import { STAGE_COLUMNS, formatDuration, costAvailable, costLabel } from '../activity.js';
 import { codexJobCost, jobCostBreakdown, orchestratorCost, readAgentTranscripts, readCodexRollouts } from './cost.js';
 import { KINDS, jobProfile } from './profile.js';
-import { checksInputs, mergeBase, reusedStopPass, testedBy } from './check-stamp.js';
+import { checksInputs, mergeBase, testedBy } from './check-stamp.js';
 import { gate as runGate, uncommitted } from './gate.js';
 import { diffEntries, globRegex, isTestFile, scopeTokens, xsLimitProblems } from './diff.js';
 import { KNOWN_SURFACES, parseIntake } from './intake.js';
@@ -914,7 +914,7 @@ function postSyncDetail(c, job) {
  */
 function reuseRoundGate(c, job, head, base) {
   const g = job.gated;
-  if (!g || g.reused_stamp === true || g.round !== job.round || g.head !== head || g.inputs !== checksInputs(c.root)) return false;
+  if (!g || g.round !== job.round || g.head !== head || g.inputs !== checksInputs(c.root)) return false;
   writeAtomic(file(c, job, 'merge-checks.md'), reusedReport({ round: g.round, base, head, inputs: g.inputs, engine: engineVersion() }));
   return true;
 }
@@ -1585,11 +1585,7 @@ export const TRANSITIONS = {
     job.round_heads = { ...job.round_heads, [job.round]: head };
     // The merge may reuse this gate only when it tested exactly the head now under review.
     const tested = testedBy(readText(file(c, job, `round-${job.round}/checks.md`)));
-    if (head && tested.head === head && tested.inputs) {
-      job.gated = { round: job.round, head, inputs: tested.inputs };
-      // A gate that rested on the Stop-hook stamp (forgeable by a builder with Bash) is never reused by the merge.
-      if (reusedStopPass(readText(file(c, job, `round-${job.round}/checks.md`)))) job.gated.reused_stamp = true;
-    }
+    if (head && tested.head === head && tested.inputs) job.gated = { round: job.round, head, inputs: tested.inputs };
     else delete job.gated;
   },
   'gate>build'(c, job) {

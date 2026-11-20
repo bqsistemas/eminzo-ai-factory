@@ -136,7 +136,7 @@ Portable factory engine:
 - `factory/bin/`: shell entrypoints for job, gate, route, nudge, selfcheck, protect-tests, approve, visual,
   base, profile, mcp, setup, setup-spec-review, init, ensure-output and dashboard; implementation lives in `factory/lib/`.
 - `factory/lib/`: `job.js` state/transitions/GitHub; `route.js`/`intake.js` classification;
-  `gate.js`/`nudge.js`/`check-stamp.js`/`stop-stamp.js` checks and fingerprinted reuse (the Stop-hook stamp); `report.js` readable gate
+  `gate.js`/`nudge.js`/`check-stamp.js` checks and fingerprinted reuse; `report.js` readable gate
   reports; `selfcheck.js` the builder's pre-READY check; `protect-tests.js` the builder's PreToolUse
   hook; `approve.js` deterministic approval; `diff.js` scope/XS limits; `overlap.js` shared
   file scheduling; `round-context.js` review handoffs; `cost.js` provider accounting;
