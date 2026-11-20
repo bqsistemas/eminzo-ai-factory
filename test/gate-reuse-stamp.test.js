@@ -159,6 +159,7 @@ describe('gate reuses the Stop-hook pass', { concurrency: true }, () => {
     ok(await t.bin('gate', [id]));
     assert.equal(t.runs(), 1);
     assert.doesNotMatch(t.read(id, 'round-1/checks.md'), REUSED);
+    assert.ok(existsSync(join(realDir, `${id}.json`)), 'nothing was deleted through the link');
   });
 
   test('a malformed stamp is ignored and checks.sh runs', async () => {
@@ -410,6 +411,16 @@ describe('nudge writes the stamp', { concurrency: true }, () => {
     withChecks(t, 'echo generated > generated.txt');
     ok(await t.bin('nudge', [id, '--full']));
     assert.equal(t.runs(), 1);
+    assert.equal(existsSync(stampPath(t, id)), false);
+  });
+
+  test('a full pass that cannot write a stamp removes the old one', async () => {
+    const t = setup();
+    const { id } = await building(t);
+    mkdirSync(dirname(stampPath(t, id)), { recursive: true });
+    writeFileSync(stampPath(t, id), '{"stale":true}\n');
+    withChecks(t, 'echo generated > generated.txt');
+    ok(await t.bin('nudge', [id, '--full']));
     assert.equal(existsSync(stampPath(t, id)), false);
   });
 

@@ -114,7 +114,6 @@ function main(args = []) {
   const logFile = join(dir, 'nudge.log');
   const inputs = checksInputs(root);
   const tree = worktreeTree(job.worktree);
-  const head = headSha(job.worktree); // with the tree, what the Stop stamp may vouch for: both must be unchanged after the run
   const last = readStamp(stampFile);
   // The hook (no job id) and --full need a full pass; only a by-hand nudge may settle for a focused one.
   const wantFull = full || !manual;
@@ -162,7 +161,7 @@ function main(args = []) {
       if (runs.first) bestEffort(() => appendFileSync(logFile, `cap reached: ${CAP_MSG.slice('cap reached: '.length)}\n`));
       return manual || runs.first ? EXIT_FAIL : 0;
     }
-    return runAndReport({ root, job, runs: runs.value, wantFull, stampFile, logFile, tree, head, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
+    return runAndReport({ root, job, runs: runs.value, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
     if (!lock.unlocked) releaseLock(lockFile);
   }
@@ -215,7 +214,7 @@ function scopeBase(root, job) {
   return mergeBase(job.worktree, baseRef(loadConfig(root)).base);
 }
 
-function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, head, inputs, childFile }) {
+function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inputs, childFile }) {
   const focus = wantFull ? { options: {}, cleanup() {} } : focusedOptions(root, job);
   const mode = focus.options.mode ?? 'full';
   let result;
@@ -223,6 +222,8 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, hea
   try {
     if (!wantFull) scopeBaseSha = scopeBase(root, job); // --full and the hook run every project: no scope
   } catch { /* no config or no base: everything runs */ }
+  // What the Stop stamp may vouch for: the tree and head as they are when the checks start (after any lock wait).
+  const before = wantFull ? { tree: worktreeTree(job.worktree), head: headSha(job.worktree) } : null;
   try {
     // A focused nudge sets FACTORY_BASE only (it also sees uncommitted and untracked files, so there is no head to name); a full one sets nothing.
     result = runChecks(root, job.worktree, { ...focus.options, scope: { base: scopeBaseSha ?? undefined }, ...(childFile ? { pidFile: childFile } : {}) });
@@ -234,7 +235,7 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, hea
     bestEffort(() => (tree
       ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, base: scopeBaseSha, at: new Date().toISOString(), runs })}\n`)
       : writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`)));
-    if (wantFull && tree && head) bestEffort(() => writeStopStamp(root, job, tree, head, inputs));
+    if (wantFull) bestEffort(() => writeStopStamp(root, job, before, inputs));
     return 0;
   }
   bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`));
@@ -250,13 +251,15 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, hea
 }
 
 /**
- * The Stop-hook stamp of a FULL pass that really ran. `tree` and `head` were taken before the run: the stamp is
- * written only when both are still exactly those afterwards (checks.sh that rewrote files or moved the head
- * tested something else than what is there now). Writes nothing when the base cannot be told.
+ * The Stop-hook stamp of a FULL pass that really ran. `before` is the tree and head taken as the run began: the
+ * stamp is written only when both are known and still exactly those afterwards (checks.sh that rewrote files or
+ * moved the head tested something else than what is there now) and the base can be told. Otherwise no stamp is
+ * written and an existing one is removed.
  */
-function writeStopStamp(root, job, tree, head, inputs) {
+function writeStopStamp(root, job, before, inputs) {
+  const { tree, head } = before;
   const base = scopeBase(root, job);
-  if (!base || worktreeTree(job.worktree) !== tree || headSha(job.worktree) !== head) {
+  if (!tree || !head || !base || worktreeTree(job.worktree) !== tree || headSha(job.worktree) !== head) {
     removeStamp(root, job.id);
     return;
   }

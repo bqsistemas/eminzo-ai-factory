@@ -115,10 +115,15 @@ export function decide(input) {
   if (!target) return { allow: true };
   const cwd = typeof input.cwd === 'string' && isAbsolute(input.cwd) && isDir(input.cwd) ? input.cwd : process.cwd();
   const file = realResolve(cwd, target);
-  // The stamp folder by the path as written, before symlinks: a link planted at factory/jobs/.stamps sends the resolved path elsewhere.
-  const home = repoOf(cwd);
-  if (home && !home.error && STAMPS_PATH.test(lexicalRel(cwd, target, home.main) ?? '')) return { deny: STAMP_REASON };
   const repo = repoOf(existingDir(file));
+  // The stamp folder is denied by EITHER reading of the path: as written (lexical, `..` collapsed before any link) or
+  // as it really resolves. A link planted at factory/jobs/.stamps sends the resolved path elsewhere (maybe out of the
+  // repository, where `repo` is null: then the cwd's repository, the only extra git call, names the main checkout).
+  const home = repo ?? repoOf(cwd);
+  if (home && !home.error) {
+    const main = home.main;
+    if (STAMPS_PATH.test(lexicalRel(cwd, target, main) ?? '') || STAMPS_PATH.test(slashes(relative(main, file)))) return { deny: STAMP_REASON };
+  }
   if (!repo) return { allow: true }; // not in a repository: nothing to protect
   if (repo.error) return { allow: true, note: repo.error };
   let config;

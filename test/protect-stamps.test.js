@@ -75,3 +75,11 @@ test('E5: a stamp file that is a symlink to another file is denied too', () => {
   symlinkSync(join(t.root, 'a.txt'), join(t.root, `factory/jobs/.stamps/${ID}.json`));
   assert.equal(t.call(join(t.root, `factory/jobs/.stamps/${ID}.json`)).status, 2);
 });
+
+test('E5: a path that goes through a link and back up with .. is denied when it lands in the stamp folder', () => {
+  const t = setup();
+  mkdirSync(join(t.root, 'factory/jobs/.stamps/sub'), { recursive: true });
+  symlinkSync(join(t.root, 'factory/jobs/.stamps/sub'), join(t.root, 'factory/jobs/link'));
+  assert.equal(t.call(join(t.root, 'factory/jobs/link/../x.json')).status, 2);
+  assert.equal(t.call(join(t.root, 'factory/jobs/.stamps/../.stamps/x.json')).status, 2);
+});

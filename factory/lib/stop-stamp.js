@@ -6,7 +6,9 @@
 // same residual risk as job.json). The safeguards are that the protect hook denies the file tools on the
 // folder, that the gate reads it only from the main checkout and only when every field matches the job
 // as the gate itself recomputes it, that it is single use, that it expires after STAMP_TTL_MS (and is not
-// dated in the future), that neither the file nor the .stamps folder may be a symlink, that a branch
+// dated in the future), that the reader refuses a stamp file or a .stamps folder that is a symlink and the
+// writer and deleter never go through a symlinked .stamps (an lstat check: it leaves a small window between
+// the check and the use, and does not cover a symlinked `factory` or `factory/jobs`), that a branch
 // touching factory/jobs/ (any letter case) fails the round, and that the merge never reuses a gate that
 // rested on a stamp (it runs checks.sh itself).
 import { lstatSync, rmSync } from 'node:fs';
