@@ -69,6 +69,20 @@ describe('gate>build keeps the round', { concurrency: true }, () => {
     assert.match(t.read(id, 'round-1/gate-fail-1.md'), /attempt 1/);
   });
 
+  test('AC-2b: visual.md is archived as gate-fail-<k>.visual.md, so a later attempt never inherits it; context.md is rewritten by every gate and stays', async () => {
+    const t = setup();
+    const id = await atGate(t);
+    t.write(id, 'round-1/visual.md', 'VISUAL: FAIL\n');
+    t.write(id, 'round-1/context.md', 'ctx\n');
+    await failGate(t, id);
+    assert.equal(t.read(id, 'round-1/gate-fail-1.visual.md'), 'VISUAL: FAIL\n');
+    assert.equal(existsSync(join(t.root, 'factory/jobs', id, 'round-1/visual.md')), false);
+    assert.equal(t.read(id, 'round-1/context.md'), 'ctx\n');
+    await backToGate(t, id);
+    await failGate(t, id, 2); // no visual.md this time: nothing to archive, nothing breaks
+    assert.equal(existsSync(join(t.root, 'factory/jobs', id, 'round-1/gate-fail-2.visual.md')), false);
+  });
+
   test('AC-3: build.md moves to round-N/build-gate-fail-<k>.md and to gate needs a fresh one', async () => {
     const t = setup();
     const id = await atGate(t);

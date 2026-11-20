@@ -555,6 +555,7 @@ function retryGate(c, job) {
   const folder = file(c, job, `round-${job.round}`);
   archive(folder, 'checks.md', `gate-fail-${k}.md`);
   archive(folder, 'checks.log', `gate-fail-${k}.log`);
+  archive(folder, 'visual.md', `gate-fail-${k}.visual.md`); // the gate's (or the builder's) visual result of the failed attempt
   keepBuild(c, job, `build-gate-fail-${k}.md`);
   job.gate_retries = k;
   job.gate_fail = { round: job.round, k };
