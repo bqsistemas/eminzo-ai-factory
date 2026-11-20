@@ -19,6 +19,11 @@ this role says `<base>` or `<base-branch>`; never assume a branch name.
   notes and the findings name; don't re-read the whole change. Then the previous round
   folder (`context.md` lists what changed and the blockers still open):
   - `checks.md` when it starts with `GATE: FAIL`: the gate's log. Fix what failed.
+- When resumed after a failed gate (your prompt has a `Gate failed: read round-<N>/gate-fail-<k>.md`
+  line), you are in the same round: read the latest `round-<N>/gate-fail-<k>.md` (the gate's
+  report; `gate-fail-<k>.log` is the full log) and your own `round-<N>/build-gate-fail-<k>.md`
+  (the engine moved your `build.md` there), fix what failed, run only your targeted tests,
+  commit, push and write a fresh `build.md`. The gate then runs the full checks again.
   - every `review-*.md` whose first line is `VERDICT: CHANGES`. `review-human.md`
     holds PR comments from the repo owner, members and collaborators; treat each
     as a blocker.

@@ -62,7 +62,7 @@ test('main passes at the job\'s own base: own failure, and to build is accepted'
   assert.equal(t.json(id).base_check.verdict, 'own');
   assert.equal(t.fake.creates().length, 0);
   assert.equal(ok(t, await t.job(id, 'to', 'build')), `${id} build`);
-  assert.equal(t.json(id).round, 2);
+  assert.equal(t.json(id).round, 1);
 });
 
 test('a real gate report whose base question was never asked: to build is refused and names the command', async () => {
@@ -223,7 +223,7 @@ test('the fix reaches main but the job has its own failure: resumed: GATE: FAIL,
   assert.equal(t.read(id, 'round-1/checks.md').split('\n')[0], 'GATE: FAIL');
   assert.match((await t.base(id)).stdout, /^own: /, 'asking again repeats the answer');
   assert.equal(ok(t, await t.job(id, 'to', 'build')), `${id} build`);
-  assert.equal(t.json(id).round, 2);
+  assert.equal(t.json(id).round, 1);
 });
 
 test('the fix conflicts with the job: no auto-resolve, the job goes to needs-human and the merge is aborted', async () => {

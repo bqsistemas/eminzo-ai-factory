@@ -51,7 +51,7 @@ Releases follow [docs/releasing.md](docs/releasing.md). The one rule to remember
   and replies with that file's first line.
 - No reviewer runs before the gate passes. A round ends only when every routed review
   file exists (WAIT FOR ALL). The same named builder (`builder-<id>`) is resumed for
-  each round, up to `max_rounds` .
+  each round, up to `max_rounds` review rounds (a failed gate goes back to build inside the same round, up to `checks.max_gate_retries`).
 - Push only `factory/*` branches, merge only with `gh pr merge` after syncing with
   `origin/main` and gating again, never deploy. One PR per issue.
 - The approver escalates anything that needs human judgment: auth, payments, data

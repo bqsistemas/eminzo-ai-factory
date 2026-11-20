@@ -25,6 +25,10 @@ The gate report names the first one as `Checks base: <sha>|none`. Values already
 - **Cap.** At most `checks.max_runs_per_round` manual nudge runs per round (default 6). Past it the nudge exits 2 with `cap reached: write build.md with what is still failing`.
 - **Flaky checks.** A check that fails and then passes with no code change goes to `build.md` `## Flaky` (`command | error`) instead of being fixed in the job.
 
+### A failed gate does not burn a round
+
+When the gate fails (and the base is not the cause, see below), `job <id> to build` keeps the round: `job.round` does not change and `max_rounds` is not used. The engine counts the retry in `job.gate_retries` and archives the failed run in the same round folder: `round-<n>/checks.md` becomes `gate-fail-<k>.md`, `checks.log` becomes `gate-fail-<k>.log`, and `build.md` becomes `build-gate-fail-<k>.md`, so the next `to gate` needs a fresh `build.md` and the next gate writes a fresh `checks.md`. `job <id> prompt` then has a `Gate failed: read round-<n>/gate-fail-<k>.md` line for the builder. `checks.max_gate_retries` (default 3) bounds the retries per job; when they are used up `to build` is refused, naming the key and `to needs-human --note "gate failed <n> times"`. A human rework (`to build` from `needs-human` with a PR) starts a fresh budget. `max_rounds` counts only review rounds.
+
 ### When the base is red
 
 A gate failure is the job's own unless the base branch fails the same checks. After a real `GATE: FAIL` the orchestrator runs `job <id> base`, which checks the tip of the base for the job's own scope (the files it changed, for a `checks.sh` that reads `FACTORY_BASE`) in `.worktrees/.base` and answers:
@@ -56,7 +60,7 @@ A gate failure is the job's own unless the base branch fails the same checks. Af
   - `## Risks`
   - `## Proof`: the test for each AC
 - **Self-check.** Before `STATUS: READY` it runs `selfcheck` (see the command reference).
-- **build.md across rounds.** `build.md` lives in the job folder while its round runs. When the job goes back to build (a failed gate, a review with `CHANGES`, a rework), the engine moves it to `round-<n>/build.md`, so the next builder reads its handoff (`## Notes for the next round`) there and the job never loses it. The dashboard lists it as `round-<n>/build.md`.
+- **build.md across rounds.** `build.md` lives in the job folder while its round runs. When the job goes back to build for a review with `CHANGES` or a rework, the engine moves it to `round-<n>/build.md`, so the next builder reads its handoff (`## Notes for the next round`) there and the job never loses it. The dashboard lists it as `round-<n>/build.md`. After a failed gate the round does not change (see below): the file moves to `round-<n>/build-gate-fail-<k>.md`.
 - **What review-code checks.** That the diff matches the plan, or that `build.md` explains why it does not.
 
 ### Review policy (optional)
@@ -88,5 +92,5 @@ A gate failure is the job's own unless the base branch fails the same checks. Af
   and Ask Eminzo's estimates, can learn from finished jobs (`factory/lib/record-facts.js` parses it).
 
   The engine updates only that section, and only when the PR is open.
-- **The engine version.** `job.json` records `engine_version` when the job starts and at every round.
+- **The engine version.** `job.json` records `engine_version` when the job starts, at every round and when a failed gate goes back to build.
 - **Lessons.** `decision.md` ends with `## Lessons`; `eminzo job lessons` turns repeated ones into a pull request for `factory/project.md`.

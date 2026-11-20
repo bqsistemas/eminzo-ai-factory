@@ -131,8 +131,8 @@ Use the scripts for every transition. The stage contract is:
      the spec writer once.
 4. **build**: spawn a fresh `eminzo-builder` using `job.models.builder` for a new Codex session or round;
    pass only the job folder, round folder, branch, worktree, issue number, port
-   and base. On `STATUS: READY`, first run the spec amendment check (below), then the checks
-   (see below), then `job <id> to gate`. On `STATUS: BLOCKED`, park
+   and base. On `STATUS: READY`, first run the spec amendment check (below), then go straight to `job <id> to gate` (see
+   **checks-before-gate** below). On `STATUS: BLOCKED`, park
    with `needs-human` (in lane xs, run `job <id> promote` instead). In lane xs, `to gate`
    also checks the xs limits in the branch diff (at most 2 non-test files, none added or
    deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
@@ -153,7 +153,11 @@ Use the scripts for every transition. The stage contract is:
    <!-- rule: red-base -->
    On `GATE: FAIL` first run `factory/bin/job <id> base` (foreground, long timeout: it may install
    dependencies and run the checks on `<base>`) and act on its first word. `own:` returns the job to build with
-   the check log (in lane xs: `job <id> promote`). `wait:` means `<base>` fails the same checks: the job is
+   the check log: `job <id> to build` keeps the round (the engine archives the report as
+   `round-<round>/gate-fail-<k>.md`; `job <id> prompt` has a `Gate failed:` line), so start a fresh builder
+   with the prompt (it reads that file). If `to build` is refused because the gate retries are used up
+   (`checks.max_gate_retries`): `job <id> to needs-human --note "gate failed <n> times"`
+   (in lane xs: `job <id> promote`). `wait:` means `<base>` fails the same checks: the job is
    held at **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it uses
    no `concurrency` slot and spends no round, even in its last one. `to build` and `promote` refuse a real gate
    failure that `base` has not answered, and a held job. When `<base>` passes again `base` itself merges it into

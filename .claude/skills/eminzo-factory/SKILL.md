@@ -378,7 +378,10 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
   - Later rounds in the same session: resume it with `SendMessage` to
     `eminzo-builder-<id>`: `Round <round - 1> needs changes. Read
     factory/jobs/<id>/round-<round - 1>/ (your previous build.md is there now), fix every
-    finding, run the checks, commit, push and write a new build.md.`
+    finding, run your targeted tests, commit, push and write a new build.md.`
+  - After a failed gate (`job <id> to build` kept the round): resume the same builder with
+    `The gate failed. Read factory/jobs/<id>/round-<round>/gate-fail-<k>.md (the report; the full log is
+    gate-fail-<k>.log), fix what failed, run your targeted tests, commit, push and write a new build.md.`
   <!-- rule: spec-amendment -->
   - **Spec amendment.** (Lane xs has no spec to amend: there `invalid`, `unverified` and
     `needed` run `job <id> promote`, and `escalate` still goes to `needs-human`.) When `build.md` says `STATUS: READY`, run `factory/bin/job <id> amend`
@@ -419,9 +422,11 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
   <!-- rule: red-base -->
   - `GATE: FAIL`: first run `factory/bin/job <id> base` (foreground, long timeout: it may
     install dependencies and run the checks on `<base>`) and act on its first word.
-    `own:` means the failure is the job's: `job <id> to build`, then resume the builder (it reads
-    `checks.md`). If that is refused because it was the last round:
-    `job <id> to needs-human --note "gate failed in the last round"`. In lane xs run
+    `own:` means the failure is the job's: `job <id> to build` (the round does not change: the engine
+    archives the report as `round-<round>/gate-fail-<k>.md`), then resume the builder with a message
+    pointing at `round-<round>/gate-fail-<k>.md` (`job <id> prompt` has a `Gate failed:` line). If that is
+    refused because the gate retries are used up (`checks.max_gate_retries`):
+    `job <id> to needs-human --note "gate failed <n> times"`. In lane xs run
     `job <id> promote` instead. `wait:` means `<base>` fails the same checks: the job is held at
     **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it
     uses no `concurrency` slot and spends no round, even in its last one. `to build` and `promote`
@@ -504,7 +509,7 @@ in `factory/jobs/` from its `stage`, in both run modes. Named builders don't sur
 - Only `factory/bin/job` writes `job.json` and `board.json`.
 - Push only `factory/*` branches, merge only through `job <id> to merging` (which runs
   `gh pr merge`, and only when `auto_merge` is on), never deploy.
-- At most `max_rounds` rounds per job (a gate failure uses one), one PR per issue.
+- At most `max_rounds` review rounds per job (a failed gate goes back to build in the same round, up to `checks.max_gate_retries` times), one PR per issue.
 - Language: agents read the `Language:` line of their prompt (`en`, `es` or `pt`; missing
   means `en`), which `factory/bin/job <id> prompt` fills with the effective `language`
   (`factory/config.json` plus `factory/config.local.json`), so prompts still carry paths only.
