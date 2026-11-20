@@ -558,6 +558,7 @@ function retryGate(c, job) {
   archive(folder, 'visual.md', `gate-fail-${k}.visual.md`); // the gate's (or the builder's) visual result of the failed attempt
   keepBuild(c, job, `build-gate-fail-${k}.md`);
   job.gate_retries = k;
+  job.gate_retries_total = (job.gate_retries_total ?? used) + 1; // never reset: metrics see every retry, the budget is what a rework resets
   job.gate_fail = { round: job.round, k };
   job.engine_version = engineVersion();
   job.gate = null;

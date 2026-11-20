@@ -57,6 +57,22 @@ const DENIED = [
   // shell -c
   'bash -c "npm test"', 'bash -lc "npm test"', 'sh -ec "npm test"', 'zsh -c "cd x && npm test"', 'bash -lc "factory/checks.sh"', "sh -c 'time env A=1 npm test'",
 ];
+const DENIED_MORE = [
+  // after a heredoc, a real command is still checked
+  "cat <<EOF > notes.md\nhello\nEOF\nnpm test",
+  "git commit -F - <<'EOF'\nmsg\nEOF\nnpm test",
+  // flag order and grouping
+  'mvn test', 'mvn -q -B test', 'mvn -B test -q',
+  '(cd x; npm test)', '{ npm test; }', '( npm test )', 'cd x && (npm test)', '{ cd x; npm test; }',
+];
+const ALLOWED_MORE = [
+  "git commit -F - <<EOF\nfix: the npm test flake\nEOF",
+  "git commit -F - <<'EOF'\nrun npm test\nEOF",
+  'git commit -F - <<"EOF"\nnpm test\nEOF',
+  'cat <<EOF > notes.md\nnpm test\nfactory/checks.sh\nEOF',
+  'cat <<-EOF\n\tnpm test\n\tEOF',
+  'mvn -B -q test -Dtest=UserTest', 'mvn -q test -Dtest=UserTest',
+];
 const ALLOWED = [
   'node --test test/handoff.test.js', 'node --test test/a.test.js test/b.test.js', 'npm test -- test/foo.test.js', 'npm test -- src/a.test.js',
   'mvn -B -q test -Dtest=UserTest', './gradlew test --tests UserTest', './gradlew test --tests=UserTest', 'pytest -q tests/test_one.py', 'pytest -q -k login',
@@ -73,6 +89,15 @@ test('AC-1: the hook denies every full-suite, checks.sh and nudge command with t
     assert.equal(r.status, 2, `denied: ${JSON.stringify(command)} (stderr: ${r.stderr})`);
     assert.match(r.stderr, /full suite runs only in the gate/);
     assert.match(r.stderr, /test files you wrote or changed/);
+  }
+});
+
+test('AC-11: heredoc bodies are data, flag order and grouping do not hide a listed command', () => {
+  const t = setup();
+  for (const command of DENIED_MORE) assert.equal(t.call(command).status, 2, `denied: ${JSON.stringify(command)}`);
+  for (const command of ALLOWED_MORE) {
+    const r = t.call(command);
+    assert.equal(r.status, 0, `allowed: ${JSON.stringify(command)} (${r.stderr})`);
   }
 });
 

@@ -179,10 +179,14 @@ export function initSuiteCommands(root, suite) {
   const text = readFileSync(path, 'utf8');
   const list = JSON.stringify(suite);
   const re = /("checks"\s*:\s*\{)(\s*)(?=\S)/;
+  const rewrite = () => writeFileSync(path, `${JSON.stringify({ ...config, checks: { ...(config.checks ?? {}), suite_commands: suite } }, null, 2)}\n`);
   if (config.checks && re.test(text) && !/^\s*\}/.test(text.slice(text.search(re) + text.match(re)[0].length))) {
     writeFileSync(path, text.replace(re, (_, head, gap) => `${head}${gap}"suite_commands": ${list},${gap || ' '}`));
+    // The first "checks" in the text may be a nested one: only the top-level key counts.
+    const after = readJson(path)?.checks?.suite_commands;
+    if (JSON.stringify(after) !== list) { writeFileSync(path, text); rewrite(); }
   } else {
-    writeFileSync(path, `${JSON.stringify({ ...config, checks: { ...(config.checks ?? {}), suite_commands: suite } }, null, 2)}\n`);
+    rewrite();
   }
   return { changed: true, suite };
 }

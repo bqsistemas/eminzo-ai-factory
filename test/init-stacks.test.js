@@ -421,8 +421,30 @@ test('suite_commands: eminzo enable writes it into the new config.json only when
   const fill = { repoUrl: 'https://github.com/a/b', defaultBranch: 'main', version: '1.2.3' };
   const checks = detectChecks({ files: ['go.mod'], packageJson: null, read: () => '' });
   assert.deepEqual(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: checks.suite })).checks.suite_commands, ['go test ./...']);
-  assert.deepEqual(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: [] })).checks.suite_commands, []);
-  assert.deepEqual(JSON.parse(configText(template, { ...fill })).checks.suite_commands, []);
+  assert.equal(Object.hasOwn(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: [] })).checks, 'suite_commands'), false);
+  assert.equal(Object.hasOwn(JSON.parse(configText(template, { ...fill })).checks, 'suite_commands'), false);
+});
+
+test('suite_commands: enable keeping a hand-written checks.sh leaves the key absent, so setup then suggests the line', () => {
+  const template = readFileSync(join(repo, 'factory/templates/config.json'), 'utf8');
+  const config = configText(template, { repoUrl: 'https://github.com/a/b', defaultBranch: 'main', version: '1.2.3', stack: 'node', suite: [] });
+  const root = sandbox({ 'package.json': '{}' }, { config: false });
+  writeFileSync(join(root, 'factory/config.json'), config);
+  writeFileSync(join(root, 'factory/checks.sh'), '#!/bin/sh\nnpm test\n');
+  assert.match(initChecksCmd(root).stdout, /^suggestion: add "suite_commands": \["npm test"\] to "checks"/m);
+  // an explicit empty list set by a team stays set: no nagging
+  writeFileSync(join(root, 'factory/config.json'), JSON.stringify({ ...JSON.parse(config), checks: { suite_commands: [] } }));
+  assert.doesNotMatch(initChecksCmd(root).stdout, /suggestion:/);
+});
+
+test('suite_commands: a nested "checks" object is not mistaken for the top-level one', () => {
+  const root = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(root, 'factory/config.json'), '{"providers":{"x":{"checks":{"a":1}}},"checks":{"max_runs_per_round":6}}\n');
+  init(root);
+  const cfg = JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8'));
+  assert.deepEqual(cfg.checks.suite_commands, ['go test ./...']);
+  assert.deepEqual(cfg.providers.x.checks, { a: 1 }, 'the nested object is untouched');
+  assert.equal(cfg.checks.max_runs_per_round, 6);
 });
 
 // An existing checks.sh is never rewritten, so setup suggests the checks.suite_commands line instead of writing it.

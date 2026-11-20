@@ -33,8 +33,36 @@ export function simpleCommands(text) {
   const endWord = () => { if (has) tokens.push(word); word = ''; has = false; };
   const endCommand = () => { endWord(); if (tokens.length) commands.push(tokens); tokens = []; };
   const s = String(text);
+  const heredocs = []; // delimiters announced on the current line: their bodies start after its newline
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
+    if (ch === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
+      const m = /^<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([^\s;|&<>()'"]+))/.exec(s.slice(i));
+      if (m) {
+        heredocs.push({ word: m[2] ?? m[3] ?? m[4], strip: m[1] === '-' });
+        i += m[0].length - 1;
+        endWord();
+        continue;
+      }
+    }
+    if (ch === '\n' && heredocs.length) {
+      endCommand();
+      let at = i + 1;
+      for (const { word: delimiter, strip } of heredocs) {
+        while (at < s.length) {
+          let end = s.indexOf('\n', at);
+          if (end < 0) end = s.length;
+          const line = s.slice(at, end);
+          at = Math.min(end + 1, s.length);
+          if ((strip ? line.replace(/^\t+/, '') : line) === delimiter) break;
+        }
+      }
+      heredocs.length = 0;
+      i = at - 1;
+      continue;
+    }
+    if (ch === '(' || ch === ')') { endCommand(); continue; } // grouping: (cd x; npm test)
+    if ((ch === '{' || ch === '}') && !has && (s[i + 1] === undefined || /[\s;)]/.test(s[i + 1]))) { endCommand(); continue; } // { npm test; }
     if (ch === '\\' && i + 1 < s.length) { if (s[i + 1] !== '\n') { word += s[i + 1]; has = true; } i++; continue; }
     if (ch === "'" || ch === '"') {
       const end = s.indexOf(ch, i + 1);
@@ -104,6 +132,19 @@ const selects = (word) => SELECTION.has(word.split('=')[0]) || word.startsWith('
  */
 export function runsSuite(candidate, suite) {
   if (!suite.length || candidate[0] !== suite[0]) return false;
+  const plain = (words) => words.filter((w) => !w.startsWith('-'));
+  // Several plain words (`mvn -B -q test`): the flags do not matter, so `mvn test` and `mvn -q -B test` match too.
+  // A command whose flag is what makes it the suite (`node --test`, `pytest -q`) keeps its flags.
+  if (plain(suite).length >= 2 || plain(suite).length === suite.length) {
+    const want = plain(suite);
+    let at = 0;
+    for (const word of candidate) {
+      if (word.startsWith('-')) { if (selects(word)) return false; continue; }
+      if (at < want.length && word === want[at]) at += 1;
+      else return false; // a non-option argument: targeted
+    }
+    return at === want.length;
+  }
   let next = 1;
   const extra = [];
   for (const word of candidate.slice(1)) {

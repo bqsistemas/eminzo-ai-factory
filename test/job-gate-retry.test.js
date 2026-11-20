@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { jobView } from '../factory/lib/state/jobs.js';
 import { repo, setup, ok, refused, intaken, xsToBuild, xsToGate } from './helpers/lane-xs-harness.js';
 
 const READY = 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n';
@@ -189,6 +190,15 @@ describe('gate>build keeps the round', { concurrency: true }, () => {
     ok(t, await t.job(id, 'to', 'needs-human', '--note', 'gate failed 3 times'));
     ok(t, await t.job(id, 'to', 'build'));
     assert.equal(t.json(id).gate_retries, 0);
+    assert.equal(t.json(id).gate_retries_total, 3, 'the cumulative counter is never reset');
+    assert.equal(jobView(t.json(id)).gate_retries, 3, 'metrics see the earlier retries');
+    // the fresh budget really is fresh, and the total keeps growing
+    t.write(id, 'build.md', READY);
+    ok(t, await t.job(id, 'to', 'gate'));
+    t.write(id, `round-${t.json(id).round}/checks.md`, 'GATE: FAIL\n');
+    ok(t, await t.job(id, 'to', 'build'));
+    assert.equal(t.json(id).gate_retries, 1);
+    assert.equal(t.json(id).gate_retries_total, 4);
   });
 
   test('AC-11: the builder role and both skills describe the retry', () => {
