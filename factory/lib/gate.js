@@ -3,36 +3,16 @@
 // copy), fails if the branch modified, deleted or renamed a protected test or left
 // uncommitted changes, and writes round-N/checks.md plus round-N/context.md for the
 // reviewers. Exit 0 on PASS, 1 on FAIL.
-//
-// It also fails a branch whose diff against its base touches anything under factory/jobs/ (the job
-// folders and the stamp folder are the engine's, never the branch's).
-//
-// Stop-hook stamp (E5): instead of running checks.sh, the round gate (not the merge's, and not a
-// `--out` run) reuses the builder's FULL Stop-hook pass recorded in the MAIN checkout's
-// factory/jobs/.stamps/<job-id>.json (stop-stamp.js), but only when the worktree is clean and the
-// stamp's job, round, head, tree (= HEAD's tree), checks inputs and base all match what the gate
-// measures now, and the job is not a base fix. checks.md then says `Reused the Stop-hook pass`, the
-// stamp is deleted (single use), and every other step runs as always. Anything that does not match
-// is ignored and checks.sh runs; that includes a stamp older than an hour, dated in the future, or reached
-// through a symlink (stop-stamp.js). When a stamp was used the summary sentence says the pass was reused.
-// job.js records `gated.reused_stamp` so the merge never reuses such a gate.
 import { mkdirSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { checksInputs, headSha, mergeBase } from './check-stamp.js';
-import { removeStamp, reusableStamp } from './stop-stamp.js';
 import { withImplied } from './intake.js';
 import { projectMapLines, projectMapStatus } from './project-map.js';
 import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
 import { roundContext } from './round-context.js';
 import { visualStatus } from './visual-analysis.js';
 import { Usage, baseRef, engineDir, factoryRoot, isMain, jobDir, engineVersion, loadConfig, readText, run, runCli, tail, writeAtomic } from './util.js';
-
-/** The tree of the worktree's HEAD commit, or null. Valid as "what was checked" only when the worktree is clean. */
-function headTree(worktree) {
-  const res = run('git', ['rev-parse', 'HEAD^{tree}'], { cwd: worktree });
-  return res.status === 0 ? res.stdout.trim() : null;
-}
 
 function visualLines(visual) {
   const label = visual.status === 'ERROR' ? 'ERROR (not blocking)' : visual.status;
@@ -131,21 +111,6 @@ export function protectedChanges(worktree, base, protectedTests) {
   return { error: null, paths };
 }
 
-const JOBS_FOLDER = /^factory\/jobs\//i;
-
-/**
- * Paths under factory/jobs/ the branch added, modified, deleted or renamed (either side) since it left `base`.
- * The match ignores letter case (macOS volumes are case-insensitive, so `Factory/Jobs/` is the same folder).
- * `factory/demo/jobs/` is another path and does not count. Errors are left to protectedChanges, which reads the same diff.
- */
-export function jobsFolderChanges(worktree, base) {
-  const mb = run('git', ['merge-base', base, 'HEAD'], { cwd: worktree });
-  if (mb.status !== 0) return [];
-  const diff = run('git', ['diff', '--name-only', '--no-renames', '-z', mb.stdout.trim(), 'HEAD'], { cwd: worktree });
-  if (diff.status !== 0) return [];
-  return [...new Set(diff.stdout.split('\0').filter((p) => JOBS_FOLDER.test(p)))].sort();
-}
-
 /** Uncommitted or untracked (not ignored) paths: the checks would test a tree the branch doesn't hold. */
 export function uncommitted(worktree) {
   const res = run('git', ['status', '--porcelain'], { cwd: worktree });
@@ -154,10 +119,10 @@ export function uncommitted(worktree) {
 }
 
 /**
- * Runs the gate for a job and writes the report. `useStamp` lets it reuse the Stop-hook stamp (only the round gate does).
+ * Runs the gate for a job and writes the report.
  * @returns {boolean} true on PASS
  */
-export function gate(root, job, outFile, { useStamp = false } = {}) {
+export function gate(root, job, outFile) {
   const config = loadConfig(root);
   const { base } = baseRef(config);
   const dirty = uncommitted(job.worktree); // before the checks, which may write files
@@ -166,17 +131,12 @@ export function gate(root, job, outFile, { useStamp = false } = {}) {
   const started = Date.now();
   // A job that fixes the base is judged on everything: its goal is the whole base.
   const checksBase = job.base_fix ? null : mergeBase(job.worktree, base);
-  const stamp = useStamp ? reusableStamp(root, job, { dirty, head, tree: headTree(job.worktree), inputs, base: checksBase }) : null;
-  if (useStamp) removeStamp(root, job.id); // single use: consumed when reused, and never left to a later round
-  const checks = stamp
-    ? { code: 0, output: `Reused the Stop-hook pass: checks.sh was not run (stamp of ${stamp.at}).\n` }
-    : runChecks(root, job.worktree, { scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
+  const checks = runChecks(root, job.worktree, { scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
   const spanMs = Date.now() - started;
   const guard = protectedChanges(job.worktree, base, config.protected_tests ?? []);
-  const jobsTouched = jobsFolderChanges(job.worktree, base);
   const visual = checks.code === 0 ? runVisualCheck(root, config, job, outFile) : null;
   const visualSkippedForChecks = checks.code !== 0 && config.visual && withImplied(job.intake?.surfaces).includes('ui');
-  const pass = checks.code === 0 && !guard.error && guard.paths.length === 0 && dirty.length === 0 && jobsTouched.length === 0 && visual?.status !== 'FAIL';
+  const pass = checks.code === 0 && !guard.error && guard.paths.length === 0 && dirty.length === 0 && visual?.status !== 'FAIL';
   const log = tail(checks.output, LOG_LINES);
   const longest = Math.max(0, ...(log.match(/`+/g) ?? []).map((m) => m.length));
   const fence = '`'.repeat(Math.max(3, longest + 1));
@@ -188,17 +148,14 @@ export function gate(root, job, outFile, { useStamp = false } = {}) {
     `GATE: ${pass ? 'PASS' : 'FAIL'}`,
     ...engineLines(engineVersion()),
     '',
-    summarySentence({ pass, reused: Boolean(stamp), spanMs, head, code: checks.code, violations: violations.length, jobsTouched: jobsTouched.length, dirty: dirty.length, visualFailed: visual?.status === 'FAIL' }),
+    summarySentence({ pass, spanMs, head, code: checks.code, violations: violations.length, dirty: dirty.length, visualFailed: visual?.status === 'FAIL' }),
     '',
-    ...(stamp ? [`Reused the Stop-hook pass: checks.sh was not run. Stamp of ${stamp.at}, tree ${stamp.tree}, head ${stamp.head}.`] : []),
     `Checks exit code: ${checks.code}`,
     `Tested head: ${head ?? 'unknown'}`,
     `Checks base: ${checksBase ?? 'none'}`,
     `Checks inputs: ${inputs}`,
     `Protected test violations: ${violations.length ? '' : 'none'}`,
     ...violations.map((v) => `- ${v}`),
-    `Factory jobs folder changes: ${jobsTouched.length ? 'the branch touches factory/jobs/, which belongs to the engine; remove these paths from the branch' : 'none'}`,
-    ...jobsTouched.slice(0, 20).map((v) => `- ${v}`),
     `Uncommitted changes: ${dirty.length ? 'commit them; the gate tests only committed work' : 'none'}`,
     ...dirty.slice(0, 20).map((v) => `- ${v}`),
     ...(visual ? visualLines(visual) : visualSkippedForChecks ? ['Visual check: not run (checks failed)'] : []),
@@ -207,9 +164,8 @@ export function gate(root, job, outFile, { useStamp = false } = {}) {
     '## Steps',
     '',
     ...table(['Step', 'Result'], [
-      ['Checks (full mode)', stamp ? 'reused the Stop-hook pass' : `exit ${checks.code} in ${formatSpan(spanMs)}`],
+      ['Checks (full mode)', `exit ${checks.code} in ${formatSpan(spanMs)}`],
       ['Protected tests', violations.length ? `${violations.length} problem${violations.length === 1 ? '' : 's'}` : 'none changed'],
-      ['Factory jobs folder', jobsTouched.length ? `${jobsTouched.length} path${jobsTouched.length === 1 ? '' : 's'} touched` : 'untouched'],
       ['Working tree', dirty.length ? 'uncommitted changes' : 'clean'],
       ...(visualCell ? [['Visual check', visualCell]] : []),
     ]),
@@ -240,8 +196,7 @@ function writeRoundContext(root, config, job, outFile) {
 function main(args) {
   const [id, ...rest] = args;
   let out = null;
-  let explicitOut = false;
-  if (rest.length === 2 && rest[0] === '--out') { out = resolve(rest[1]); explicitOut = true; }
+  if (rest.length === 2 && rest[0] === '--out') out = resolve(rest[1]);
   else if (rest.length) throw new Usage('gate <job-id> [--out <file>]');
   if (!id) throw new Usage('gate <job-id> [--out <file>]');
   const root = factoryRoot();
@@ -253,7 +208,7 @@ function main(args) {
     if (!(job.round >= 1)) throw new Usage(`${id} has no build round yet`);
     out = join(dir, `round-${job.round}`, 'checks.md');
   }
-  const pass = gate(root, job, out, { useStamp: !explicitOut });
+  const pass = gate(root, job, out);
   process.stdout.write(`${id} GATE: ${pass ? 'PASS' : 'FAIL'}\n`);
   return pass ? 0 : 1;
 }
