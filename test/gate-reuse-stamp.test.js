@@ -4,10 +4,11 @@
 // that rested on a stamp; and a branch may not touch factory/jobs/.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { checksInputs, headSha, mergeBase } from '../factory/lib/check-stamp.js';
+import { STAMP_TTL_MS } from '../factory/lib/stop-stamp.js';
 import { git, setup, ok, building, approvedWithRealGate } from './helpers/check-reuse-harness.js';
 
 const REUSED = /Reused the Stop-hook pass/;
@@ -27,7 +28,7 @@ async function gating(t) {
     inputs: checksInputs(t.root),
     base: mergeBase(worktree, 'origin/main'),
     head: headSha(worktree),
-    at: '2026-01-02T03:04:05.000Z',
+    at: new Date().toISOString(),
     engine: null,
   };
   const put = (s = stamp, file = stampPath(t, id)) => {
@@ -83,6 +84,82 @@ describe('gate reuses the Stop-hook pass', { concurrency: true }, () => {
       assert.doesNotMatch(t.read(id, 'round-1/checks.md'), REUSED);
     });
   }
+
+  test('a stamp older than the TTL, from the future, or without a usable time is ignored', async () => {
+    const ago = (ms) => new Date(Date.now() + ms).toISOString();
+    const cases = {
+      'two hours old': ago(-2 * 3600_000),
+      'just over an hour old': ago(-STAMP_TTL_MS - 60_000),
+      'five minutes in the future': ago(5 * 60_000),
+      unparseable: 'yesterday-ish',
+      missing: undefined,
+    };
+    for (const [name, at] of Object.entries(cases)) {
+      const t = setup();
+      const { id, stamp, put } = await gating(t);
+      put({ ...stamp, at });
+      ok(await t.bin('gate', [id]));
+      assert.equal(t.runs(), 1, name);
+      assert.doesNotMatch(t.read(id, 'round-1/checks.md'), REUSED, name);
+      assert.equal(existsSync(stampPath(t, id)), false, `${name}: the expired stamp is gone`);
+    }
+  });
+
+  test('a stamp inside the TTL and the clock skew is reused', async () => {
+    for (const ms of [-STAMP_TTL_MS + 120_000, 30_000]) {
+      const t = setup();
+      const { id, stamp, put } = await gating(t);
+      put({ ...stamp, at: new Date(Date.now() + ms).toISOString() });
+      ok(await t.bin('gate', [id]));
+      assert.equal(t.runs(), 0, `offset ${ms}`);
+    }
+  });
+
+  test('the summary sentence says the pass was reused, and a real run does not', async () => {
+    const t = setup();
+    const { id, put } = await gating(t);
+    put();
+    ok(await t.bin('gate', [id]));
+    assert.match(t.read(id, 'round-1/checks.md').split('\n')[3], /^The checks passed: reused the Stop-hook pass \(checks\.sh was not run\) on commit [0-9a-f]{7}\.$/);
+    ok(await t.bin('gate', [id]));
+    assert.match(t.read(id, 'round-1/checks.md').split('\n')[3], /^The checks passed in \d+s on commit /);
+  });
+
+  test('a git commit --amend after the stamp (same tree, new head) is not reused', async () => {
+    const t = setup();
+    const { id, worktree, stamp, put } = await gating(t);
+    git(worktree, 'commit', '-q', '--amend', '-m', 'feat: branch work, reworded');
+    assert.equal(git(worktree, 'rev-parse', 'HEAD^{tree}'), stamp.tree, 'same tree');
+    assert.notEqual(headSha(worktree), stamp.head, 'new head');
+    put();
+    ok(await t.bin('gate', [id]));
+    assert.equal(t.runs(), 1);
+    assert.doesNotMatch(t.read(id, 'round-1/checks.md'), REUSED);
+  });
+
+  test('a symlinked stamp file is never read, even when it points at a valid stamp', async () => {
+    const t = setup();
+    const { id, stamp, put } = await gating(t);
+    const real = join(t.dir, 'elsewhere', 'valid.json');
+    put(stamp, real);
+    mkdirSync(dirname(stampPath(t, id)), { recursive: true });
+    symlinkSync(real, stampPath(t, id));
+    ok(await t.bin('gate', [id]));
+    assert.equal(t.runs(), 1);
+    assert.doesNotMatch(t.read(id, 'round-1/checks.md'), REUSED);
+  });
+
+  test('a symlinked .stamps folder is never read, even when it holds a valid stamp', async () => {
+    const t = setup();
+    const { id, stamp, put } = await gating(t);
+    const realDir = join(t.dir, 'elsewhere-dir');
+    put(stamp, join(realDir, `${id}.json`));
+    mkdirSync(join(t.root, 'factory/jobs'), { recursive: true });
+    symlinkSync(realDir, join(t.root, 'factory/jobs/.stamps'));
+    ok(await t.bin('gate', [id]));
+    assert.equal(t.runs(), 1);
+    assert.doesNotMatch(t.read(id, 'round-1/checks.md'), REUSED);
+  });
 
   test('a malformed stamp is ignored and checks.sh runs', async () => {
     for (const junk of ['{not json', 'null', '[1]', '"x"', '']) {
@@ -247,6 +324,29 @@ describe('gate rejects a branch that touches factory/jobs/', { concurrency: true
     assert.match(t.read(id, 'round-1/checks.md'), /^GATE: PASS/);
   });
 
+  test('the rule ignores case: Factory/Jobs and FACTORY/JOBS are caught, factory/demo/jobs in any case is not', async () => {
+    const t = setup();
+    const { jobsFolderChanges } = await import('../factory/lib/gate.js');
+    // One repository per path: on a case-insensitive volume `Factory/Jobs` and `FACTORY/JOBS` are one folder.
+    const changed = (path, n) => {
+      const repoDir = join(t.dir, `case-repo-${n}`);
+      mkdirSync(repoDir, { recursive: true });
+      git(repoDir, 'init', '-q', '-b', 'main');
+      writeFileSync(join(repoDir, 'a.txt'), 'a\n');
+      git(repoDir, 'add', '.');
+      git(repoDir, 'commit', '-q', '-m', 'base');
+      git(repoDir, 'checkout', '-q', '-b', 'topic');
+      mkdirSync(join(repoDir, dirname(path)), { recursive: true });
+      writeFileSync(join(repoDir, path), 'x\n');
+      git(repoDir, 'add', '-f', '-A');
+      git(repoDir, 'commit', '-q', '-m', 'case');
+      return jobsFolderChanges(repoDir, 'main');
+    };
+    const caught = ['Factory/Jobs/a.json', 'FACTORY/JOBS/.stamps/b.json', 'factory/JOBS/c.json', 'FaCtOrY/jObS/d.json'];
+    caught.forEach((p, i) => assert.deepEqual(changed(p, i), [p], p));
+    ['FACTORY/DEMO/JOBS/ok.md', 'Factory/Demo/jobs/ok2.md', 'factory/demo/jobs/ok3.md'].forEach((p, i) => assert.deepEqual(changed(p, 10 + i), [], p));
+  });
+
   test('a clean branch reports no factory/jobs changes', async () => {
     const t = setup();
     const { id } = await gating(t);
@@ -299,6 +399,36 @@ describe('nudge writes the stamp', { concurrency: true }, () => {
     ok(await t.bin('nudge', [id, '--full']));
     assert.equal(t.runs(), 1, 'reused, not run again');
     assert.equal(existsSync(stampPath(t, id)), false);
+  });
+
+  // A checks.sh that changes the worktree or its head while it runs: what the pass vouches for is no longer what is there.
+  const withChecks = (t, body) => writeFileSync(join(t.root, 'factory/checks.sh'), `#!/bin/sh\necho run >> "$CHECKS_COUNT"\n${body}\nexit 0\n`);
+
+  test('no stamp when the checks change the worktree tree while they run', async () => {
+    const t = setup();
+    const { id } = await building(t);
+    withChecks(t, 'echo generated > generated.txt');
+    ok(await t.bin('nudge', [id, '--full']));
+    assert.equal(t.runs(), 1);
+    assert.equal(existsSync(stampPath(t, id)), false);
+  });
+
+  test('no stamp when the checks move the head (same tree, new commit) while they run', async () => {
+    const t = setup();
+    const { id, worktree } = await building(t);
+    withChecks(t, 'git commit -q --allow-empty -m "moved during the run"');
+    const before = headSha(worktree);
+    ok(await t.bin('nudge', [id, '--full']));
+    assert.notEqual(headSha(worktree), before, 'the head moved');
+    assert.equal(existsSync(stampPath(t, id)), false);
+  });
+
+  test('a run that leaves tree and head alone still writes the stamp', async () => {
+    const t = setup();
+    const { id } = await building(t);
+    withChecks(t, 'true');
+    ok(await t.bin('nudge', [id, '--full']));
+    assert.ok(existsSync(stampPath(t, id)));
   });
 
   test('the real flow: nudge --full then gate reuses the pass', async () => {

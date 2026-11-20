@@ -23,8 +23,11 @@
 // job, round, tree, inputs, base, head, at, engine), and a FULL failure deletes it. A focused pass and a
 // pass reused from nudge.json (no real run) never write one. The gate may reuse the stamp instead of running
 // checks.sh again, only when every field still matches (see gate.js). `base` is the merge-base the gate would
-// scope to, although the full run itself is unscoped (a superset of any scoped run). The builder can forge
-// the file with Bash (accepted, same as job.json); the merge never reuses a gate that rested on a stamp.
+// scope to, although the full run itself is unscoped (a superset of any scoped run: the checks.sh contract in
+// docs/how-a-round-runs.md). The tree and the head are taken before the run and again after it; if either
+// changed while checks.sh ran, no stamp is written (and an old one goes), so the gate runs the checks itself.
+// The stamp expires after an hour (stop-stamp.js). The builder can forge the file with Bash (accepted, same
+// as job.json); the merge never reuses a gate that rested on a stamp.
 //
 // Cap per round: nudge.json also counts the real runs of checks.sh in the job's current round
 // (`runs: { round, count }`, reset when the round changes). Past `checks.max_runs_per_round`
@@ -111,6 +114,7 @@ function main(args = []) {
   const logFile = join(dir, 'nudge.log');
   const inputs = checksInputs(root);
   const tree = worktreeTree(job.worktree);
+  const head = headSha(job.worktree); // with the tree, what the Stop stamp may vouch for: both must be unchanged after the run
   const last = readStamp(stampFile);
   // The hook (no job id) and --full need a full pass; only a by-hand nudge may settle for a focused one.
   const wantFull = full || !manual;
@@ -158,7 +162,7 @@ function main(args = []) {
       if (runs.first) bestEffort(() => appendFileSync(logFile, `cap reached: ${CAP_MSG.slice('cap reached: '.length)}\n`));
       return manual || runs.first ? EXIT_FAIL : 0;
     }
-    return runAndReport({ root, job, runs: runs.value, wantFull, stampFile, logFile, tree, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
+    return runAndReport({ root, job, runs: runs.value, wantFull, stampFile, logFile, tree, head, inputs, childFile: lock.unlocked ? null : `${lockFile}.child` });
   } finally {
     if (!lock.unlocked) releaseLock(lockFile);
   }
@@ -211,7 +215,7 @@ function scopeBase(root, job) {
   return mergeBase(job.worktree, baseRef(loadConfig(root)).base);
 }
 
-function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inputs, childFile }) {
+function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, head, inputs, childFile }) {
   const focus = wantFull ? { options: {}, cleanup() {} } : focusedOptions(root, job);
   const mode = focus.options.mode ?? 'full';
   let result;
@@ -230,7 +234,7 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inp
     bestEffort(() => (tree
       ? writeAtomic(stampFile, `${JSON.stringify({ tree, inputs, mode, base: scopeBaseSha, at: new Date().toISOString(), runs })}\n`)
       : writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`)));
-    if (wantFull && tree) bestEffort(() => writeStopStamp(root, job, tree, inputs));
+    if (wantFull && tree && head) bestEffort(() => writeStopStamp(root, job, tree, head, inputs));
     return 0;
   }
   bestEffort(() => writeAtomic(stampFile, `${JSON.stringify({ runs })}\n`));
@@ -245,11 +249,14 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inp
   return 2;
 }
 
-/** The Stop-hook stamp of a FULL pass that really ran. Writes nothing when the base or head cannot be told. */
-function writeStopStamp(root, job, tree, inputs) {
+/**
+ * The Stop-hook stamp of a FULL pass that really ran. `tree` and `head` were taken before the run: the stamp is
+ * written only when both are still exactly those afterwards (checks.sh that rewrote files or moved the head
+ * tested something else than what is there now). Writes nothing when the base cannot be told.
+ */
+function writeStopStamp(root, job, tree, head, inputs) {
   const base = scopeBase(root, job);
-  const head = headSha(job.worktree);
-  if (!base || !head) {
+  if (!base || worktreeTree(job.worktree) !== tree || headSha(job.worktree) !== head) {
     removeStamp(root, job.id);
     return;
   }

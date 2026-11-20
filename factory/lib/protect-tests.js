@@ -26,6 +26,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { JOB_ID, isMain, run } from './util.js';
 
 export const REASON = 'protected test; the gate fails the round';
+const STAMPS_PATH = /^factory\/jobs\/\.stamps(?:\/|$)/i;
 export const STAMP_REASON = 'engine-written stamp; the gate ignores and the round fails';
 export const MAIN_REASON = "the main checkout is read-only for the builder except this job's build.md and plan.md";
 const FILE_KEYS = ['file_path', 'notebook_path'];
@@ -59,6 +60,21 @@ function existingDir(path) {
   let dir = dirname(path);
   while (!isDir(dir) && dirname(dir) !== dir) dir = dirname(dir);
   return dir;
+}
+
+/**
+ * `target` as written (no symlink followed below the main checkout) relative to the main checkout, or null when
+ * the path does not run through it. It catches a `.stamps` folder replaced by a symlink: the resolved path then
+ * leaves the repository, but the path the tool was given still names the stamp folder.
+ */
+function lexicalRel(cwd, target, main) {
+  const written = resolve(cwd, target);
+  for (let dir = written; ; dir = dirname(dir)) {
+    try {
+      if (realpathSync(dir) === main) return slashes(relative(dir, written));
+    } catch { /* not there: keep climbing */ }
+    if (dirname(dir) === dir) return null;
+  }
 }
 
 const slashes = (p) => p.split(sep).join('/');
@@ -99,6 +115,9 @@ export function decide(input) {
   if (!target) return { allow: true };
   const cwd = typeof input.cwd === 'string' && isAbsolute(input.cwd) && isDir(input.cwd) ? input.cwd : process.cwd();
   const file = realResolve(cwd, target);
+  // The stamp folder by the path as written, before symlinks: a link planted at factory/jobs/.stamps sends the resolved path elsewhere.
+  const home = repoOf(cwd);
+  if (home && !home.error && STAMPS_PATH.test(lexicalRel(cwd, target, home.main) ?? '')) return { deny: STAMP_REASON };
   const repo = repoOf(existingDir(file));
   if (!repo) return { allow: true }; // not in a repository: nothing to protect
   if (repo.error) return { allow: true, note: repo.error };
@@ -114,7 +133,7 @@ export function decide(input) {
     .filter((p) => typeof p === 'string').map((p) => normalize(p).toLowerCase());
   if (guarded.includes(rel.toLowerCase())) return { deny: REASON };
   if (repo.top === repo.main) {
-    if (/^factory\/jobs\/\.stamps(?:\/|$)/i.test(rel)) return { deny: STAMP_REASON };
+    if (STAMPS_PATH.test(rel)) return { deny: STAMP_REASON };
     const own = JOB_FILE.exec(rel);
     const jobId = jobIdAt(input.cwd, repo.main);
     if (!own || (jobId && own[1] !== jobId)) return { deny: MAIN_REASON };

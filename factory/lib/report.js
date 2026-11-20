@@ -35,10 +35,11 @@ export const engineLines = (version) => (version ? [`ENGINE: ${version}`] : []);
 
 /**
  * The one sentence under the status line.
- * @param {{pass: boolean, spanMs: number, head: string|null, code: number, violations: number, dirty: number, visualFailed: boolean}} f
+ * @param {{pass: boolean, spanMs: number, head: string|null, code: number, violations: number, dirty: number, visualFailed: boolean, reused?: boolean}} f
  */
 export function summarySentence(f) {
   const commit = f.head ? ` on commit ${f.head.slice(0, 7)}` : '';
+  if (f.pass && f.reused) return `The checks passed: reused the Stop-hook pass (checks.sh was not run)${commit}.`;
   if (f.pass) return `The checks passed in ${formatSpan(f.spanMs)}${commit}.`;
   const why = [];
   if (f.code !== 0) why.push(`the checks command exited with code ${f.code}`);

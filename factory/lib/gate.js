@@ -13,7 +13,9 @@
 // stamp's job, round, head, tree (= HEAD's tree), checks inputs and base all match what the gate
 // measures now, and the job is not a base fix. checks.md then says `Reused the Stop-hook pass`, the
 // stamp is deleted (single use), and every other step runs as always. Anything that does not match
-// is ignored and checks.sh runs. job.js records `gated.reused_stamp` so the merge never reuses such a gate.
+// is ignored and checks.sh runs; that includes a stamp older than an hour, dated in the future, or reached
+// through a symlink (stop-stamp.js). When a stamp was used the summary sentence says the pass was reused.
+// job.js records `gated.reused_stamp` so the merge never reuses such a gate.
 import { mkdirSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
@@ -129,8 +131,11 @@ export function protectedChanges(worktree, base, protectedTests) {
   return { error: null, paths };
 }
 
+const JOBS_FOLDER = /^factory\/jobs\//i;
+
 /**
  * Paths under factory/jobs/ the branch added, modified, deleted or renamed (either side) since it left `base`.
+ * The match ignores letter case (macOS volumes are case-insensitive, so `Factory/Jobs/` is the same folder).
  * `factory/demo/jobs/` is another path and does not count. Errors are left to protectedChanges, which reads the same diff.
  */
 export function jobsFolderChanges(worktree, base) {
@@ -138,7 +143,7 @@ export function jobsFolderChanges(worktree, base) {
   if (mb.status !== 0) return [];
   const diff = run('git', ['diff', '--name-only', '--no-renames', '-z', mb.stdout.trim(), 'HEAD'], { cwd: worktree });
   if (diff.status !== 0) return [];
-  return [...new Set(diff.stdout.split('\0').filter((p) => p.startsWith('factory/jobs/')))].sort();
+  return [...new Set(diff.stdout.split('\0').filter((p) => JOBS_FOLDER.test(p)))].sort();
 }
 
 /** Uncommitted or untracked (not ignored) paths: the checks would test a tree the branch doesn't hold. */
@@ -183,7 +188,7 @@ export function gate(root, job, outFile, { useStamp = false } = {}) {
     `GATE: ${pass ? 'PASS' : 'FAIL'}`,
     ...engineLines(engineVersion()),
     '',
-    summarySentence({ pass, spanMs, head, code: checks.code, violations: violations.length, jobsTouched: jobsTouched.length, dirty: dirty.length, visualFailed: visual?.status === 'FAIL' }),
+    summarySentence({ pass, reused: Boolean(stamp), spanMs, head, code: checks.code, violations: violations.length, jobsTouched: jobsTouched.length, dirty: dirty.length, visualFailed: visual?.status === 'FAIL' }),
     '',
     ...(stamp ? [`Reused the Stop-hook pass: checks.sh was not run. Stamp of ${stamp.at}, tree ${stamp.tree}, head ${stamp.head}.`] : []),
     `Checks exit code: ${checks.code}`,

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,4 +58,20 @@ test('E5: the job still writes its own build.md, and another job folder stays de
   const t = setup();
   assert.equal(t.call(join(t.root, `factory/jobs/${ID}/build.md`)).status, 0);
   assert.equal(t.call(join(t.root, 'factory/jobs/002-other/build.md')).status, 2);
+});
+
+test('E5: the stamp folder stays denied when it is a symlink, whether it points inside or outside the repository', () => {
+  const t = setup();
+  mkdirSync(join(t.root, 'factory/jobs'), { recursive: true });
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), 'factory-stamps-out-')));
+  symlinkSync(outside, join(t.root, 'factory/jobs/.stamps'));
+  assert.equal(t.call(join(t.root, `factory/jobs/.stamps/${ID}.json`)).status, 2, 'symlink to a folder outside');
+  assert.equal(t.call(join(t.root, 'factory/jobs/.stamps/sub/x.json')).status, 2, 'a path below it');
+});
+
+test('E5: a stamp file that is a symlink to another file is denied too', () => {
+  const t = setup();
+  mkdirSync(join(t.root, 'factory/jobs/.stamps'), { recursive: true });
+  symlinkSync(join(t.root, 'a.txt'), join(t.root, `factory/jobs/.stamps/${ID}.json`));
+  assert.equal(t.call(join(t.root, `factory/jobs/.stamps/${ID}.json`)).status, 2);
 });
