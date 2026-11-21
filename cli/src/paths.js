@@ -16,9 +16,11 @@ export const CLI_NAME = 'eminzo';
 
 /** An error the CLI reports as `error: <message>` and exits with `code`. */
 export class CliError extends Error {
-  constructor(message, code = 1) {
+  /** `help` is `{ topic, url }` (cli/src/git-help.js) when a guide explains the failure. */
+  constructor(message, code = 1, help = null) {
     super(message);
     this.code = code;
+    if (help) this.help = help;
   }
 }
 
