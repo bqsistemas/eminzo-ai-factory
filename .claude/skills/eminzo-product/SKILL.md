@@ -76,6 +76,16 @@ and deliverables.
 
 - Acceptance criteria are behaviours a person can check by using the product: `- BC-1: ...` (write the id plain; a bold id is read too, an unclosed `**` is not). Vague words
   ("fast", "easy", "better") are not criteria; ask what would make them checkable.
+- One owner per criterion: a criterion describes only behaviour of the deliverable that covers it. If one mixes the
+  actions of two deliverables, split it so each half has its owner.
+- One behaviour per criterion, and at most 8 criteria per deliverable (the factory's spec takes 3 to 8): split the
+  deliverable or move shared rules to Definitions.
+- A criterion with an action is one line, "Given ..., when ..., then ..." in the brief's language (Spanish "Dado ...,
+  cuando ..., entonces ...", Portuguese "Dado ..., quando ..., então ..."). "When" is the user's intent (open the list,
+  ask for the pending items), not a click.
+- If the expected value implies a behaviour (for example an order in which things are prioritised), it must be a
+  criterion; a value no criterion checks is a wish.
+- A term or rule that several criteria share goes once in the Definitions section, not repeated in each criterion.
 - Show the whole brief after each change and call `check_brief`. Explain its problems in plain words.
 
 ### 3. Review
@@ -106,7 +116,11 @@ stores nothing; give the person the returned text to keep.
 
 ### 5. Deliverables
 
-- Propose deliverables that each deliver value on their own and say which criteria they cover (`covers: BC-1`).
+- Propose deliverables that each deliver value on their own and say which criteria they cover (`covers: BC-1`). A
+  deliverable covers 3 to 8 criteria, and every criterion has exactly one deliverable that owns it.
+- For each `after`, propose `uses:` with the criteria of the awaited deliverable that this one relies on
+  (`after: D1 | uses: BC-1, BC-3`). The issue shows them in full under "Builds on", so the person who builds it knows
+  what it will find. Leave `uses` out only when it relies on everything the awaited deliverable covers.
 - Size and risk: read `eminzo show roles/intake.md` at run time and apply its criteria to each deliverable (size xs,
   s, m or l; risk low, medium or high), the way the factory's intake would; do not copy those rules into the brief
   or the conversation and do not invent others: if they change, the answer changes.

@@ -98,3 +98,13 @@ test('build ships both forms and install writes them; uninstall removes them', (
   uninstall({ home, env: { HOME: home, PATH: '' }, out });
   assert.equal(existsSync(join(home, '.claude/skills/eminzo-product')), false, 'the folder goes too');
 });
+
+test('the source guides criteria and deliverables: one owner, one behaviour, at most 8, Given/when/then, Definitions, uses', () => {
+  const flat = source.replace(/\s+/g, ' ');
+  for (const rule of [
+    'One owner per criterion', 'One behaviour per criterion', 'at most 8 criteria per deliverable',
+    '"Given ..., when ..., then ..."', 'Dado ..., cuando ..., entonces ...', 'Dado ..., quando ..., então ...',
+    'the user\'s intent', 'it must be a criterion', 'goes once in the Definitions section', 'propose `uses:`',
+  ]) assert.ok(flat.includes(rule), rule);
+  for (const provider of ['claude', 'codex']) assert.ok(productSkill(source, { version, provider }).includes('One owner per criterion'), provider);
+});
