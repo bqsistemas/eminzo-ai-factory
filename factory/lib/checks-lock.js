@@ -130,12 +130,25 @@ const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
 /**
  * Takes the repository's checks lock, waiting for a live holder.
  * `label` says who asks (`gate 045-feat-x`, `base`), so the one who waits can name who holds it.
+ * `onWait({ holder, since })` is called once when the wait starts (`holder` is the label of the run that holds the lock,
+ * `since` when it started, in ms or null) and `onAcquire()` when the wait is over (lock taken, wait cap run out, or an error),
+ * so a caller can show that it is waiting. A hook that throws is ignored. Neither is called when there is no wait.
  * @returns {{file: string|null, childFile: string|null, held: boolean, waitedMs: number, waitedFor: string|null, release: () => void}}
  *   `held` false means the checks run without the lock (disabled, nested, not writable, or the wait ran out);
  *   `ranAnyway` is true when the wait ran out: the checks then run as if they held the lock.
  *   `waitedFor` is the label of the holder that was waited for, when there was a wait.
  */
-export function takeChecksLock(env = process.env, { root, label = 'checks', note = (line) => process.stderr.write(`${line}\n`) } = {}) {
+export function takeChecksLock(env = process.env, { onWait, onAcquire, ...options } = {}) {
+  let waiting = false;
+  const safe = (hook, arg) => { try { hook?.(arg); } catch { /* a hook never fails the checks */ } };
+  try {
+    return acquire(env, { ...options, onWait: (holder) => { waiting = true; safe(onWait, holder); } });
+  } finally {
+    if (waiting) safe(onAcquire); // the lock is taken, the wait ran out, or something threw: the wait is over either way
+  }
+}
+
+function acquire(env, { root, label = 'checks', note = (line) => process.stderr.write(`${line}\n`), onWait } = {}) {
   const file = lockPath(env, root);
   if (!file) return UNLOCKED;
   const childFile = `${file}.child`;
@@ -185,6 +198,7 @@ export function takeChecksLock(env = process.env, { root, label = 'checks', note
       told = true;
       waitedFor = judged.label ?? `pid ${judged.pid ?? 'unknown'}`;
       const since = judged.since ? ` (since ${clock(judged.since)})` : '';
+      onWait({ holder: waitedFor, since: judged.since });
       note(`factory checks: the checks of this repository are running for ${waitedFor}${since}; waiting for them to finish. Set checks.lock to "off" in factory/config.json to disable.`);
     }
     if (waited >= waitMs) {

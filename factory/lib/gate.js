@@ -2,9 +2,9 @@
 // checkout's factory/checks.sh inside the job's worktree (never the worktree's own
 // copy), fails if the branch modified, deleted or renamed a protected test or left
 // uncommitted changes, and writes round-N/checks.md plus round-N/context.md for the
-// reviewers. Exit 0 on PASS, 1 on FAIL.
+// reviewers. Exit 0 on PASS, 1 on FAIL. The command line is gate-cli.js (it also needs job.js, which imports this module).
 import { mkdirSync, rmSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { checksInputs, headSha, mergeBase } from './check-stamp.js';
 import { HELD, checksLockSetting, takeChecksLock } from './checks-lock.js';
@@ -13,7 +13,7 @@ import { projectMapLines, projectMapStatus } from './project-map.js';
 import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
 import { roundContext } from './round-context.js';
 import { visualStatus } from './visual-analysis.js';
-import { Usage, baseRef, engineDir, factoryRoot, isMain, jobDir, engineVersion, loadConfig, readText, run, runCli, tail, writeAtomic } from './util.js';
+import { baseRef, engineDir, engineVersion, loadConfig, readText, run, tail, writeAtomic } from './util.js';
 
 function visualLines(visual) {
   const label = visual.status === 'ERROR' ? 'ERROR (not blocking)' : visual.status;
@@ -57,10 +57,10 @@ const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.
 const NO_LOCK = Object.freeze({ held: false, ranAnyway: false, childFile: null, waitedMs: 0, waitedFor: null, release() {} });
 
 /** The repository's checks lock (`checks.lock` in factory/config.json), or no lock when the repository turned it off. */
-function takeLock(root, label) {
+function takeLock(root, label, hooks) {
   let setting = 'repo';
   try { setting = checksLockSetting(loadConfig(root)); } catch { /* no readable config: the default */ }
-  return setting === 'off' ? NO_LOCK : takeChecksLock(process.env, { root, label });
+  return setting === 'off' ? NO_LOCK : takeChecksLock(process.env, { root, label, ...hooks });
 }
 
 /**
@@ -81,11 +81,11 @@ function takeLock(root, label) {
  * base check, which runs unattended on a machine that holds secrets.
  * A full run takes the repository's checks lock (checks-lock.js; `label` says who asks, for the one that has to wait), so
  * only one full suite of a repository runs at a time; a focused run never waits. `waitedMs` is how long it waited for
- * another run (`waitedFor` names that run) and is not time the checks took; `timeoutMs` counts from after the wait.
+ * another run (`waitedFor` names that run; `onWait` and `onAcquire` let the caller show it, see takeChecksLock) and is not time the checks took; `timeoutMs` counts from after the wait.
  * @returns {{code: number, output: string, signal: string|null, failedToStart: boolean, timedOut: boolean, waitedMs: number, waitedFor: string|null}} `code` is 1 when
  *   the shell has no exit status (a signal, or it did not start); the base check tells those apart.
  */
-export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false, timeoutMs, dropEnv = [], dropFactoryEnv = false, label } = {}) {
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false, timeoutMs, dropEnv = [], dropFactoryEnv = false, label, onWait, onAcquire } = {}) {
   const env = { ...process.env };
   for (const name of dropEnv) delete env[name];
   if (dropFactoryEnv) for (const name of Object.keys(env)) if (name.startsWith('FACTORY_') && name !== 'FACTORY_ROOT') delete env[name];
@@ -104,7 +104,7 @@ export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, sco
   const script = `for f in "$@"; do printf "%s\\n" "$$" > "$f"; done; exec ${sh} "$0" 2>&1`;
   // Only a caller that passes a timeout gets one (the base check): the gate's own and the nudge's behavior do not change.
   const limit = Number.isFinite(timeoutMs) && timeoutMs > 0 ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {};
-  const lock = focused ? NO_LOCK : takeLock(root, label);
+  const lock = focused ? NO_LOCK : takeLock(root, label, { onWait, onAcquire });
   if (lock.held || lock.ranAnyway || process.env[HELD]) env[HELD] = '1'; // a checks run started from inside these checks does not wait for them (nor does it wait again when this run gave up waiting)
   let res;
   try {
@@ -144,7 +144,7 @@ export function uncommitted(worktree) {
  * Runs the gate for a job and writes the report.
  * @returns {boolean} true on PASS
  */
-export function gate(root, job, outFile) {
+export function gate(root, job, outFile, { onWait, onAcquire } = {}) {
   const config = loadConfig(root);
   const { base } = baseRef(config);
   const dirty = uncommitted(job.worktree); // before the checks, which may write files
@@ -153,7 +153,7 @@ export function gate(root, job, outFile) {
   const started = Date.now();
   // A job that fixes the base is judged on everything: its goal is the whole base.
   const checksBase = job.base_fix ? null : mergeBase(job.worktree, base);
-  const checks = runChecks(root, job.worktree, { label: `gate ${job.id}`, scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
+  const checks = runChecks(root, job.worktree, { label: `gate ${job.id}`, onWait, onAcquire, scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
   const spanMs = Math.max(0, Date.now() - started - checks.waitedMs); // the wait for another run's checks is not the checks' time
   const guard = protectedChanges(job.worktree, base, config.protected_tests ?? []);
   const visual = checks.code === 0 ? runVisualCheck(root, config, job, outFile) : null;
@@ -215,25 +215,3 @@ function writeRoundContext(root, config, job, outFile) {
     process.stderr.write(`gate: context.md not written: ${err.message}\n`);
   }
 }
-
-function main(args) {
-  const [id, ...rest] = args;
-  let out = null;
-  if (rest.length === 2 && rest[0] === '--out') out = resolve(rest[1]);
-  else if (rest.length) throw new Usage('gate <job-id> [--out <file>]');
-  if (!id) throw new Usage('gate <job-id> [--out <file>]');
-  const root = factoryRoot();
-  const dir = jobDir(root, id);
-  const text = readText(join(dir, 'job.json'));
-  if (text === null) throw new Error(`no job ${id}`);
-  const job = JSON.parse(text);
-  if (!out) {
-    if (!(job.round >= 1)) throw new Usage(`${id} has no build round yet`);
-    out = join(dir, `round-${job.round}`, 'checks.md');
-  }
-  const pass = gate(root, job, out);
-  process.stdout.write(`${id} GATE: ${pass ? 'PASS' : 'FAIL'}\n`);
-  return pass ? 0 : 1;
-}
-
-if (isMain(import.meta.url)) runCli(main);

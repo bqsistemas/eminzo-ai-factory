@@ -80,7 +80,7 @@ test('AC-8: checks.sh and every factory/bin script are executable; checks.sh run
   for (const name of ['job', 'gate', 'route', 'nudge', 'dashboard', 'init', 'mcp']) {
     assert.equal(
       read(`factory/bin/${name}`),
-      `#!/bin/sh\nexec node "$(dirname "$0")/../lib/${name}.js" "$@"\n`,
+      `#!/bin/sh\nexec node "$(dirname "$0")/../lib/${name === 'gate' ? 'gate-cli' : name}.js" "$@"\n`, // the gate's command line lives apart from gate.js: see gate-cli.js
       `${name} is the 2-line wrapper`,
     );
   }

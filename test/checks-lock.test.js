@@ -65,10 +65,11 @@ function setup(checks = SLOW) {
 }
 
 // Resolves once `file` exists (the first run holds the lock), so a second run starts while it is held.
-const untilExists = async (file, ms = 15_000) => {
+const untilExists = async (what, ms = 15_000) => {
   const end = Date.now() + ms;
-  while (!existsSync(file)) {
-    if (Date.now() > end) throw new Error(`${file} never appeared`);
+  const done = typeof what === 'function' ? what : () => existsSync(what);
+  while (!done()) {
+    if (Date.now() > end) throw new Error(`${what} never happened`);
     await new Promise((r) => setTimeout(r, 10));
   }
 };
@@ -332,15 +333,20 @@ function gateSetup(checks) {
 
 test('the gate report names the wait and the checks step excludes it', async (ctx) => {
   const g = gateSetup('#!/bin/sh\necho ran >> "$OUT/log"\n');
-  // An orphaned sleep: it ends by itself after 1.4s and nobody has to reap it, so its lock is stale from then on.
-  const pid = Number(execFileSync('sh', ['-c', 'sleep 1.4 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }));
-  ctx.after(() => { try { process.kill(pid); } catch { /* gone */ } });
-  plant(g.lockOf(g.root), pid, 'gate 044-other');
-  const res = g.gate({ FACTORY_CHECKS_LOCK_WAIT_MS: '20000' });
-  assert.equal(res.status, 0, res.stderr);
+  const holder = spawn('sleep', ['60'], { stdio: 'ignore' });
+  ctx.after(() => holder.kill());
+  plant(g.lockOf(g.root), holder.pid, 'gate 044-other');
+  const child = spawn(join(repo, 'factory/bin/gate'), [g.id], { cwd: g.root, env: { ...g.base, FACTORY_ROOT: g.root, FACTORY_CHECKS_LOCK_WAIT_MS: '20000' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', (d) => { stderr += d; });
+  const closed = new Promise((resolve) => child.on('close', resolve));
+  await untilExists(() => /waiting for them/.test(stderr)); // the wait has started
+  await new Promise((r) => setTimeout(r, 1200)); // a wait long enough to show in the report
+  holder.kill();
+  assert.equal(await closed, 0, stderr);
   const report = g.report();
-  assert.match(report, /^Waited for the checks lock: \d+s \(gate 044-other\)$/m);
-  assert.match(res.stderr, /running for gate 044-other/);
+  assert.match(report, /^Waited for the checks lock: \d+s \(gate 044-other\)$/m, stderr);
+  assert.match(stderr, /running for gate 044-other/);
   const step = report.match(/Checks \(full mode\) \| exit 0 in (\d+)s/);
   assert.ok(step, report);
   assert.ok(Number(step[1]) <= 1, `the wait is not in the checks time: ${step[0]}`);
