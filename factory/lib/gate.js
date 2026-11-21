@@ -54,7 +54,7 @@ export function runVisualCheck(root, config, job, checksFile) {
 
 const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
 
-const NO_LOCK = Object.freeze({ held: false, childFile: null, waitedMs: 0, waitedFor: null, release() {} });
+const NO_LOCK = Object.freeze({ held: false, ranAnyway: false, childFile: null, waitedMs: 0, waitedFor: null, release() {} });
 
 /** The repository's checks lock (`checks.lock` in factory/config.json), or no lock when the repository turned it off. */
 function takeLock(root, label) {
@@ -105,7 +105,7 @@ export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, sco
   // Only a caller that passes a timeout gets one (the base check): the gate's own and the nudge's behavior do not change.
   const limit = Number.isFinite(timeoutMs) && timeoutMs > 0 ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {};
   const lock = focused ? NO_LOCK : takeLock(root, label);
-  if (lock.held || process.env[HELD]) env[HELD] = '1'; // a checks run started from inside these checks does not wait for them
+  if (lock.held || lock.ranAnyway || process.env[HELD]) env[HELD] = '1'; // a checks run started from inside these checks does not wait for them (nor does it wait again when this run gave up waiting)
   let res;
   try {
     // The time limit starts here, after the wait.

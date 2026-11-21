@@ -73,17 +73,18 @@ const readPid = (file) => {
 };
 
 /** Who holds the lock and whether it is over: `stale`, the inode judged, the holder's pid, label, start and the pid of its checks. */
-function judge(file, childFile) {
+export function judgeLock(file, childFile) {
   try {
     const st = lstatSync(file);
     if (!st.isFile()) return { stale: true, ino: st.ino };
     let held = null;
-    try { held = JSON.parse(readFileSync(file, 'utf8')); } catch { /* empty or half written */ }
-    if (!Number.isInteger(held?.pid)) return { stale: Date.now() - st.mtimeMs > EMPTY_LOCK_MS, ino: st.ino };
+    let raw = '';
+    try { raw = readFileSync(file, 'utf8'); held = JSON.parse(raw); } catch { /* empty or half written */ }
+    if (!Number.isInteger(held?.pid)) return { stale: Date.now() - st.mtimeMs > EMPTY_LOCK_MS, ino: st.ino, raw };
     const child = readPid(childFile);
     const started = Date.parse(held.started);
     const tooOld = Number.isFinite(started) && Date.now() - started > MAX_AGE_MS;
-    return { stale: tooOld || (!alive(held.pid) && !alive(child)), ino: st.ino, pid: held.pid, child, label: typeof held.label === 'string' ? held.label : null, since: Number.isFinite(started) ? started : null };
+    return { stale: tooOld || (!alive(held.pid) && !alive(child)), ino: st.ino, raw, pid: held.pid, child, label: typeof held.label === 'string' ? held.label : null, since: Number.isFinite(started) ? started : null };
   } catch {
     return { stale: false, gone: true };
   }
@@ -103,7 +104,26 @@ function heldByAncestor(pids) {
   return false;
 }
 
-const UNLOCKED = Object.freeze({ file: null, childFile: null, held: false, waitedMs: 0, waitedFor: null, release() {} });
+/**
+ * Takes over the file that was judged stale: the same inode before and after the rename, and the same holder
+ * (a filesystem may give a new lock the inode number of the one that was judged).
+ */
+export function takeOver(file, childFile, judged) {
+  const away = `${file}.stale.${process.pid}`;
+  try {
+    if (lstatSync(file).ino !== judged.ino) return;
+    renameSync(file, away);
+    if (lstatSync(away).ino !== judged.ino || readFileSync(away, 'utf8') !== judged.raw) {
+      try { writeFileSync(file, readFileSync(away), { flag: 'wx', mode: 0o600 }); } catch { /* somebody holds it again */ }
+      rmSync(away, { force: true });
+    } else {
+      rmSync(away, { force: true });
+      rmSync(childFile, { force: true });
+    }
+  } catch { /* someone else took it over */ }
+}
+
+const UNLOCKED = Object.freeze({ file: null, childFile: null, held: false, ranAnyway: false, waitedMs: 0, waitedFor: null, release() {} });
 
 const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
 
@@ -112,6 +132,7 @@ const clock = (ms) => new Date(ms).toTimeString().slice(0, 8);
  * `label` says who asks (`gate 045-feat-x`, `base`), so the one who waits can name who holds it.
  * @returns {{file: string|null, childFile: string|null, held: boolean, waitedMs: number, waitedFor: string|null, release: () => void}}
  *   `held` false means the checks run without the lock (disabled, nested, not writable, or the wait ran out);
+ *   `ranAnyway` is true when the wait ran out: the checks then run as if they held the lock.
  *   `waitedFor` is the label of the holder that was waited for, when there was a wait.
  */
 export function takeChecksLock(env = process.env, { root, label = 'checks', note = (line) => process.stderr.write(`${line}\n`) } = {}) {
@@ -149,22 +170,10 @@ export function takeChecksLock(env = process.env, { root, label = 'checks', note
     } catch (err) {
       if (err.code !== 'EEXIST') return UNLOCKED;
     }
-    const judged = judge(file, childFile);
+    const judged = judgeLock(file, childFile);
     if (judged.gone) continue;
     if (judged.stale) {
-      // Take over only the file that was judged: the same inode before and after the rename.
-      const away = `${file}.stale.${process.pid}`;
-      try {
-        if (lstatSync(file).ino !== judged.ino) continue;
-        renameSync(file, away);
-        if (lstatSync(away).ino !== judged.ino) {
-          try { writeFileSync(file, readFileSync(away), { flag: 'wx', mode: 0o600 }); } catch { /* somebody holds it again */ }
-          rmSync(away, { force: true });
-        } else {
-          rmSync(away, { force: true });
-          rmSync(childFile, { force: true });
-        }
-      } catch { /* someone else took it over */ }
+      takeOver(file, childFile, judged);
       continue;
     }
     if (!checkedAncestry) {
@@ -180,7 +189,7 @@ export function takeChecksLock(env = process.env, { root, label = 'checks', note
     }
     if (waited >= waitMs) {
       note(`factory checks: waited ${Math.round(waited / 1000)}s for the checks lock of this repository (${file}); running anyway.`);
-      return { ...UNLOCKED, waitedMs: waited, waitedFor };
+      return { ...UNLOCKED, waitedMs: waited, waitedFor, ranAnyway: true };
     }
     sleep(Math.min(pollMs, Math.max(waitMs - waited, 1)));
   }

@@ -21,6 +21,9 @@ process.stdout.write(r.output);
 process.stdout.write('RESULT ' + JSON.stringify({ code: r.code, waitedMs: r.waitedMs, waitedFor: r.waitedFor }) + '\\n');
 process.exit(r.code);`;
 const SLOW = '#!/bin/sh\necho start >> "$OUT/log"\nsleep 0.6\necho end >> "$OUT/log"\n';
+// Two runs that overlap see each other's `start` before either ends (each waits, up to 10s, for the other's line);
+// serialized runs would time out waiting: so the order never depends on how fast the machine is.
+const RENDEZVOUS = '#!/bin/sh\necho start >> "$OUT/log"\ni=0\nwhile [ "$(wc -l < "$OUT/log")" -lt 2 ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done\necho end >> "$OUT/log"\n';
 const QUICK = '#!/bin/sh\necho ran >> "$OUT/log"\n';
 
 function setup(checks = SLOW) {
@@ -61,6 +64,15 @@ function setup(checks = SLOW) {
   };
 }
 
+// Resolves once `file` exists (the first run holds the lock), so a second run starts while it is held.
+const untilExists = async (file, ms = 15_000) => {
+  const end = Date.now() + ms;
+  while (!existsSync(file)) {
+    if (Date.now() > end) throw new Error(`${file} never appeared`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+};
+
 const plant = (file, holder, label = 'gate 045-feat-x', started = new Date().toISOString()) => {
   mkdirSync(dirname(file), { recursive: true });
   const text = JSON.stringify({ pid: holder, started, label });
@@ -72,7 +84,7 @@ test('two full runs in one repository never overlap, and the second reports who 
   const t = setup();
   const root = t.root('a');
   const first = t.runAsync(root, { label: 'gate 001-one' });
-  await new Promise((r) => setTimeout(r, 300)); // the first one holds the lock before the second starts
+  await untilExists(t.lockOf(root)); // the first one holds the lock before the second starts
   const second = await t.runAsync(root, { label: 'gate 002-two' });
   const one = await first;
   assert.equal(one.code, 0);
@@ -88,7 +100,7 @@ test('two full runs in one repository never overlap, and the second reports who 
 });
 
 test('full runs in two different repositories do not wait for each other', async () => {
-  const t = setup();
+  const t = setup(RENDEZVOUS);
   const results = await Promise.all([t.runAsync(t.root('a')), t.runAsync(t.root('b'))]);
   assert.deepEqual(results.map((r) => r.code), [0, 0]);
   assert.deepEqual(t.log(), ['start', 'start', 'end', 'end']);
@@ -135,17 +147,43 @@ process.stdout.write(JSON.stringify({ code: r.code, failedToStart: r.failedToSta
   assert.equal(existsSync(t.lockOf(root)), false);
 });
 
-test('a checks run started from inside the checks does not wait for itself', () => {
+test('a checks run started from inside the checks of the same repository does not wait for itself', () => {
   const t = setup();
-  const inner = t.root('inner', '#!/bin/sh\necho inner >> "$OUT/log"\n');
-  const nested = (prefix) => `#!/bin/sh\n${prefix}${JSON.stringify(process.execPath)} ${JSON.stringify(t.runner)} ${JSON.stringify(inner)} gate-inner || exit 9\necho outer >> "$OUT/log"\n`;
-  const marked = t.runSync(t.root('marked', nested('')), { FACTORY_CHECKS_LOCK_WAIT_MS: '20000' });
+  // One checks.sh for the repository: the outer run starts the inner one (INNER=1) on the SAME root, which must not wait for the lock the outer holds.
+  const script = (prefix) => `#!/bin/sh
+if [ -n "$INNER" ]; then echo inner >> "$OUT/log"; exit 0; fi
+${prefix}INNER=1 ${JSON.stringify(process.execPath)} ${JSON.stringify(t.runner)} "$PWD" gate-inner || exit 9
+echo outer >> "$OUT/log"
+`;
+  const seen = (res) => `${res.stdout}${res.stderr}`;
+  const marked = t.runSync(t.root('marked', script('')), { FACTORY_CHECKS_LOCK_WAIT_MS: '3000' });
   assert.equal(marked.status, 0, marked.stderr);
+  assert.doesNotMatch(seen(marked), /waiting for them|running anyway/);
   // Without the marker (a harness that builds its own environment) the holder is still an ancestor.
-  const bare = t.runSync(t.root('bare', nested('env -u FACTORY_CHECKS_LOCK_HELD ')), { FACTORY_CHECKS_LOCK_WAIT_MS: '20000' });
+  const bare = t.runSync(t.root('bare', script('env -u FACTORY_CHECKS_LOCK_HELD ')), { FACTORY_CHECKS_LOCK_WAIT_MS: '3000' });
   assert.equal(bare.status, 0, bare.stderr);
-  assert.doesNotMatch(bare.stderr, /running anyway/);
+  assert.doesNotMatch(seen(bare), /waiting for them|running anyway/);
   assert.deepEqual(t.log(), ['inner', 'outer', 'inner', 'outer']);
+});
+
+test('the checks of a run that stopped waiting are marked as holding the lock, so a nested run does not wait again', (ctx) => {
+  const t = setup();
+  const root = t.root('a', `#!/bin/sh
+if [ -n "$INNER" ]; then echo inner >> "$OUT/log"; exit 0; fi
+echo "held=$FACTORY_CHECKS_LOCK_HELD"
+INNER=1 ${JSON.stringify(process.execPath)} ${JSON.stringify(t.runner)} "$PWD" gate-inner || exit 9
+echo outer >> "$OUT/log"
+`);
+  const holder = spawn('sleep', ['30'], { stdio: 'ignore' }); // alive and not an ancestor: both runs would wait for it
+  ctx.after(() => holder.kill());
+  plant(t.lockOf(root), holder.pid, 'gate 044-other');
+  const res = t.runSync(root, { FACTORY_CHECKS_LOCK_WAIT_MS: '300' });
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stderr.match(/running anyway/g).length, 1, 'the outer run gave up waiting once');
+  assert.match(res.stdout, /held=1/);
+  // The inner run's own stderr is part of the outer checks' output: it must not have waited for the same holder again.
+  assert.doesNotMatch(res.stdout, /waiting for them|running anyway/);
+  assert.deepEqual(t.log(), ['inner', 'outer']);
 });
 
 test('the ancestor check alone finds a holder that is an ancestor of the run', () => {
@@ -217,13 +255,13 @@ test('the lock folder is created when the repository has no factory/jobs yet', (
 });
 
 test('FACTORY_CHECKS_LOCK=off and checks.lock "off" run them at once, as before', async () => {
-  const t = setup();
+  const t = setup(RENDEZVOUS);
   const off = { FACTORY_CHECKS_LOCK: 'off' };
   await Promise.all([t.runAsync(t.root('a'), off), t.runAsync(t.root('a'), off)]);
   assert.deepEqual(t.log(), ['start', 'start', 'end', 'end']);
 
-  const cfg = setup();
-  const root = cfg.root('c', SLOW, { checks: { lock: 'off' } });
+  const cfg = setup(RENDEZVOUS);
+  const root = cfg.root('c', RENDEZVOUS, { checks: { lock: 'off' } });
   await Promise.all([cfg.runAsync(root), cfg.runAsync(root)]);
   assert.deepEqual(cfg.log(), ['start', 'start', 'end', 'end']);
 });
@@ -232,7 +270,9 @@ test('an invalid checks.lock value falls back to the repository lock', async () 
   for (const value of ['machine', null]) {
     const t = setup();
     const root = t.root('a', SLOW, { checks: { lock: value } });
-    await Promise.all([t.runAsync(root), t.runAsync(root)]);
+    const first = t.runAsync(root);
+    await untilExists(t.lockOf(root));
+    await Promise.all([first, t.runAsync(root)]);
     assert.deepEqual(t.log(), ['start', 'end', 'start', 'end'], `checks.lock ${JSON.stringify(value)}`);
   }
 });
@@ -311,4 +351,25 @@ test('the gate report has no waiting line when it did not wait', () => {
   const res = g.gate();
   assert.equal(res.status, 0, res.stderr);
   assert.doesNotMatch(g.report(), /Waited for the checks lock/);
+});
+
+// The stale takeover renames the file it judged. On a filesystem that recycles inode numbers a new live lock can
+// reuse the judged inode, so the holder written in the file is compared too, and a different one is put back.
+test('a takeover never removes a lock whose holder is not the one that was judged stale', async () => {
+  const t = setup(QUICK);
+  const root = t.root('a');
+  const file = t.lockOf(root);
+  const { takeOver, judgeLock } = await import(pathToFileURL(join(repo, 'factory/lib/checks-lock.js')).href);
+  plant(file, 2 ** 22 + 1, 'gate dead'); // a dead holder: judged stale
+  const judged = judgeLock(file, `${file}.child`);
+  assert.equal(judged.stale, true);
+  // Between the judgment and the rename another run took the lock: same inode (rewritten in place), other holder.
+  const fresh = plant(file, process.pid, 'gate fresh');
+  takeOver(file, `${file}.child`, judged);
+  assert.equal(readFileSync(file, 'utf8'), fresh, 'the new holder keeps its lock');
+  assert.equal(existsSync(`${file}.stale.${process.pid}`), false, 'no leftovers');
+  // The same judgment against the unchanged file does take it over.
+  plant(file, 2 ** 22 + 1, 'gate dead');
+  takeOver(file, `${file}.child`, judgeLock(file, `${file}.child`));
+  assert.equal(existsSync(file), false);
 });
