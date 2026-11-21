@@ -160,7 +160,9 @@ Hidden lines (HTML comments, found with a search on the issue body):
   estimate (the range shown at creation and how many similar finished jobs it rests on, or "too little history").
   It ends with `Part of #<brief issue>` and the hidden marker, and never mentions the factory label.
 - Verbatim text is made inert line by line (no comment syntax, control or bidirectional characters; a zero-width space
-  after every `@`) and a code fence it leaves open is closed, so nothing can swallow the marker.
+  after every `@`), a code fence it leaves open is closed with a line at least as long as the one that opened it, and a
+  title that starts with a fence is escaped, so nothing can swallow the marker. A brief is cut into at most 100
+  deliverables (every draft repeats the brief's context); with more, the drafts fail with a readable error.
 - A body over 65 000 characters loses whole optional sections, only until it fits, in this order: How it works today,
   Open questions, Context. Each becomes one line, "See the brief issue #n for <heading>". Criteria, Out of scope,
   Dependencies, the `Part of` line and the marker are never cut; when they alone do not fit, the draft fails with a

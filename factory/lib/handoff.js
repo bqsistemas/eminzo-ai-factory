@@ -48,15 +48,24 @@ export function sanitizeBlock(value) {
   return s.replace(/@(?!\u200b)/g, '@\u200b');
 }
 
-/** The block with a line that closes the code fence it leaves open, so nothing after it can be swallowed. */
+/** The block with a line that closes the code fence it leaves open (at least as long as the one that opened it). */
 function closeFences(block) {
   let fence = null;
+  let run = 3;
   for (const raw of block.split('\n')) {
-    const f = fenceOf(stripEnd(raw));
-    if (fence) { if (f === fence) fence = null; } else if (f) fence = f;
+    const line = stripEnd(raw);
+    const f = fenceOf(line);
+    if (fence) { if (f === fence) fence = null; } else if (f) {
+      fence = f;
+      const at = line.indexOf(f);
+      run = 3;
+      while (line[at + run] === f) run += 1;
+    }
   }
-  return fence ? `${block}\n${fence.repeat(3)}` : block;
+  return fence ? `${block}\n${fence.repeat(run)}` : block;
 }
+/** A one-line value that cannot open a code fence when it sits alone on a line. */
+const inertLine = (value) => { const s = sanitize(value); return fenceOf(s) ? `\\${s}` : s; };
 const inertBlock = (value) => closeFences(sanitizeBlock(value).trim());
 
 const cap = (s) => {
@@ -232,6 +241,8 @@ function dependencyOrder(deliverables) {
   return out;
 }
 
+/** A brief is cut into at most this many issues: every draft repeats the brief's context, so the work grows with it. */
+export const MAX_DELIVERABLES = 100;
 const briefHeading = (key, lang) => SECTIONS.find((x) => x.key === key)[lang];
 const text = (label, value) => ({ type: 'text', label, text: value });
 const refLine = (item) => `${item.issue === null ? '' : `#${item.issue} (`}${item.id}: ${item.title}${item.issue === null ? '' : ')'}`;
@@ -241,22 +252,24 @@ function build(briefText, { briefIssue = null, estimates = {}, issues = {} } = {
   const status = approvedOrThrow(briefText);
   if (briefIssue !== null && (!Number.isInteger(briefIssue) || briefIssue < 1)) throw new Error('The deliverable issues need the brief issue number (a positive integer).');
   const parsed = parseBrief(canonicalBrief(briefText));
+  if (parsed.deliverables.length > MAX_DELIVERABLES) throw new Error(`The brief has more than ${MAX_DELIVERABLES} deliverables; split it into smaller briefs.`);
   const lang = parsed.language;
   const t = TEXT[lang] ?? TEXT.en;
   const byId = new Map(parsed.deliverables.map((d) => [d.id, d]));
   const criteria = new Map(parsed.criteria.map((c) => [c.id, c.text]));
   const issueOf = (id) => (briefIssue !== null && Number.isInteger(issues[id]) ? issues[id] : null);
   const ref = (id, covered = []) => ({ id, title: sanitize(byId.get(id).title), issue: issueOf(id), criteria: covered });
+  const blocks = Object.fromEntries(Object.entries(parsed.sections).map(([k, v]) => [k, inertBlock(v)]));
+  const block = (key) => blocks[key] ?? null;
   const hash = status.approval.hash.slice(0, 12);
   const items = dependencyOrder(parsed.deliverables).map((d) => {
     const est = fitEstimate(estimates[d.id]);
     const mine = new Set(d.covers);
     const others = parsed.deliverables.filter((o) => o.id !== d.id).map((o) => ({ o, left: o.covers.filter((c) => !mine.has(c)) })).filter((x) => x.left.length > 0);
-    const block = (key) => (parsed.sections[key] ? inertBlock(parsed.sections[key]) : null);
     const sections = [];
     const add = (key, heading, parts) => { if (parts.length) sections.push({ key, heading, parts }); };
     add('context', t.context, ['problem', 'audience'].filter((k) => block(k)).map((k) => text(briefHeading(k, lang), block(k))));
-    add('delivers', t.delivers, [text(null, sanitize(d.title))]);
+    add('delivers', t.delivers, [text(null, inertLine(d.title))]);
     add('criteria', t.criteria, [{ type: 'criteria', label: null, items: d.covers.map((c) => ({ id: c, text: sanitize(criteria.get(c)) })) }]);
     add('out_of_scope', t.outOfScope, [...(block('out_of_scope') ? [text(null, block('out_of_scope'))] : []),
       ...(others.length ? [{ type: 'refs', label: t.others, items: others.map((x) => ref(x.o.id, x.left)) }] : [])]);
@@ -285,7 +298,7 @@ function renderSection(section, t) {
       out.push(part.items.length ? part.items.map((i) => `- ${i.criteria.length ? `${i.criteria.join(', ')}: ` : ''}${refLine(i)}`).join('\n') : empty);
     }
   });
-  return out.join('\n\n');
+  return closeFences(out.join('\n\n'));
 }
 
 /**
@@ -308,9 +321,8 @@ const CUT_ORDER = ['today', 'questions', 'context'];
  *   `estimates` by deliverable id (the range shown at creation time); `issues` the issue number of deliverables already created.
  */
 export function deliverableIssueDrafts(briefText, { briefIssue, estimates = {}, issues = {} } = {}) {
-  approvedOrThrow(briefText);
-  if (!Number.isInteger(briefIssue) || briefIssue < 1) throw new Error('The deliverable issues need the brief issue number (a positive integer).');
   const { t, hash, items } = build(briefText, { briefIssue, estimates, issues });
+  if (briefIssue === undefined || briefIssue === null) throw new Error('The deliverable issues need the brief issue number (a positive integer).');
   return items.map(({ d, est, sections }) => {
     const marker = `${DELIVERABLE_PREFIX}v1 brief=${briefIssue} id=${d.id} hash=${hash} est=${est ? `${est.low_min}-${est.high_min}` : 'none'}${CLOSE}`;
     const pieces = sections.filter((s) => s.key !== 'part_of').map((s) => ({ key: s.key, heading: s.heading, text: renderSection(s, t) }));

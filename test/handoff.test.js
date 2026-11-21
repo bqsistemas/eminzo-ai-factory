@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { approveBrief } from '../factory/lib/brief-approval.js';
 import {
-  BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL, MAX_BODY, briefIssueDraft, briefIssueValidity, briefTitleOf, deliverableIssueDrafts, deliverableSections, inertProblem, parseBriefIssueMarker, parseDeliverableMarker, partOfLines, sanitize, sanitizeBlock,
+  BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL, MAX_BODY, MAX_DELIVERABLES, briefIssueDraft, briefIssueValidity, briefTitleOf, deliverableIssueDrafts, deliverableSections, inertProblem, parseBriefIssueMarker, parseDeliverableMarker, partOfLines, sanitize, sanitizeBlock,
 } from '../factory/lib/handoff.js';
 import { SECTIONS } from '../factory/lib/brief.js';
 
@@ -357,4 +357,34 @@ test('AC-7: the markers, the Part of lines, the title and the order do not chang
   assert.deepEqual(parseDeliverableMarker(drafts[0].body).est, { low_min: 30, high_min: 90 });
   assert.deepEqual(partOfLines(7), ['Part of #7', 'Parte de #7']);
   for (const d of drafts) { assert.deepEqual(d.labels, ['eminzo-deliverable']); assert.ok(d.title.length <= 120); assert.doesNotMatch(d.body, /factory/i); }
+});
+
+test('AC-2: a title that starts with a code fence cannot swallow the Part of line or the marker', () => {
+  for (const title of ['``` x', '~~~ x', '```js``` x', '```` y']) {
+    const text = approveBrief(BRIEF.replace('Show only pending', title), { by: 'ana-p', at: AT });
+    const d3 = deliverableIssueDrafts(text, { briefIssue: 7 }).find((d) => d.id === 'D3');
+    assert.equal(parseDeliverableMarker(d3.body)?.id, 'D3', title);
+    let fence = false;
+    for (const line of d3.body.split('\n')) { if (/^(```|~~~)/.test(line)) fence = !fence; if (line === 'Part of #7') assert.equal(fence, false, title); }
+  }
+  const four = approveBrief(BRIEF.replace('Everything is mixed.', '````\ncode'), { by: 'ana-p', at: AT });
+  assert.throws(() => deliverableIssueDrafts(four, { briefIssue: 7 }), /code block|approved/, 'the brief itself is refused when the block never closes');
+  const closed = approveBrief(BRIEF.replace('Reviewers lose time.', '````\ncode\n```\nmore'), { by: 'ana-p', at: AT });
+  const d = deliverableIssueDrafts(closed, { briefIssue: 7 })[0];
+  assert.ok(d.body.includes('\n````\n\nPart of') || d.body.split('\n').includes('````'), 'closed with at least the opening length');
+  assert.equal(parseDeliverableMarker(d.body).brief, 7);
+});
+
+test('AC-4: a brief with too many deliverables is refused fast with a readable error, and the largest allowed one stays small', () => {
+  const many = (n) => approveBrief([
+    ...BRIEF.split('## Deliverables')[0].split('\n'), '## Deliverables', '',
+    ...Array.from({ length: n }, (_, i) => `- D${i + 1}: Work ${i + 1} | size: s | risk: low | covers: BC-${i + 1}`), '',
+  ].join('\n').replace('- BC-1: A reviewer sees only what is pending.\n- BC-2: The filter is remembered.', Array.from({ length: n }, (_, i) => `- BC-${i + 1}: c${i + 1}`).join('\n')), { by: 'ana-p', at: AT });
+  const started = Date.now();
+  assert.throws(() => deliverableSections(many(MAX_DELIVERABLES + 1)), /more than 100 deliverables/);
+  assert.throws(() => deliverableIssueDrafts(many(2500), { briefIssue: 7 }), /more than 100 deliverables/);
+  const ok = deliverableIssueDrafts(many(MAX_DELIVERABLES), { briefIssue: 7 });
+  assert.equal(ok.length, MAX_DELIVERABLES);
+  assert.ok(JSON.stringify(ok).length < 5_000_000);
+  assert.ok(Date.now() - started < 5000);
 });
