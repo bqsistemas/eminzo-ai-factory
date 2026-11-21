@@ -139,6 +139,52 @@ function saveJob(c, job) {
   }
 }
 
+/**
+ * The hooks that make a gate that waits for the repository's checks lock say so in the job's note (see checks-lock.js).
+ * The note is set when the wait starts and put back as it was (the same text, or no note) as soon as it is over, before
+ * checks.sh starts. `load` gives the job to change: the caller's own object when job.js runs the gate, or a fresh read of
+ * job.json when the gate runs as its own process (`gate <id>`). Saved through saveJob like every other change, so
+ * board.json follows. Best effort: the hooks run inside runChecks, which ignores a hook that throws.
+ */
+const WAITING_NOTE = 'waiting for the checks of this repository: ';
+
+function waitHooks(c, load) {
+  let waiting = null;
+  return {
+    /** A gate killed while it waited leaves its note behind (nothing runs after a kill): the next gate of the job clears it. */
+    onStart() {
+      const job = load();
+      if (typeof job.note !== 'string' || !job.note.startsWith(WAITING_NOTE)) return;
+      job.note = '';
+      saveJob(c, job);
+    },
+    onWait({ holder, since }) {
+      const job = load();
+      const at = Number.isFinite(since) ? new Date(since).toTimeString().slice(0, 5) : null;
+      waiting = { had: Object.hasOwn(job, 'note'), before: job.note, text: `${WAITING_NOTE}${holder} runs them${at ? ` since ${at}` : ''}` };
+      job.note = waiting.text;
+      saveJob(c, job);
+    },
+    onAcquire() {
+      if (!waiting) return;
+      const { had, before, text } = waiting;
+      waiting = null;
+      const job = load();
+      if (job.note !== text) return; // somebody else changed the note meanwhile: theirs stays
+      if (had) job.note = before;
+      else delete job.note;
+      saveJob(c, job);
+    },
+  };
+}
+
+/** For `gate <id>` (gate.js runs as its own process): the hooks for the job `id` of the main checkout `root`. */
+export function gateWaitHooks(root, id) {
+  let c;
+  try { c = contextAt(root); } catch { return {}; } // an unreadable config: the wait only goes to stderr
+  return waitHooks(c, () => loadJob(c, id).job);
+}
+
 const gateOf = (path) => firstLine(path)?.match(/^GATE: (PASS|FAIL)\b/)?.[1] ?? null;
 const verdictOf = (path) => firstLine(path)?.match(/^VERDICT: (PASS|CHANGES)\b/)?.[1] ?? null;
 
@@ -893,7 +939,7 @@ function merge(c, job) {
   const synced = run('git', ['rev-parse', 'HEAD'], wt);
   if (synced.status !== 0) return stop('git rev-parse HEAD', why(synced));
   if (!reuseRoundGate(c, job, synced.stdout.trim(), base)
-    && !runGate(c.root, job, file(c, job, 'merge-checks.md'))) {
+    && !runGate(c.root, job, file(c, job, 'merge-checks.md'), waitHooks(c, () => job))) {
     return stop('post-sync checks', postSyncDetail(c, job));
   }
   // GitHub must merge exactly the commit that was just pushed and gated.
@@ -1321,7 +1367,7 @@ function resumeFromBase(c, job, { base, remote, sha, own, record, stay }) {
   res = run('git', ['push', remote, `refs/heads/${branch}:refs/heads/${branch}`], wt);
   if (res.status !== 0) return stop(`git push ${remote} ${branch}`, why(res));
   const report = file(c, job, `round-${job.round}/checks.md`);
-  const pass = runGate(c.root, job, report);
+  const pass = runGate(c.root, job, report, waitHooks(c, () => job));
   refreshFromFiles(c, job);
   const next = gateFacts(readText(report));
   record(pass ? 'resumed' : 'own', pass ? null : `the gate failed after merging ${base}`);
