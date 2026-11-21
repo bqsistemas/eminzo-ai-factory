@@ -51,7 +51,7 @@ runs it as `factory/bin/mcp`.
 | `estimate_work` | how long and how much a list of proposed deliverables would take, from the most similar finished jobs: time from start until ready for approval (pauses included), rounds, the wait after approval, cost, and how often that risk waited for a person's decision; a range with the number of jobs behind it, or "too little history" below 5 | `deliverables` (1-20, each with `size`, `risk`, optional `title` and `lane`), `include_github` (also read the facts line of merged PRs) |
 | `discovery_methods` | the product stage's discovery methods (Eminzo basic, Elephant-Goldfish when installed), which one is configured and which one to use | `provider` (`claude`, `codex`) |
 | `check_brief` | a brief checked against the contract: what blocks approval, warnings, and its deliverables ready for `estimate_work` | `text` |
-| `brief_template` | an empty brief in the repository's language | `title` |
+| `brief_template` | an empty brief in the repository's language, with Definitions, a Given/when/then criterion and a `uses` example | `title` |
 | `import_egm_brief` | an Elephant-Goldfish `concepts_brief.md` turned into a brief draft, with what is still missing (reads a file inside the repository only) | `path` (default `concepts_brief.md`) |
 | `brief_review_prompts` | the prompt for each context-free reader of a brief; the host starts the readers | `text` |
 | `merge_brief_review` | the readers' answers as one list of findings, blockers first (each reader reports at most 3; near-duplicates across readers are merged) | `answers` |

@@ -3,9 +3,11 @@
 //   <!-- eminzo:brief v1 -->
 //   # Brief: <title>
 //   ## Problem / For whom / Expected value / How it works today / Scope / Out of scope
-//   ## Acceptance criteria      - BC-1: <a behaviour a person can check>
+//   ## Definitions              (optional) terms and rules shared by several criteria, written once
+//   ## Acceptance criteria      - BC-1: <a behaviour a person can check>; with an action: "Given ..., when ..., then ..."
 //   ## Open questions           (optional)
-//   ## Deliverables             - D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2
+//   ## Deliverables             - D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2 | uses: BC-4
+//                               `uses` (optional) names the criteria of the deliverables in `after` that this one builds on.
 //
 // Headings may be in English, Spanish or Portuguese (the repository's `language`); keys inside a deliverable line
 // stay in English so every language parses the same. The id of a criterion or deliverable may be bold, italic or in
@@ -24,12 +26,15 @@ export const SECTIONS = Object.freeze([
   { key: 'today', required: true, en: 'How it works today', es: 'Cómo funciona hoy', pt: 'Como funciona hoje' },
   { key: 'scope', required: true, en: 'Scope', es: 'Alcance', pt: 'Escopo' },
   { key: 'out_of_scope', required: true, en: 'Out of scope', es: 'Fuera de alcance', pt: 'Fora do escopo' },
+  { key: 'definitions', required: false, en: 'Definitions', es: 'Definiciones', pt: 'Definições' },
   { key: 'acceptance', required: true, en: 'Acceptance criteria', es: 'Criterios de aceptación', pt: 'Critérios de aceitação' },
   { key: 'questions', required: false, en: 'Open questions', es: 'Preguntas abiertas', pt: 'Perguntas em aberto' },
   { key: 'deliverables', required: true, en: 'Deliverables', es: 'Entregas', pt: 'Entregas' },
 ].map((s) => Object.freeze(s)));
 
 const LANGS = ['en', 'es', 'pt'];
+/** The most acceptance criteria one deliverable should cover: the factory's spec takes 3 to 8. */
+const MAX_CRITERIA = 8;
 const PLACEHOLDER = Object.freeze({ en: '_To complete._', es: '_Por completar._', pt: '_A completar._' });
 const PLACEHOLDERS = new Set(Object.values(PLACEHOLDER));
 // A line is a bullet (`-`, or `*`/`+` followed by a space) and an id that may be wrapped in balanced emphasis
@@ -144,6 +149,7 @@ function parseDeliverable(id, rest) {
     risk: values.risk ? values.risk.toLowerCase() : null,
     covers: list(values.covers),
     after: list(values.after),
+    uses: list(values.uses),
   };
 }
 
@@ -248,6 +254,11 @@ export function validateBrief(brief) {
       if (a === d.id) problems.push(`deliverable ${d.id} waits for itself`);
       else if (!ids.has(a)) problems.push(`deliverable ${d.id}: waits for ${a}, which is not a deliverable`);
     }
+    const awaited = new Set(d.after.flatMap((a) => brief.deliverables.find((x) => x.id === a)?.covers ?? []));
+    for (const u of d.uses ?? []) {
+      if (!criteria.has(u)) problems.push(`deliverable ${d.id}: uses ${u}, which is not an acceptance criterion`);
+      else if (!awaited.has(u)) problems.push(`deliverable ${d.id}: uses ${u}, which no deliverable it waits for covers`);
+    }
   }
   for (const cycle of cycles(brief.deliverables)) problems.push(`deliverables ${cycle} wait for each other`);
   for (const raw of brief.badDeliverables) problems.push(`Deliverable could not be read: write it as "- D1: title | size: s | risk: low | covers: BC-1". Line: "${raw}"`);
@@ -262,6 +273,13 @@ export function validateBrief(brief) {
   const covered = new Set(brief.deliverables.flatMap((d) => d.covers));
   for (const c of brief.criteria) if (!covered.has(c.id)) warnings.push(`acceptance criterion ${c.id} is not covered by any deliverable`);
   for (const d of brief.deliverables) if (d.size === 'l') warnings.push(`deliverable ${d.id} is large: consider splitting it`);
+  for (const d of brief.deliverables) {
+    if (d.covers.length > MAX_CRITERIA) warnings.push(`deliverable ${d.id} covers ${d.covers.length} acceptance criteria; the factory's spec takes 3 to ${MAX_CRITERIA}: split it or move shared rules to Definitions`);
+  }
+  for (const c of brief.criteria) {
+    const m = c.text.match(/^(given|dado)\b/i);
+    if (m && !/\b(when|cuando|quando)\b/i.test(c.text)) warnings.push(`acceptance criterion ${c.id} starts with "${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()}" but has no "when": write it as "Given …, when …, then …"`);
+  }
   return { ok: problems.length === 0, problems, warnings };
 }
 
@@ -275,13 +293,39 @@ export function renderBrief(brief, lang = 'en') {
       body = (brief.criteria ?? []).map((c) => `- ${c.id}: ${c.text}`).join('\n');
     } else if (s.key === 'deliverables') {
       body = (brief.deliverables ?? []).map((d) => [
-        `- ${d.id}: ${d.title}`, `size: ${d.size}`, `risk: ${d.risk}`, `covers: ${d.covers.join(', ')}`, ...(d.after?.length ? [`after: ${d.after.join(', ')}`] : []),
+        `- ${d.id}: ${d.title}`, `size: ${d.size}`, `risk: ${d.risk}`, `covers: ${d.covers.join(', ')}`, ...(d.after?.length ? [`after: ${d.after.join(', ')}`] : []), ...(d.uses?.length ? [`uses: ${d.uses.join(', ')}`] : []),
       ].join(' | ')).join('\n');
     } else {
       body = brief.sections?.[s.key] ?? '';
     }
     if (!body && !s.required) continue;
     out.push(`## ${s[language]}`, '', body || PLACEHOLDER[language], '');
+  }
+  return `${out.join('\n').trimEnd()}\n`;
+}
+
+/** What the template shows as an example in each language: one "Given, when, then" criterion and two linked deliverables. */
+const EXAMPLE = Object.freeze({
+  en: { criterion: 'Given <who and where>, when <what they want to do>, then <what they get>.', first: 'Title of the first deliverable', second: 'Title of the deliverable that builds on the first' },
+  es: { criterion: 'Dado <quién y dónde>, cuando <qué quiere hacer>, entonces <qué obtiene>.', first: 'Título de la primera entrega', second: 'Título de la entrega que se apoya en la primera' },
+  pt: { criterion: 'Dado <quem e onde>, quando <o que quer fazer>, então <o que obtém>.', first: 'Título da primeira entrega', second: 'Título da entrega que se apoia na primeira' },
+});
+
+/**
+ * An empty brief to start from, in `lang`: every required section holds its placeholder, Definitions is offered, and the
+ * criteria and deliverables show one example line each (a one-line "Given ..., when ..., then ..." criterion, and a
+ * deliverable that builds on another with `after` and `uses`). Replace the examples with the real ones.
+ */
+export function renderBriefTemplate(title, lang = 'en') {
+  const language = LANGS.includes(lang) ? lang : 'en';
+  const example = EXAMPLE[language];
+  const out = [BRIEF_MARKER, `# Brief: ${title ?? ''}`.trimEnd(), ''];
+  for (const s of SECTIONS) {
+    let body = PLACEHOLDER[language];
+    if (s.key === 'acceptance') body = `- BC-1: ${example.criterion}\n- BC-2: ${example.criterion}`;
+    else if (s.key === 'deliverables') body = `- D1: ${example.first} | size: s | risk: low | covers: BC-1\n- D2: ${example.second} | size: s | risk: low | covers: BC-2 | after: D1 | uses: BC-1`;
+    else if (!s.required && s.key !== 'definitions') continue;
+    out.push(`## ${s[language]}`, '', body, '');
   }
   return `${out.join('\n').trimEnd()}\n`;
 }

@@ -73,12 +73,19 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 ## How it works today
 ## Scope
 ## Out of scope
+## Definitions            (optional)
 ## Acceptance criteria
 - BC-1: <a behaviour a person can check by using the product>
 ## Open questions        (optional)
 ## Deliverables
-- D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2
+- D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2 | uses: BC-4
 ```
+
+- Definitions holds the terms and rules several criteria share, written once; the deliverable issues carry it verbatim.
+- A criterion with an action is one line, "Given ..., when ..., then ..." (es "Dado ..., cuando ..., entonces ...",
+  pt "Dado ..., quando ..., então ..."), where "when" is the user's intent, not a click.
+- `uses` (optional) names the criteria of the deliverables in `after` that this deliverable builds on. The issue then
+  shows those criteria in full under "Builds on".
 
 - Headings may be in English, Spanish or Portuguese (the repository's `language`); the keys inside a deliverable
   line stay in English.
@@ -91,7 +98,11 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 - Criteria ids (`BC-n`) are stable: each issue cut from the brief names the criteria it covers.
 - `check_brief` lists what blocks approval: a missing section, a duplicate or malformed criterion, a deliverable
   with a bad size or risk, a criterion or deliverable that does not exist, deliverables waiting for each other. It
-  warns about a criterion no deliverable covers and about a large deliverable.
+  warns about a criterion no deliverable covers, about a large deliverable, about a deliverable that covers more than 8
+  criteria (the factory's spec takes 3 to 8) and about a criterion that starts with Given/Dado but has no
+  when/cuando/quando. It also blocks a `uses` id that is not a criterion, or that no deliverable in `after` covers.
+- `brief_template` returns the empty brief with Definitions, a one-line Given/when/then criterion and a `uses` example,
+  in the repository's language.
 - Size and risk are set the way the factory's intake sets them (`eminzo show roles/intake.md`), not by new rules.
 
 Code: `factory/lib/brief.js` (`parseBrief`, `validateBrief`, `renderBrief`, `fromEgmConcepts`).
