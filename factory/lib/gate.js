@@ -7,6 +7,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { checksInputs, headSha, mergeBase } from './check-stamp.js';
+import { HELD, checksLockSetting, takeChecksLock } from './checks-lock.js';
 import { withImplied } from './intake.js';
 import { projectMapLines, projectMapStatus } from './project-map.js';
 import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
@@ -53,6 +54,15 @@ export function runVisualCheck(root, config, job, checksFile) {
 
 const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
 
+const NO_LOCK = Object.freeze({ held: false, childFile: null, waitedMs: 0, waitedFor: null, release() {} });
+
+/** The repository's checks lock (`checks.lock` in factory/config.json), or no lock when the repository turned it off. */
+function takeLock(root, label) {
+  let setting = 'repo';
+  try { setting = checksLockSetting(loadConfig(root)); } catch { /* no readable config: the default */ }
+  return setting === 'off' ? NO_LOCK : takeChecksLock(process.env, { root, label });
+}
+
 /**
  * Runs <root>/factory/checks.sh with `cwd` as the working folder; stdout and stderr interleaved.
  * With `pidFile`, the shell writes its PID there first (the same process then runs checks.sh), so a
@@ -69,10 +79,13 @@ const isSha = (v) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.
  * the command that failed (display text only; the trace is on stderr, merged into `output`).
  * `timeoutMs` (SIGKILL when it runs out), `dropEnv` (names to remove) and `dropFactoryEnv` (every FACTORY_* but FACTORY_ROOT) are for the
  * base check, which runs unattended on a machine that holds secrets.
- * @returns {{code: number, output: string, signal: string|null, failedToStart: boolean, timedOut: boolean}} `code` is 1 when
+ * A full run takes the repository's checks lock (checks-lock.js; `label` says who asks, for the one that has to wait), so
+ * only one full suite of a repository runs at a time; a focused run never waits. `waitedMs` is how long it waited for
+ * another run (`waitedFor` names that run) and is not time the checks took; `timeoutMs` counts from after the wait.
+ * @returns {{code: number, output: string, signal: string|null, failedToStart: boolean, timedOut: boolean, waitedMs: number, waitedFor: string|null}} `code` is 1 when
  *   the shell has no exit status (a signal, or it did not start); the base check tells those apart.
  */
-export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false, timeoutMs, dropEnv = [], dropFactoryEnv = false } = {}) {
+export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, scope, trace = false, timeoutMs, dropEnv = [], dropFactoryEnv = false, label } = {}) {
   const env = { ...process.env };
   for (const name of dropEnv) delete env[name];
   if (dropFactoryEnv) for (const name of Object.keys(env)) if (name.startsWith('FACTORY_') && name !== 'FACTORY_ROOT') delete env[name];
@@ -87,13 +100,22 @@ export function runChecks(root, cwd, { pidFile, mode = 'full', changedFiles, sco
   if (focused) env.FACTORY_CHANGED_FILES = changedFiles;
   if (trace) env.PS4 = '+[factory] ';
   const sh = trace ? 'sh -x' : 'sh';
-  const script = pidFile ? `printf "%s\n" "$$" > "$1"; exec ${sh} "$0" 2>&1` : `exec ${sh} "$0" 2>&1`;
+  // The shell writes its PID to every file it is given (the caller's pidFile, the lock's), then becomes checks.sh.
+  const script = `for f in "$@"; do printf "%s\\n" "$$" > "$f"; done; exec ${sh} "$0" 2>&1`;
   // Only a caller that passes a timeout gets one (the base check): the gate's own and the nudge's behavior do not change.
   const limit = Number.isFinite(timeoutMs) && timeoutMs > 0 ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {};
-  const res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : [])], { cwd, env, ...limit });
+  const lock = focused ? NO_LOCK : takeLock(root, label);
+  if (lock.held || process.env[HELD]) env[HELD] = '1'; // a checks run started from inside these checks does not wait for them
+  let res;
+  try {
+    // The time limit starts here, after the wait.
+    res = run('sh', ['-c', script, join(root, 'factory/checks.sh'), ...(pidFile ? [pidFile] : []), ...(lock.held ? [lock.childFile] : [])], { cwd, env, ...limit });
+  } finally {
+    lock.release();
+  }
   const output = `${res.stdout ?? ''}${res.error ? `\n${res.error.message}` : ''}`;
   const timedOut = res.error?.code === 'ETIMEDOUT';
-  return { code: res.status ?? 1, output, signal: res.signal ?? null, failedToStart: Boolean(res.error) && !timedOut, timedOut };
+  return { code: res.status ?? 1, output, signal: res.signal ?? null, failedToStart: Boolean(res.error) && !timedOut, timedOut, waitedMs: lock.waitedMs, waitedFor: lock.waitedFor };
 }
 
 /** Protected test paths the branch changed since it left `base`, or an error. */
@@ -131,8 +153,8 @@ export function gate(root, job, outFile) {
   const started = Date.now();
   // A job that fixes the base is judged on everything: its goal is the whole base.
   const checksBase = job.base_fix ? null : mergeBase(job.worktree, base);
-  const checks = runChecks(root, job.worktree, { scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
-  const spanMs = Date.now() - started;
+  const checks = runChecks(root, job.worktree, { label: `gate ${job.id}`, scope: job.base_fix ? undefined : { base: checksBase ?? undefined, head: head ?? undefined } });
+  const spanMs = Math.max(0, Date.now() - started - checks.waitedMs); // the wait for another run's checks is not the checks' time
   const guard = protectedChanges(job.worktree, base, config.protected_tests ?? []);
   const visual = checks.code === 0 ? runVisualCheck(root, config, job, outFile) : null;
   const visualSkippedForChecks = checks.code !== 0 && config.visual && withImplied(job.intake?.surfaces).includes('ui');
@@ -154,6 +176,7 @@ export function gate(root, job, outFile) {
     `Tested head: ${head ?? 'unknown'}`,
     `Checks base: ${checksBase ?? 'none'}`,
     `Checks inputs: ${inputs}`,
+    ...(checks.waitedFor ? [`Waited for the checks lock: ${formatSpan(checks.waitedMs)} (${checks.waitedFor})`] : []),
     `Protected test violations: ${violations.length ? '' : 'none'}`,
     ...violations.map((v) => `- ${v}`),
     `Uncommitted changes: ${dirty.length ? 'commit them; the gate tests only committed work' : 'none'}`,

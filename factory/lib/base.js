@@ -474,8 +474,8 @@ function runCheck(root, dir, { base, config, prepare, wanted, identity }) {
 
   const started = Date.now();
   const limit = checksTimeoutMinutes(config);
-  const checks = runChecks(root, checkout.path, { trace: true, timeoutMs: limit * 60 * 1000, dropEnv: SECRET_ENV, dropFactoryEnv: true, ...(wanted ? { scope: wanted } : {}) });
-  const spanMs = Date.now() - started;
+  const checks = runChecks(root, checkout.path, { label: 'base', trace: true, timeoutMs: limit * 60 * 1000, dropEnv: SECRET_ENV, dropFactoryEnv: true, ...(wanted ? { scope: wanted } : {}) });
+  const spanMs = Math.max(0, Date.now() - started - checks.waitedMs); // the wait for the repository's checks lock is not the checks' time
   const log = withoutTrace(checks.output);
   const base_ = { span_ms: spanMs };
   if (checks.timedOut) return finish(record({ ...base_, status: 'UNKNOWN', reason: `factory/checks.sh did not finish in ${limit} minutes and was stopped` }), { log, prepareRun });

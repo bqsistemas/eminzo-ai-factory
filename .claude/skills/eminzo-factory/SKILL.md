@@ -408,7 +408,7 @@ goes to `needs-human` like any job. The script refuses `review → build` in lan
   - Then `job <id> to gate`. It needs the open PR. The builder runs only the tests it wrote or
     changed (a Bash hook, `guard-tests`, refuses `factory/checks.sh`, the nudge and the full suite), so the full checks run only in the gate,
     do not run `factory/checks.sh` or `factory/bin/nudge` yourself first.
-- **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes.
+- **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes. The gate may wait for another job's full checks of the same repository (it says so on stderr); that is not a hang, so do not kill it.
   <!-- rule: round-context -->
   - **Round context.** The gate also writes `round-N/context.md`: the changed files, what changed
     this round, the acceptance criteria and the blockers still open. Every reviewer and the
