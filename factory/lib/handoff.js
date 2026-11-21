@@ -182,19 +182,19 @@ const TEXT = {
   en: { goal: 'Goal', delivers: 'What it delivers', criteria: 'Acceptance criteria', builds_on: 'Builds on', out_of_scope: 'Out of scope', definitions: 'Definitions', dependencies: 'Dependencies', questions: 'Open questions', estimate: 'For planning',
     size: (s) => `Size: ${s}.`, waits: 'Waits for', unblocks: 'Unblocks', none: 'Nothing: it can start right away.', unblocksNone: 'Nothing: no other deliverable waits for this one.',
     builtBy: 'Built by {ref}; it exists when you start.', doNotStart: 'Do not start until the deliverables above are merged.',
-    buildsOn: (ids) => `builds on ${ids.join(', ')} of this deliverable`,
+    buildsOn: '{ref}: builds on {ids} of this deliverable',
     deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'is' : 'are'} delivered by ${ref}.`, seeBrief: (n, what) => `See the brief issue #${n} for ${what}`, part: (n) => `Part of #${n}`,
     range: (lo, hi, n) => `About ${lo} to ${hi} until ready for approval, from ${n} similar finished job${n === 1 ? '' : 's'}. It is a range, not a date.`, few: 'Too little history to estimate.' },
   es: { goal: 'Objetivo', delivers: 'Qué entrega', criteria: 'Criterios de aceptación', builds_on: 'Se apoya en', out_of_scope: 'Fuera de alcance', definitions: 'Definiciones', dependencies: 'Dependencias', questions: 'Preguntas abiertas', estimate: 'Para planificar',
     size: (s) => `Tamaño: ${s}.`, waits: 'Espera a', unblocks: 'Desbloquea a', none: 'Nada: puede empezar ya.', unblocksNone: 'Nada: ninguna otra entrega espera a esta.',
     builtBy: 'Lo construye {ref}; ya existe al empezar.', doNotStart: 'No empezar hasta que las entregas de arriba estén integradas.',
-    buildsOn: (ids) => `se apoya en ${ids.join(', ')} de esta entrega`,
+    buildsOn: '{ref}: se apoya en {ids} de esta entrega',
     deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'lo entrega' : 'los entrega'} ${ref}.`, seeBrief: (n, what) => `Mira el issue del brief #${n} para ${what}`, part: (n) => `Parte de #${n}`,
     range: (lo, hi, n) => `Entre ${lo} y ${hi} hasta estar lista para aprobar, según ${n} trabajo${n === 1 ? '' : 's'} parecido${n === 1 ? '' : 's'} ya terminado${n === 1 ? '' : 's'}. Es un rango, no una fecha.`, few: 'Hay muy poco historial para estimar.' },
   pt: { goal: 'Objetivo', delivers: 'O que entrega', criteria: 'Critérios de aceitação', builds_on: 'Apoia-se em', out_of_scope: 'Fora do escopo', definitions: 'Definições', dependencies: 'Dependências', questions: 'Perguntas em aberto', estimate: 'Para planejamento',
     size: (s) => `Tamanho: ${s}.`, waits: 'Espera por', unblocks: 'Libera', none: 'Nada: pode começar já.', unblocksNone: 'Nada: nenhuma outra entrega espera por esta.',
     builtBy: 'Construído por {ref}; já existe ao começar.', doNotStart: 'Não começar até que as entregas acima estejam integradas.',
-    buildsOn: (ids) => `apoia-se em ${ids.join(', ')} desta entrega`,
+    buildsOn: '{ref}: apoia-se em {ids} desta entrega',
     deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'é entregue' : 'são entregues'} por ${ref}.`, seeBrief: (n, what) => `Veja a issue do brief #${n} para ${what}`, part: (n) => `Parte de #${n}`,
     range: (lo, hi, n) => `Entre ${lo} e ${hi} até ficar pronta para aprovação, com base em ${n} trabalho${n === 1 ? '' : 's'} parecido${n === 1 ? '' : 's'} já concluído${n === 1 ? '' : 's'}. É uma faixa, não uma data.`, few: 'Pouco histórico para estimar.' },
 };
@@ -261,7 +261,7 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
   const others = [];
   for (const o of ordered.filter((x) => x.id !== d.id)) {
     const foreign = o.covers.filter((c) => !covered.has(c) && !shown.has(c) && criteria.has(c));
-    if (foreign.length) others.push({ ...ref(o.id), criteria: foreign });
+    if (foreign.length) others.push({ ...ref(o.id), criteria: foreign, format: t.deliveredBy(foreign, '{ref}') });
   }
   const verbatim = (key, label) => (brief.sections[key] === undefined ? [] : [{ kind: 'text', ...(label ? { label } : {}), text: sanitizeBlock(brief.sections[key]) }]);
   const out = [];
@@ -283,7 +283,7 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
   add('dependencies', [
     { kind: 'refs', label: t.waits, none: waits.length ? null : t.none, items: waits },
     ...(waits.length ? [{ kind: 'text', text: t.doNotStart }] : []),
-    { kind: 'refs', label: t.unblocks, none: unblocks.length ? null : t.unblocksNone, items: unblocks },
+    { kind: 'refs', label: t.unblocks, none: unblocks.length ? null : t.unblocksNone, uses_format: t.buildsOn, items: unblocks },
   ]);
   if (/\?/.test(brief.sections.questions ?? '')) add('questions', verbatim('questions'));
   add('estimate', [{ kind: 'text', text: t.size(d.size) }, { kind: 'text', text: estimate ? t.range(humanMinutes(estimate.low_min), humanMinutes(estimate.high_min), estimate.jobs) : t.few }]);
@@ -318,8 +318,10 @@ function renderSections(sections, t) {
       }
       if (part.kind === 'refs') {
         if (part.label) lines.push(`### ${part.label}`, '');
-        if (part.format) lines.push(...part.items.map((i) => part.format.replace('{ref}', refText(i))), '');
-        else if (part.items.length) lines.push(...part.items.map((i) => `- ${i.criteria ? t.deliveredBy(i.criteria, refText(i)) : refText(i)}${i.uses?.length ? `: ${t.buildsOn(i.uses)}` : ''}`), '');
+        // Every sentence comes from the data: `format` (part or item) and `uses_format`, with {ref} and {ids} filled in.
+        const fill = (template, i) => template.replace(/\{(ref|ids)\}/g, (_, k) => (k === 'ref' ? refText(i) : (i.uses ?? []).join(', ')));
+        if (part.format) lines.push(...part.items.map((i) => fill(part.format, i)), '');
+        else if (part.items.length) lines.push(...part.items.map((i) => `- ${i.format ? fill(i.format, i) : part.uses_format && i.uses?.length ? fill(part.uses_format, i) : refText(i)}`), '');
         else if (part.none) lines.push(part.none, '');
         continue;
       }

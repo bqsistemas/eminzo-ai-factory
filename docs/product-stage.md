@@ -199,10 +199,15 @@ Hidden lines (HTML comments, found with a search on the issue body):
 - `sections` is the same content as data, next to `body`: `[{ key, heading, parts }]` with `key` one of
   `DELIVERABLE_SECTION_KEYS` (the module exports the ordered keys and the droppable ones so a destination does not
   hardcode them), and each part a `text` (brief text or an engine sentence), `criteria` (`items: [{ id, text }]`),
-  `refs` (`items: [{ id, title, issue, criteria?, uses? }]`: `criteria` for another deliverable's criteria under Out of
-  scope, `uses` for the ids of this deliverable's criteria an unblocked deliverable builds on; with the `none` sentence
-  when empty; a `format` such as "Built by {ref}; it exists when you start." says where the destination puts the
-  reference to the item, `#n` on GitHub, the key on Jira) or `brief_ref` (replaces a dropped section). Jira and any other
+  `refs` (`items: [{ id, title, issue, criteria?, uses?, format? }]`, with the `none` sentence when empty) or `brief_ref`
+  (replaces a dropped section). Every sentence a destination needs is in the data, in the brief's language, so it never
+  translates engine text: `heading` and `label` are the titles; `none` is the sentence of an empty list; a `text` part
+  is a ready sentence; a `brief_ref` part carries its `text`. A refs part (or item) that is a sentence about another
+  deliverable carries a template with the reference left to the destination: `format` on the part (Builds on: "Built by
+  {ref}; it exists when you start.") or on each item (Out of scope: "BC-4, BC-5 are delivered by {ref}.", the plural
+  already decided), and `uses_format` on the Unblocks part ("{ref}: builds on {ids} of this deliverable", with `{ids}`
+  from each item's `uses`). `{ref}` is `#n (D3: Title)` on GitHub, or the Jira key for `issue`/`id`. A refs item without
+  a template is just the reference.  Jira and any other
   destination render from it instead of rebuilding the layout.
 - The brief contract refuses `<!--`, control, invisible and bidirectional characters, and `@login` mentions outside
   backticks, fences and e-mail addresses (GitHub would notify people when the issues are created); the estimate in the marker is rounded to one decimal, or `none` when it
