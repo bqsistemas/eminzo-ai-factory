@@ -431,6 +431,39 @@ test('golden: approve_brief accepts an Enterprise Managed User login through the
   for (const by of ['ana_ab', 'a'.repeat(40)]) assert.equal((await ask('approve_brief', { text: COMPLETE_BRIEF, by })).isError, true, by);
 });
 
+test('AC-6: handoff_drafts returns sections, and `kind` asks for deliverables without a brief issue', async () => {
+  const text = await approvedTwo();
+  const brief = (await ask('handoff_drafts', { text })).structuredContent;
+  assert.equal(brief.kind, 'brief');
+  assert.equal(brief.drafts, undefined);
+  const full = (await ask('handoff_drafts', { text, brief_issue: 40, created: [{ id: 'D2', issue: 41 }] })).structuredContent;
+  assert.equal(full.kind, 'deliverables');
+  assert.ok(full.estimate_input.length === 2);
+  for (const d of full.drafts) {
+    assert.deepEqual(Object.keys(d).sort(), ['after', 'body', 'id', 'labels', 'sections', 'title']);
+    assert.equal(d.sections.at(-1).key, 'part_of');
+  }
+  const bare = (await ask('handoff_drafts', { text, kind: 'deliverables' })).structuredContent;
+  assert.equal(bare.kind, 'deliverables');
+  assert.deepEqual(bare.drafts.map((d) => d.id), ['D2', 'D1']);
+  for (const d of bare.drafts) {
+    assert.deepEqual(Object.keys(d).sort(), ['after', 'id', 'labels', 'sections', 'title']);
+    assert.ok(JSON.stringify(d.sections).includes('"issue":null'));
+    assert.doesNotMatch(JSON.stringify(d.sections), /"issue":\d/);
+  }
+  assert.equal(bare.estimate_input.length, 2);
+  const failed = [
+    { text, kind: 'brief', brief_issue: 40 },
+    { text, kind: 'deliverables', created: [{ id: 'D2', issue: 41 }] },
+    { text, kind: 'nope' },
+  ];
+  for (const args of failed) {
+    const res = await ask('handoff_drafts', args);
+    assert.equal(res.isError, true, JSON.stringify(args));
+    assert.ok(res.content[0].text.length > 0);
+  }
+});
+
 test('golden: handoff_drafts refuses a changed brief with the gate reason, and unknown arguments', async () => {
   const changed = await ask('handoff_drafts', { text: (await approved()).replace('Menos tiempo.', 'Mucho menos tiempo.'), brief_issue: 40 });
   assert.equal(changed.isError, true);

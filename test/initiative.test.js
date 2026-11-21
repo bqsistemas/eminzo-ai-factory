@@ -327,3 +327,19 @@ test('an available deliverable takes its time, cost and date from the merged tru
   assert.equal(d.cost_usd, 1.5);
   assert.equal(d.available_at, '2026-11-13T09:00:00.000Z');
 });
+
+test('AC-7: initiative recognizes a deliverable issue body with the old layout and one with the new layout', () => {
+  const hash12 = /sha256=([0-9a-f]{12})/.exec(approved)[1];
+  const marker = `<!-- eminzo:deliverable v1 brief=40 id=D2 hash=${hash12} est=60-120 -->`;
+  const old = ['## What it delivers', '', '> Deliverable 2', '', '## Acceptance criteria it covers', '', '> BC-1: A reviewer sees what is pending.', '', 'Size: s. Risk: low.', '',
+    '## Waits for', '', '- #41 (D1: Deliverable 1)', '', '## Estimate when this issue was created', '', 'About 1 h to 2 h until ready for approval, from 6 similar finished jobs. It is a range, not a date.', '', 'Part of #40', '', marker, ''].join('\n');
+  const fresh = drafts.D2.body;
+  assert.match(fresh, /- \[ \] BC-1: /);
+  for (const body of [old, fresh]) {
+    const d2 = byId(go(world({ deliverables: [issue('D2', 42, { body })] }))).D2;
+    assert.equal(d2.issue, 42, 'D2 is recognized');
+    assert.equal(d2.status, 'in-factory');
+    assert.deepEqual(d2.estimate, { low_min: 60, high_min: 120 });
+    assert.deepEqual(d2.after, ['D1']);
+  }
+});
