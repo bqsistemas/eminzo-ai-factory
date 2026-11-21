@@ -290,10 +290,11 @@ test('warns about a criterion that starts with Given/Dado but has no when/cuando
     { id: 'BC-1', text: 'Given a reviewer on the list, then only pending items show.' },
     { id: 'BC-2', text: 'Dado un revisor en la lista, cuando abre el filtro, entonces ve pendientes.' },
     { id: 'BC-3', text: 'Dado un revisor, entonces ve algo.' },
+    { id: 'BC-6', text: 'Given name is shown on the profile.' },
     { id: 'BC-4', text: 'Dado um revisor, quando abre, então vê.' },
     { id: 'BC-5', text: 'Given a reviewer, when they open it, then it shows.' },
   ];
-  brief.deliverables = [{ id: 'D1', title: 'A', size: 's', risk: 'low', covers: ['BC-1', 'BC-2', 'BC-3', 'BC-4', 'BC-5'], after: [] }];
+  brief.deliverables = [{ id: 'D1', title: 'A', size: 's', risk: 'low', covers: ['BC-1', 'BC-2', 'BC-3', 'BC-4', 'BC-5', 'BC-6'], after: [] }];
   const { warnings } = validateBrief(parseBrief(renderBrief(brief, 'en')));
   assert.deepEqual(warnings, [
     'acceptance criterion BC-1 starts with "Given" but has no "when": write it as "Given …, when …, then …"',
@@ -319,4 +320,19 @@ test('the brief template shows Definitions, a one-line Given/when/then criterion
     assert.deepEqual(parsed.deliverables[1].uses, ['BC-1']);
     assert.equal(validateBrief(parsed).ok, false, 'still a draft: the sections are to be completed');
   }
+});
+
+test('warns when a deliverable waits for another but uses none of its criteria', () => {
+  const brief = structuredClone(BRIEF);
+  brief.deliverables[1].uses = ['BC-3'];
+  assert.deepEqual(validateBrief(parseBrief(renderBrief(brief, 'en'))).problems.length, 1, 'BC-3 is not covered by D1: still a problem');
+  const ok = structuredClone(BRIEF);
+  ok.deliverables.push({ id: 'D4', title: 'Cuarta', size: 's', risk: 'low', covers: ['BC-3'], after: ['D1', 'D2'], uses: ['BC-2'] });
+  ok.deliverables[2].covers = [];
+  ok.deliverables.splice(2, 1);
+  const { problems, warnings } = validateBrief(parseBrief(renderBrief(ok, 'en')));
+  assert.deepEqual(problems, []);
+  assert.deepEqual(warnings, ['deliverable D4 waits for D1 but uses none of its criteria: fine if it only needs the order; otherwise add them to uses']);
+  const none = structuredClone(BRIEF);
+  assert.deepEqual(validateBrief(parseBrief(renderBrief(none, 'en'))).warnings, [], 'no `uses` at all: all of each dependency, no warning');
 });

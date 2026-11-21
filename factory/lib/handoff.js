@@ -252,11 +252,13 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
   const criteria = new Map(brief.criteria.map((c) => [c.id, c.text]));
   const ordered = dependencyOrder(brief.deliverables);
   const covered = new Set(d.covers);
-  // Builds on: the criteria of each deliverable this one waits for (direct `after`), in full. `uses` narrows them.
+  // Builds on: the criteria of each deliverable this one waits for (direct `after`, in dependency order, not transitive), in full.
+  // A non-empty `uses` is exhaustive: a dependency with none of its ids contributes nothing (it stays in Waits for).
+  // Only without `uses` do all the criteria of each direct dependency count.
   const buildsOn = ordered.filter((x) => d.after.includes(x.id)).map((dep) => {
     const own = (d.uses ?? []).filter((id) => dep.covers.includes(id));
-    return { dep, ids: (own.length ? own : dep.covers).filter((id) => criteria.has(id)) };
-  });
+    return { dep, ids: (d.uses?.length ? own : dep.covers).filter((id) => criteria.has(id)) };
+  }).filter((b) => b.ids.length);
   const shown = new Set(buildsOn.flatMap((b) => b.ids));
   const others = [];
   for (const o of ordered.filter((x) => x.id !== d.id)) {
@@ -277,7 +279,8 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
   add('definitions', verbatim('definitions'));
   const unblocks = ordered.filter((x) => x.after.includes(d.id)).map((x) => {
     const own = (x.uses ?? []).filter((id) => covered.has(id));
-    return { ...ref(x.id), uses: own.length ? own : [...d.covers] };
+    if (x.uses?.length) return own.length ? { ...ref(x.id), uses: own } : ref(x.id);
+    return { ...ref(x.id), uses: [...d.covers] };
   });
   const waits = d.after.map(ref);
   add('dependencies', [
@@ -285,7 +288,7 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
     ...(waits.length ? [{ kind: 'text', text: t.doNotStart }] : []),
     { kind: 'refs', label: t.unblocks, none: unblocks.length ? null : t.unblocksNone, uses_format: t.buildsOn, items: unblocks },
   ]);
-  if (/\?/.test(brief.sections.questions ?? '')) add('questions', verbatim('questions'));
+  if (/[?¿]|^\s*(?:[-*]|\d+\.)\s/m.test(brief.sections.questions ?? '')) add('questions', verbatim('questions'));
   add('estimate', [{ kind: 'text', text: t.size(d.size) }, { kind: 'text', text: estimate ? t.range(humanMinutes(estimate.low_min), humanMinutes(estimate.high_min), estimate.jobs) : t.few }]);
   return out;
 }
@@ -390,4 +393,26 @@ export function deliverableIssueDrafts(briefText, { briefIssue, estimates = {}, 
 export function deliverableSections(briefText, { estimates = {} } = {}) {
   const { items } = plan(briefText, { estimates });
   return items.map(({ d, sections }) => ({ id: d.id, title: cap(d.title), labels: [DELIVERABLE_LABEL], after: [...d.after], sections }));
+}
+
+/** The most characters a child may have in its sections that are never dropped before Jira (a field is limited to 32,767). */
+export const JIRA_SAFE_CHARS = 30_000;
+
+/**
+ * The ids of the deliverables whose issue, with only the sections that are never dropped (criteria, Builds on, Out of
+ * scope, Dependencies), would be longer than `limit` characters. Works on any brief text, approved or not, and answers
+ * `[]` for a brief it cannot cut (a problem `check_brief` already reports).
+ */
+export function oversizedDeliverables(briefText, limit = JIRA_SAFE_CHARS) {
+  const brief = parseBrief(canonicalBrief(briefText));
+  const t = TEXT[brief.language] ?? TEXT.en;
+  const keep = new Set(['criteria', 'builds_on', 'out_of_scope', 'dependencies']);
+  try {
+    return dependencyOrder(brief.deliverables).filter((d) => {
+      const sections = sectionsOf(brief, d, { t, lang: brief.language, issues: {}, estimate: null }).filter((s) => keep.has(s.key));
+      return renderSections(sections, t).join('\n').length > limit;
+    }).map((d) => d.id);
+  } catch {
+    return [];
+  }
 }

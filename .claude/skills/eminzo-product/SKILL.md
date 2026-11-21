@@ -120,7 +120,10 @@ stores nothing; give the person the returned text to keep.
   deliverable covers 3 to 8 criteria, and every criterion has exactly one deliverable that owns it.
 - For each `after`, propose `uses:` with the criteria of the awaited deliverable that this one relies on
   (`after: D1 | uses: BC-1, BC-3`). The issue shows them in full under "Builds on", so the person who builds it knows
-  what it will find. Leave `uses` out only when it relies on everything the awaited deliverable covers.
+  what it will find. Once `uses` names any criterion it is exhaustive: an awaited deliverable none of whose criteria are
+  listed contributes nothing to "Builds on" (it only sets the order; `check_brief` warns about it, so confirm that is
+  intended). Leave `uses` out only when it relies on everything each awaited deliverable covers. "Builds on" covers
+  only direct `after` dependencies, never the ones behind them.
 - Size and risk: read `eminzo show roles/intake.md` at run time and apply its criteria to each deliverable (size xs,
   s, m or l; risk low, medium or high), the way the factory's intake would; do not copy those rules into the brief
   or the conversation and do not invent others: if they change, the answer changes.

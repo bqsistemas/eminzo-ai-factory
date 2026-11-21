@@ -7,7 +7,8 @@
 //   ## Acceptance criteria      - BC-1: <a behaviour a person can check>; with an action: "Given ..., when ..., then ..."
 //   ## Open questions           (optional)
 //   ## Deliverables             - D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2 | uses: BC-4
-//                               `uses` (optional) names the criteria of the deliverables in `after` that this one builds on.
+//                               `uses` (optional) names the criteria of the deliverables in `after` that this one builds on; when
+//                               present it is exhaustive (a deliverable waited for with none of its ids contributes no criteria).
 //
 // Headings may be in English, Spanish or Portuguese (the repository's `language`); keys inside a deliverable line
 // stay in English so every language parses the same. The id of a criterion or deliverable may be bold, italic or in
@@ -276,8 +277,15 @@ export function validateBrief(brief) {
   for (const d of brief.deliverables) {
     if (d.covers.length > MAX_CRITERIA) warnings.push(`deliverable ${d.id} covers ${d.covers.length} acceptance criteria; the factory's spec takes 3 to ${MAX_CRITERIA}: split it or move shared rules to Definitions`);
   }
+  for (const d of brief.deliverables) {
+    if (!d.uses?.length) continue;
+    for (const a of d.after) {
+      const dep = brief.deliverables.find((x) => x.id === a);
+      if (dep && !dep.covers.some((id) => d.uses.includes(id))) warnings.push(`deliverable ${d.id} waits for ${a} but uses none of its criteria: fine if it only needs the order; otherwise add them to uses`);
+    }
+  }
   for (const c of brief.criteria) {
-    const m = c.text.match(/^(given|dado)\b/i);
+    const m = c.text.match(/^(given|dado)\s.+,/i);
     if (m && !/\b(when|cuando|quando)\b/i.test(c.text)) warnings.push(`acceptance criterion ${c.id} starts with "${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()}" but has no "when": write it as "Given …, when …, then …"`);
   }
   return { ok: problems.length === 0, problems, warnings };

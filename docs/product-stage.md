@@ -85,7 +85,10 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 - A criterion with an action is one line, "Given ..., when ..., then ..." (es "Dado ..., cuando ..., entonces ...",
   pt "Dado ..., quando ..., então ..."), where "when" is the user's intent, not a click.
 - `uses` (optional) names the criteria of the deliverables in `after` that this deliverable builds on. The issue then
-  shows those criteria in full under "Builds on".
+  shows those criteria in full under "Builds on". Once `uses` has any id it is exhaustive: a deliverable in `after` with
+  none of its criteria in `uses` contributes no criteria (it still appears under Waits for), and `check_brief` warns
+  ("D3 waits for D2 but uses none of its criteria"). Without `uses`, all the criteria of each deliverable in `after`
+  count. Builds on covers only the direct `after` dependencies, not the transitive ones.
 
 - Headings may be in English, Spanish or Portuguese (the repository's `language`); the keys inside a deliverable
   line stay in English.
@@ -98,9 +101,11 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 - Criteria ids (`BC-n`) are stable: each issue cut from the brief names the criteria it covers.
 - `check_brief` lists what blocks approval: a missing section, a duplicate or malformed criterion, a deliverable
   with a bad size or risk, a criterion or deliverable that does not exist, deliverables waiting for each other. It
-  warns about a criterion no deliverable covers, about a large deliverable, about a deliverable that covers more than 8
-  criteria (the factory's spec takes 3 to 8) and about a criterion that starts with Given/Dado but has no
-  when/cuando/quando. It also blocks a `uses` id that is not a criterion, or that no deliverable in `after` covers.
+  warns about a criterion no deliverable covers, about a large deliverable, about a deliverable that waits for another
+  but `uses` none of its criteria, about a deliverable whose issue would exceed 30,000 characters in its never-dropped
+  sections (too long for Jira; added by the MCP tool), about a deliverable that covers more than 8
+  criteria (the factory's spec takes 3 to 8) and about a criterion that starts with Given/Dado, a clause and a
+  comma but has no when/cuando/quando. It also blocks a `uses` id that is not a criterion, or that no deliverable in `after` covers.
 - `brief_template` returns the empty brief with Definitions, a one-line Given/when/then criterion and a `uses` example,
   in the repository's language.
 - Size and risk are set the way the factory's intake sets them (`eminzo show roles/intake.md`), not by new rules.
@@ -183,8 +188,10 @@ Hidden lines (HTML comments, found with a search on the issue body):
   7. Dependencies (`dependencies`): Waits for (as `#n (D3: Title)` once created), then, when there are any, "Do not start
      until the deliverables above are merged."; and Unblocks, each deliverable followed by which of this deliverable's
      criteria it builds on ("#n (D4: Title): builds on BC-2, BC-4 of this deliverable": the `uses` of that deliverable
-     that this one covers, or all that this one covers when it names none).
-  8. Open questions (`questions`): only when the brief's Open questions has at least one line with a "?".
+     that this one covers; all that this one covers when it has no `uses`; a deliverable whose `uses` names none of this
+     one's criteria is listed without "builds on").
+  8. Open questions (`questions`): only when the brief's Open questions has a line with "?" or "¿", or a list item
+     (`- `, `* `, `1. `); a single "None for now." line is left out.
   9. For planning (`estimate`): the size sentence (no risk: the factory's intake decides it) and the estimate shown when
      it was created (a range and how many similar finished jobs it rests on, or "too little history").
   Then `Part of #<brief issue>` and the hidden marker. It never mentions the factory label.

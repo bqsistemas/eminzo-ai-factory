@@ -9,7 +9,7 @@ import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
 import { approveBrief, briefStatus, canonicalBrief } from '../brief-approval.js';
 import { LOGIN_PATTERN, fromEgmConcepts, parseBrief, renderBrief, renderBriefTemplate, validateBrief } from '../brief.js';
 import { discoveryMethods } from '../discovery.js';
-import { briefIssueDraft, deliverableIssueDrafts, deliverableSections } from '../handoff.js';
+import { briefIssueDraft, deliverableIssueDrafts, deliverableSections, oversizedDeliverables } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { deliveryMetrics } from '../state/delivery.js';
@@ -282,6 +282,7 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
       answer: (args) => {
         const parsed = parseBrief(args.text);
         const check = validateBrief(parsed);
+        for (const id of oversizedDeliverables(args.text)) check.warnings.push(`${id}'s issue would be too long for Jira: split it or narrow uses`);
         const summary = check.ok
           ? `The brief is complete: ${parsed.criteria.length} acceptance criteria and ${parsed.deliverables.length} deliverables${check.warnings.length ? `; ${check.warnings.length} warning${check.warnings.length === 1 ? '' : 's'}` : ''}.`
           : `The brief cannot be approved yet: ${check.problems.length} problem${check.problems.length === 1 ? '' : 's'}.`;
