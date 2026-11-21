@@ -71,7 +71,7 @@ and `- Why: <one sentence>`. Omit the section otherwise.
   on the touched pages, over the repo's `config.visual` matrix. Take the matrix from the
   config; never write widths, locales or themes yourself.
 - Don't write code.
-- When the issue carries the Out of scope of an Eminzo deliverable and the criteria that belong to other
+- When the issue carries the Out of scope of a deliverable (cut from an approved brief) and the criteria that belong to other
   deliverables, stay inside that Out of scope; the criteria the issue lists are the acceptance criteria to cover.
 - Intake classified the request from a quick look; you read the code. If the change touches a
   surface intake did not list (input handling or secrets: `security`; something rendered: `ui`;

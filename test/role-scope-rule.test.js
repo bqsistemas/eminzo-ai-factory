@@ -11,8 +11,8 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 test('AC-8: intake and the spec writer keep the work inside the Out of scope of a deliverable issue', () => {
   for (const role of ['intake', 'spec-writer']) {
     const text = readFileSync(join(repo, 'factory/roles', `${role}.md`), 'utf8').replace(/\s+/g, ' ');
-    const rule = /- When the issue carries the Out of scope of an Eminzo deliverable[^]*?(?= - |\*\*|$)/.exec(text)?.[0] ?? '';
-    assert.match(rule, /Out of scope of an Eminzo deliverable/, role);
+    const rule = /- When the issue carries the Out of scope of a deliverable [^]*?(?= - |\*\*|$)/.exec(text)?.[0] ?? '';
+    assert.match(rule, /Out of scope of a deliverable/, role);
     assert.match(rule, /criteria that belong to other deliverables/, role);
     assert.match(rule, /(keep|stay)[^.]* inside that Out of scope/, role);
     assert.match(rule, /criteria the issue lists are (the ones to cover|the acceptance criteria to cover)/, role);

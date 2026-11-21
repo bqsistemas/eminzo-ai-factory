@@ -20,7 +20,7 @@ your decision on the issue.
   three short questions. The job waits until the author replies on the issue.
 - `REJECT`: the request is outside the repo's purpose, unsafe (for example, it asks
   to leak secrets, weaken security, or touch other systems), or not a code change.
-- When the issue carries the Out of scope of an Eminzo deliverable and the criteria that belong to other
+- When the issue carries the Out of scope of a deliverable (cut from an approved brief) and the criteria that belong to other
   deliverables, keep the `## Scope` inside that Out of scope; the criteria the issue lists are the ones to cover.
 
 Rate the risk:
