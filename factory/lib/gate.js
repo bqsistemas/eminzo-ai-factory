@@ -2,7 +2,7 @@
 // checkout's factory/checks.sh inside the job's worktree (never the worktree's own
 // copy), fails if the branch modified, deleted or renamed a protected test or left
 // uncommitted changes, and writes round-N/checks.md plus round-N/context.md for the
-// reviewers. Exit 0 on PASS, 1 on FAIL. The command line is gate-cli.js (it also needs job.js, which imports this module).
+// reviewers. Exit 0 on PASS, 1 on FAIL. The command line is gate-cli.js (it also needs job.js, which imports this module); running this file starts it.
 import { mkdirSync, rmSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
@@ -13,7 +13,7 @@ import { projectMapLines, projectMapStatus } from './project-map.js';
 import { LOG_LINES, capLog, engineLines, formatSpan, summarySentence, table } from './report.js';
 import { roundContext } from './round-context.js';
 import { visualStatus } from './visual-analysis.js';
-import { baseRef, engineDir, engineVersion, loadConfig, readText, run, tail, writeAtomic } from './util.js';
+import { baseRef, engineDir, engineVersion, isMain, loadConfig, readText, run, runCli, tail, writeAtomic } from './util.js';
 
 function visualLines(visual) {
   const label = visual.status === 'ERROR' ? 'ERROR (not blocking)' : visual.status;
@@ -214,4 +214,11 @@ function writeRoundContext(root, config, job, outFile) {
   } catch (err) {
     process.stderr.write(`gate: context.md not written: ${err.message}\n`);
   }
+}
+
+// `eminzo gate <id>` runs this file (the CLI runs lib/<command>.js), and so does factory/bin/gate. The command line lives in
+// gate-cli.js because it needs job.js, which imports this module: a static import here would be a load-time cycle, so it is
+// loaded with import() once this module is done.
+if (isMain(import.meta.url)) {
+  import('./gate-cli.js').then(({ main }) => runCli(main), (err) => { process.stderr.write(`error: ${err.message}\n`); process.exitCode = 1; });
 }

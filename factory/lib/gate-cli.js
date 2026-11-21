@@ -1,11 +1,12 @@
-// factory/bin/gate <job-id> [--out <file>]: the command line of the gate (see gate.js). It lives apart from gate.js
-// because it needs job.js (the job's note says when the gate waits for the checks lock) and job.js imports gate.js:
-// a module graph that enters gate.js and reaches job.js again fails at load time.
+// The command line of the gate, `gate <job-id> [--out <file>]` (see gate.js, which loads this file when it is run as the
+// main script, for factory/bin/gate and for `eminzo gate`). It lives apart from gate.js because it needs job.js (the job's
+// note says when the gate waits for the checks lock) and job.js imports gate.js: a module graph that enters gate.js and
+// reaches job.js again fails at load time.
 import { join, resolve } from 'node:path';
 
 import { gate } from './gate.js';
 import { gateWaitHooks } from './job.js';
-import { Usage, factoryRoot, isMain, jobDir, readText, runCli } from './util.js';
+import { Usage, factoryRoot, jobDir, readText } from './util.js';
 
 export function main(args) {
   const [id, ...rest] = args;
@@ -26,5 +27,3 @@ export function main(args) {
   process.stdout.write(`${id} GATE: ${pass ? 'PASS' : 'FAIL'}\n`);
   return pass ? 0 : 1;
 }
-
-if (isMain(import.meta.url)) runCli(main);
