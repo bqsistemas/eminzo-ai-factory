@@ -27,11 +27,11 @@ test('B2 AC-1: the summary sentence comes after the machine lines, never between
   assert.match(role('approver'), /second line is one plain sentence/i);
 });
 
-test('B2 AC-2: build.md has a Checks table with the last nudge result, mode, what ran and what failed', () => {
+test('B2 AC-2: build.md has a Checks table with the targeted tests that ran, the selfcheck and what failed', () => {
   const text = role('builder');
   assert.match(text, /## Checks\n\|[^\n]*Result[^\n]*\|/);
-  assert.match(text, /nudge/i);
-  assert.match(text, /mode/i);
+  assert.match(text, /targeted tests/i);
+  assert.match(text, /selfcheck/);
 });
 
 test('B2 AC-3: reviewers attach proof to every [blocker]; the approver treats a bare one as not proven', () => {

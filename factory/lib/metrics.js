@@ -66,7 +66,8 @@ export function computeMetrics(root, last = DEFAULT_LAST) {
     const folder = join(root, 'factory/jobs', job.id);
     // Round counts and the round-1 gate are only final for a finished job; a running one would skew both.
     if (TERMINAL.has(job.stage)) {
-      const gate = headLine(join(folder, 'round-1/checks.md'))?.match(/^GATE: (PASS|FAIL)\b/)?.[1];
+      // A gate that failed and was retried inside round 1 left round-1/gate-fail-1.md: the first gate did not pass.
+      const gate = existsSync(join(folder, 'round-1/gate-fail-1.md')) ? 'FAIL' : headLine(join(folder, 'round-1/checks.md'))?.match(/^GATE: (PASS|FAIL)\b/)?.[1];
       if (gate) { gated += 1; if (gate === 'PASS') passed += 1; }
       if (Number.isInteger(job.round) && job.round >= 1) rounds.push(job.round);
     }

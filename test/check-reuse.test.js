@@ -10,12 +10,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { repo, CHECKS, git, setup, ok, building } from './helpers/check-reuse-harness.js';
 
-test('Claude and Codex builders both run their checks through the nudge, so both record the pass', () => {
+test('Claude and Codex builders read a role that runs only targeted tests, never the checks or the nudge', () => {
   const role = readFileSync(join(repo, 'factory/roles/builder.md'), 'utf8');
   const codex = readFileSync(join(repo, '.codex/agents/eminzo-builder.toml'), 'utf8');
-  assert.match(role, /Run the repo's checks with `factory\/bin\/nudge <job-id>`/);
-  assert.match(codex, /factory\/roles\/builder\.md/); // the profile reads the role that names the nudge
-  assert.doesNotMatch(codex, /Run `factory\/checks\.sh` in the worktree/);
+  assert.doesNotMatch(role, /Run the repo's checks with `factory\/bin\/nudge/);
+  assert.match(role, /never run `factory\/checks\.sh`, the nudge/i);
+  assert.match(codex, /factory\/roles\/builder\.md/);
 });
 
 test('checks inputs depend on the main checkout, never on which copy of the engine computes them', async () => {

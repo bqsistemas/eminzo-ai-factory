@@ -15,7 +15,7 @@ const read = (rel) => readFileSync(join(repo, rel), 'utf8');
 const frontmatter = (text) => text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
 const field = (front, name) => front.match(new RegExp(`^${name}:\\s*(.+)$`, 'm'))?.[1].trim();
 
-test('AC-8: eight agents; intake runs on fable without Bash, Edit or WebFetch; builder declares the nudge hook', () => {
+test('AC-8: eight agents; intake runs on fable without Bash, Edit or WebFetch; builder declares hooks but no nudge', () => {
   const dir = join(repo, '.claude/agents');
   const files = readdirSync(dir).filter((f) => f.endsWith('.md'));
   assert.equal(files.length, 8, 'eight agent files');
@@ -27,7 +27,7 @@ test('AC-8: eight agents; intake runs on fable without Bash, Edit or WebFetch; b
   for (const banned of ['Bash', 'Edit', 'WebFetch']) assert.ok(!tools.includes(banned), `intake has no ${banned}`);
 
   const builder = frontmatter(read('.claude/agents/eminzo-builder.md'));
-  assert.match(builder, /factory\/bin\/nudge/, 'builder frontmatter references factory/bin/nudge');
+  assert.doesNotMatch(builder, /factory\/bin\/nudge/, 'the builder no longer runs the nudge at stop');
   assert.match(builder, /^hooks:/m, 'builder frontmatter declares hooks');
 
   assert.equal(Object.keys(AVATARS).length, 8);
@@ -71,7 +71,7 @@ test('AC-8: checks.sh and every factory/bin script are executable; checks.sh run
   exec('factory/checks.sh');
   assert.match(read('factory/checks.sh'), /^npm test\b/m);
   const bins = readdirSync(join(repo, 'factory/bin'));
-  assert.deepEqual(bins.sort(), ['approve', 'base', 'dashboard', 'ensure-output', 'gate', 'init', 'job', 'mcp', 'nudge', 'profile', 'protect-tests', 'route', 'selfcheck', 'setup', 'setup-spec-review', 'visual']);
+  assert.deepEqual(bins.sort(), ['approve', 'base', 'dashboard', 'ensure-output', 'gate', 'guard-tests', 'init', 'job', 'mcp', 'nudge', 'profile', 'protect-tests', 'route', 'selfcheck', 'setup', 'setup-spec-review', 'visual']);
   for (const bin of bins) {
     exec(`factory/bin/${bin}`);
     assert.ok(statSync(join(repo, 'factory/bin', bin)).isFile());

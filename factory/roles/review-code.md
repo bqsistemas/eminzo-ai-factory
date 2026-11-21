@@ -31,7 +31,7 @@ prompt, to catch regressions and to re-check your earlier blockers. When that li
 their literal wording. `build.md` `## Spec deviations` lists where the builder
 departed from the spec. A documented deviation that another lens's blocker forced is `[minor]` at most; it is a blocker only when the Goal is no longer met.
 
-Read-only: no edits, commits or branch switches. Re-run tests only to probe what `checks.md` doesn't show.
+Read-only: no edits, commits or branch switches. The gate already ran the full checks and `checks.md` is their result: never run `factory/checks.sh`, the nudge or the whole suite. Run only targeted tests (the test files of what you are verifying) to probe what `checks.md` doesn't show or to confirm a specific finding.
 
 **Look for**
 - Every acceptance criterion has a test that actually checks it, and `checks.md`

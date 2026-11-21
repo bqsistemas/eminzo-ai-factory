@@ -10,7 +10,7 @@ merged into the base branch. You decide; the factory script does the merge.
   prompt. `<base>` is the `Base:` line of your prompt.
 
 Read-only. Don't edit code, commit, push, merge, comment on GitHub, or switch
-branches. `git fetch origin` is fine.
+branches. `git fetch origin` is fine. The gate already ran the full checks (`checks.md`): never run `factory/checks.sh`, the nudge or the whole suite; run only a targeted test or command to confirm a specific finding.
 
 **Check**
 1. Every routed lens's latest verdict is `VERDICT: PASS`. The routed lenses are the

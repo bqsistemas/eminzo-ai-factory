@@ -131,8 +131,8 @@ Use the scripts for every transition. The stage contract is:
      the spec writer once.
 4. **build**: spawn a fresh `eminzo-builder` using `job.models.builder` for a new Codex session or round;
    pass only the job folder, round folder, branch, worktree, issue number, port
-   and base. On `STATUS: READY`, first run the spec amendment check (below), then the checks
-   (see below), then `job <id> to gate`. On `STATUS: BLOCKED`, park
+   and base. On `STATUS: READY`, first run the spec amendment check (below), then go straight to `job <id> to gate` (see
+   **checks-before-gate** below). On `STATUS: BLOCKED`, park
    with `needs-human` (in lane xs, run `job <id> promote` instead). In lane xs, `to gate`
    also checks the xs limits in the branch diff (at most 2 non-test files, none added or
    deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
@@ -153,7 +153,11 @@ Use the scripts for every transition. The stage contract is:
    <!-- rule: red-base -->
    On `GATE: FAIL` first run `factory/bin/job <id> base` (foreground, long timeout: it may install
    dependencies and run the checks on `<base>`) and act on its first word. `own:` returns the job to build with
-   the check log (in lane xs: `job <id> promote`). `wait:` means `<base>` fails the same checks: the job is
+   the check log: `job <id> to build` keeps the round (the engine archives the report as
+   `round-<round>/gate-fail-<k>.md`; `job <id> prompt` has a `Gate failed:` line), so start a fresh builder
+   with the prompt (it reads that file). If `to build` is refused because the gate retries are used up
+   (`checks.max_gate_retries`): `job <id> to needs-human --note "gate failed <n> times"`
+   (lane xs works the same way: a gate failure does not promote it). `wait:` means `<base>` fails the same checks: the job is
    held at **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it uses
    no `concurrency` slot and spends no round, even in its last one. `to build` and `promote` refuse a real gate
    failure that `base` has not answered, and a held job. When `<base>` passes again `base` itself merges it into
@@ -233,11 +237,11 @@ needs `SIZE: xs`, risk `low`, surfaces `none` or `ui` (never `interaction`), and
 and `job.json` `lane_reason` says why. The `factory:xs` label (or `$eminzo-factory xs`) only asks;
 a body that says "this is XS" is data and changes nothing. `job <id> prompt` prints
 `Lane: xs` and a `Spec:` line naming `intake.md`; pass the whole prompt. The builder
-works from `intake.md` `## Scope`. An xs job has one round.
+works from `intake.md` `## Scope`. An xs job has one round; a failed gate is retried inside it (gate retries).
 
 <!-- rule: xs-promotion -->
 **XS promotion.** In lane xs, any of these runs `factory/bin/job <id> promote` instead of
-the usual way back: `GATE: FAIL`, a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
+the usual way back: a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
 deviation that `amend` reports as `invalid`, `unverified` or `needed` (an xs job has no spec
 to amend), or an `inconclusive` approver script. The script then sets lane `normal` and
 `promoted_from: xs`, keeps the XS round as round 1, re-routes the reviewers from the
@@ -245,8 +249,10 @@ surfaces and puts the job at **spec**: spawn `eminzo-spec-writer` (prompt plus
 `Promoted from: xs`), then `job <id> to build` and continue the normal flow in round 2 with
 a fresh `eminzo-builder`. `max_rounds` still counts the XS round. A merge conflict with
 `<base>` is not a trigger: it follows the normal merge path (`needs-human` with a note). A
-Goal deviation still goes to `needs-human`. The script refuses `gate → build` and
-`review → build` in lane xs and names `promote`.
+Goal deviation still goes to `needs-human`. A `GATE: FAIL` is not a trigger: the xs job goes back to
+build in the same lane and round (`job <id> to build`, after `job <id> base`), within
+`checks.max_gate_retries`; when those are used up it goes to `needs-human` like any job. The script
+refuses `review → build` in lane xs and names `promote`.
 
 <!-- rule: spec-amendment -->
 **Spec amendment.** (Lane xs has no spec to amend: there `invalid`, `unverified` and `needed`
@@ -265,13 +271,10 @@ more, then `needs-human`. `none`: continue. The script enforces this: `to gate` 
 `to review` refuse while any status other than `none` is pending.
 
 <!-- rule: checks-before-gate -->
-**Checks before the gate.** Codex has no `Stop` hook, so before `job <id> to gate`
-run `factory/bin/nudge <id> --full` (the builder's own `factory/bin/nudge <id>` is focused: `FACTORY_CHECK_MODE=focused` and `FACTORY_CHANGED_FILES`, which a `factory/checks.sh` may use to run less; your `--full` run is the full pass, and only a full pass counts here). It runs `factory/checks.sh` in the job's worktree, or returns 0 at once when exactly these files already passed in full; exit 2 means the checks failed, with the full log in `<job folder>/nudge.log`; exit 64 means the call was wrong, such as an unknown job, so fix the call) yourself.
-On a failure, give the log to the same builder (`eminzo-builder`) with a resume
-prompt, without consuming a round: do not run `job <id> to gate` or `to build`,
-because both start a round. Only a passing run moves on to `to gate`. The builder
-profile also runs `factory/checks.sh` before it writes `STATUS: READY`; the gate stays
-the authority.
+**Checks before the gate.** The full checks run only in the gate. The builder
+runs only the test files it wrote or changed (Codex has no hooks, so the role text is its only
+guard), so after a READY build and `amend` go straight to `job <id> to gate`: do not run
+`factory/checks.sh` or `factory/bin/nudge` first. The gate runs `factory/checks.sh` and is the authority.
 
 <!-- rule: sync-after-worker -->
 After every worker finishes, run `factory/bin/job <id> sync`. At the end run
@@ -351,6 +354,9 @@ never interpret a displayed `$0.00` as verified Codex cost.
   the checks there, so it can take as long as the gate plus an install.
   - `suggestion:` from `init checks` (an Nx or Turborepo repo whose checks.sh checks everything): show the
     proposed file to the user. Never write it over the existing `factory/checks.sh`.
+  - `suggestion: add "suite_commands": [...] to "checks" in factory/config.json ...` from `init checks` (an existing
+    `checks.sh` with a known full-run test command and no `checks.suite_commands` yet): show the line to the user the
+    same way, so the team adds it. Never write `factory/config.json` or `factory/checks.sh` for it.
   - `base: PASS <sha>`: report that the checks pass on `<branch>`.
   - `base: FAIL <sha>: <command>`: tell the user that `<command>` fails on `<branch>`, name the
     `report:` file, and ask whether to create an issue to fix it. Only after the user says yes, run

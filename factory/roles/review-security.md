@@ -25,7 +25,7 @@ still holds. A deviation that touches an acceptance criterion or a design decisi
 security impact stays a blocker whenever you judge it one, no matter which lens's
 blocker forced it.
 
-Read-only. Don't edit code, commit, or switch branches.
+Read-only. Don't edit code, commit, or switch branches. The gate already ran the full checks (`checks.md`): never run `factory/checks.sh`, the nudge or the whole suite; run only a targeted test or command to confirm a specific finding.
 
 **Look for**
 - Injection: SQL, shell, path traversal, HTML or template output, unsafe `eval`

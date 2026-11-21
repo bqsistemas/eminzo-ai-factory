@@ -15,7 +15,7 @@ async function atGate(t) {
 }
 
 describe('build.md moves into its round folder when the next round starts', { concurrency: true }, () => {
-  test('gate FAIL to build: build.md leaves the job folder for round-1/', async () => {
+  test('gate FAIL to build: build.md leaves the job folder for round-1/build-gate-fail-1.md', async () => {
     const t = setup();
     const id = await atGate(t);
     const dir = join(t.root, 'factory/jobs', id);
@@ -23,25 +23,25 @@ describe('build.md moves into its round folder when the next round starts', { co
     t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
     ok(t, await t.job(id, 'to', 'build'));
     assert.equal(existsSync(join(dir, 'build.md')), false);
-    assert.match(readFileSync(join(dir, 'round-1/build.md'), 'utf8'), /keep me/);
+    assert.match(readFileSync(join(dir, 'round-1/build-gate-fail-1.md'), 'utf8'), /keep me/);
   });
 
-  test('a build.md already in round-1/ is replaced; no build.md is a no-op', async () => {
+  test('a build-gate-fail-1.md already in round-1/ is replaced; no build.md is a no-op', async () => {
     const t = setup();
     const id = await atGate(t);
     const dir = join(t.root, 'factory/jobs', id);
     t.write(id, 'build.md', 'new\n');
-    t.write(id, 'round-1/build.md', 'old\n');
+    t.write(id, 'round-1/build-gate-fail-1.md', 'old\n');
     t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
     ok(t, await t.job(id, 'to', 'build'));
-    assert.equal(readFileSync(join(dir, 'round-1/build.md'), 'utf8'), 'new\n');
+    assert.equal(readFileSync(join(dir, 'round-1/build-gate-fail-1.md'), 'utf8'), 'new\n');
 
     const t2 = setup();
     const id2 = await atGate(t2);
     rmSync(join(t2.root, 'factory/jobs', id2, 'build.md'), { force: true });
     t2.write(id2, 'round-1/checks.md', 'GATE: FAIL\n');
     ok(t2, await t2.job(id2, 'to', 'build'));
-    assert.equal(existsSync(join(t2.root, 'factory/jobs', id2, 'round-1/build.md')), false);
+    assert.equal(existsSync(join(t2.root, 'factory/jobs', id2, 'round-1/build-gate-fail-1.md')), false);
   });
 
   test('a build.md that is a symlink is never moved or followed', async () => {
@@ -53,7 +53,7 @@ describe('build.md moves into its round folder when the next round starts', { co
     symlinkSync(join(t.root, 'outside.txt'), join(dir, 'build.md'));
     t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
     ok(t, await t.job(id, 'to', 'build'));
-    assert.equal(existsSync(join(dir, 'round-1/build.md')), false);
+    assert.equal(existsSync(join(dir, 'round-1/build-gate-fail-1.md')), false);
     assert.equal(lstatSync(join(dir, 'build.md')).isSymbolicLink(), true);
   });
 });

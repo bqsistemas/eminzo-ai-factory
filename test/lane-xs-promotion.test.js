@@ -85,12 +85,16 @@ describe('P0-6: promotion to the normal lane', { concurrency: true }, () => {
     // normal-lane rounds from here
     t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n');
     ok(t, await t.job(id, 'to', 'gate'));
-    t.write(id, 'round-2/checks.md', 'GATE: FAIL\n');
+    t.write(id, 'round-2/checks.md', 'GATE: PASS\n');
+    ok(t, await t.job(id, 'to', 'review'));
+    for (const lens of Object.keys(t.json(id).reviews)) t.write(id, `round-2/review-${lens}.md`, lens === 'code' ? 'VERDICT: CHANGES\n\n- [blocker] x.js:1 wrong\n' : 'VERDICT: PASS\n');
     ok(t, await t.job(id, 'to', 'build'));
     assert.equal(t.json(id).round, 3);
     t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n');
     ok(t, await t.job(id, 'to', 'gate'));
-    t.write(id, 'round-3/checks.md', 'GATE: FAIL\n');
+    t.write(id, 'round-3/checks.md', 'GATE: PASS\n');
+    ok(t, await t.job(id, 'to', 'review'));
+    for (const lens of Object.keys(t.json(id).reviews)) t.write(id, `round-3/review-${lens}.md`, lens === 'code' ? 'VERDICT: CHANGES\n\n- [blocker] x.js:1 wrong\n' : 'VERDICT: PASS\n');
     await refused(t, id, 'to', 'build'); // max_rounds 3 counts the XS round
   });
 
@@ -168,7 +172,7 @@ describe('P0-6 and P1-1: roles and skills state the lane and the script approver
       assert.match(skill, /--label factory --label factory:xs/);
       assert.match(skill, /job <id> lane/);
       assert.match(skill, /job <id> promote/);
-      for (const trigger of ['GATE: FAIL', 'VERDICT: CHANGES', 'STATUS: BLOCKED', 'inconclusive']) {
+      for (const trigger of ['VERDICT: CHANGES', 'STATUS: BLOCKED', 'inconclusive']) {
         assert.ok(skill.slice(skill.indexOf('<!-- rule: xs-promotion -->')).slice(0, 1500).includes(trigger), `${file} promotion lacks ${trigger}`);
       }
       assert.match(skill.slice(skill.indexOf('<!-- rule: xs-promotion -->')).slice(0, 1800), /merge conflict[^.]*normal merge path/);

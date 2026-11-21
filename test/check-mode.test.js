@@ -312,24 +312,20 @@ test('AC-4: the template runs everything when the list cannot be read (grep erro
   assert.deepEqual(template('focused', '', { asDir: true }), { status: 0, testsRan: true, skipped: false });
 });
 
-test('AC-3: the generated Claude builder (eminzo install) has a bare `eminzo nudge` Stop hook, which is the full checks', async () => {
+test('AC-3: the generated Claude builder (eminzo install) has no nudge Stop hook: the full checks run only in the gate', async () => {
   const { claudeAgent } = await import(join(repo, 'cli/src/adapters.js'));
   const source = readFileSync(join(repo, '.claude/agents/eminzo-builder.md'), 'utf8');
   const out = claudeAgent(source, { role: readFileSync(join(repo, 'factory/roles/builder.md'), 'utf8'), roleName: 'builder', version: '1.0.0' });
-  assert.match(out, /^\s+command: 'eminzo nudge'$/m);
-  assert.doesNotMatch(out, /eminzo nudge[^\n]*focused/);
-  assert.match(out, /eminzo nudge <job-id>/); // the builder's own, focused, run
+  assert.doesNotMatch(out, /command: .*eminzo nudge/);
+  assert.match(out, /command: .*eminzo ensure-output/);
 });
 
-test('the providers say it: Claude hook is full, Codex orchestrator runs --full, builders run focused', () => {
+test('the providers say it: the builder runs targeted tests, the gate runs the full checks, no skill nudges before the gate', () => {
   const read = (f) => readFileSync(join(repo, f), 'utf8');
-  const codexSkill = read('.agents/skills/eminzo-factory/SKILL.md');
-  assert.match(codexSkill, /run `factory\/bin\/nudge <id> --full`/);
-  assert.match(read('.claude/skills/eminzo-factory/SKILL.md'), /always the full checks/);
+  assert.doesNotMatch(read('.agents/skills/eminzo-factory/SKILL.md'), /run `factory\/bin\/nudge <id> --full`/);
   assert.match(read('.codex/agents/eminzo-builder.toml'), /factory\/roles\/builder\.md/);
-  assert.doesNotMatch(read('.codex/agents/eminzo-builder.toml'), /nudge <id> --full/);
-  assert.match(read('factory/roles/builder.md'), /`factory\/bin\/nudge <job-id>` in the foreground/);
-  assert.match(read('factory/roles/builder.md'), /full checks before the gate[\s\S]*not the final word/);
+  assert.match(read('factory/roles/builder.md'), /test files you wrote or changed/);
+  assert.match(read('factory/roles/builder.md'), /gate runs the full checks/);
 });
 
 test('the engine and roles stay generic: no repo, product or suite names in the scoped-checks code', () => {

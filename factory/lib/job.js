@@ -512,7 +512,7 @@ function setIntake(job, { decision, rescoped, risk, surfaces, size }) {
  * the job never sits without one. A symlink is left alone (never followed); an existing round-<n>/build.md
  * is the same round's file and is replaced. A round folder that is not a real directory is not used.
  */
-function keepBuild(c, job) {
+function keepBuild(c, job, name = 'build.md') {
   const from = file(c, job, 'build.md');
   let st;
   try { st = lstatSync(from); } catch { return; }
@@ -523,14 +523,55 @@ function keepBuild(c, job) {
   } catch {
     mkdirSync(folder, { recursive: true });
   }
-  const to = join(folder, 'build.md');
+  const to = join(folder, name);
   renameSync(from, to);
+}
+
+/** `checks.max_gate_retries`: a positive integer, else 3. How many times a job may go back from a failed gate to build. */
+export function maxGateRetries(config) {
+  const n = config?.checks?.max_gate_retries;
+  return Number.isInteger(n) && n >= 1 ? n : 3;
+}
+
+/** Moves `from` to `to` inside the round folder when it is a real file there; a symlink or a missing file is left alone. */
+function archive(folder, from, to) {
+  try {
+    if (!lstatSync(join(folder, from)).isFile()) return;
+    renameSync(join(folder, from), join(folder, to));
+  } catch { /* nothing to archive */ }
+}
+
+/**
+ * A failed gate goes back to build inside the same round: the report and log are archived as
+ * gate-fail-<k>.*, the build.md as build-gate-fail-<k>.md, and the gate is reset for the next attempt.
+ */
+function retryGate(c, job) {
+  const limit = maxGateRetries(c.config);
+  const used = job.gate_retries ?? 0;
+  if (used >= limit) {
+    throw new Refused(`the gate already failed ${used + 1} times and checks.max_gate_retries (${limit}) is used up; run: ${engineCommand('job')} ${job.id} to needs-human --note "gate failed ${used + 1} times"`);
+  }
+  const k = used + 1;
+  const folder = file(c, job, `round-${job.round}`);
+  archive(folder, 'checks.md', `gate-fail-${k}.md`);
+  archive(folder, 'checks.log', `gate-fail-${k}.log`);
+  archive(folder, 'visual.md', `gate-fail-${k}.visual.md`); // the gate's (or the builder's) visual result of the failed attempt
+  keepBuild(c, job, `build-gate-fail-${k}.md`);
+  job.gate_retries = k;
+  job.gate_retries_total = (job.gate_retries_total ?? used) + 1; // never reset: metrics see every retry, the budget is what a rework resets
+  job.gate_fail = { round: job.round, k };
+  job.engine_version = engineVersion();
+  job.gate = null;
+  job.reviews = {};
+  delete job.carried;
+  delete job.gated;
 }
 
 function nextRound(c, job) {
   keepBuild(c, job);
   job.history.push({ gate: job.gate, reviews: job.reviews, ...(Object.keys(job.carried ?? {}).length ? { carried: job.carried } : {}) });
   job.round += 1;
+  delete job.gate_fail;
   job.engine_version = engineVersion();
   job.gate = null;
   job.reviews = {};
@@ -769,7 +810,7 @@ function amendStatus(c, job) {
   return out;
 }
 
-/** Lane xs has one round: its failures go forward through `promote`, never back to build. */
+/** Lane xs has one round: a review CHANGES goes forward through `promote`, never back to build (a failed gate retries in the lane). */
 function assertNotXs(job, what) {
   if (job.lane === 'xs') throw new Refused(`lane xs runs one round, and ${what} promotes the job; run: ${engineCommand('job')} ${job.id} promote`);
 }
@@ -1571,6 +1612,7 @@ export const TRANSITIONS = {
     if (!pr) throw new Refused(`no open PR for factory/${job.id}`);
     job.pr = pr;
     job.gate = 'pending';
+    delete job.gate_fail;
   },
   'gate>review'(c, job) {
     const g = gateOf(file(c, job, `round-${job.round}/checks.md`));
@@ -1591,11 +1633,8 @@ export const TRANSITIONS = {
   'gate>build'(c, job) {
     const g = gateOf(file(c, job, `round-${job.round}/checks.md`));
     if (g !== 'FAIL') throw new Refused(`round-${job.round}/checks.md does not start with GATE: FAIL`);
-    assertNotXs(job, 'a failed gate');
-    assertBaseAnswered(c, job);
-    if (!(job.round < job.max_rounds)) throw new Refused(`round ${job.round} is the last round (max_rounds ${job.max_rounds})`);
-    job.gate = 'FAIL';
-    nextRound(c, job);
+    assertBaseAnswered(c, job); // lane xs retries a failed gate in its own round, within the same budget
+    retryGate(c, job);
     clearDecision(c, job);
   },
   'review>build'(c, job) {
@@ -1661,6 +1700,7 @@ export const TRANSITIONS = {
     const text = reworkNote(c, job);
     writeAtomic(file(c, job, `round-${job.round}/review-human.md`), text);
     job.max_rounds = job.round + 2;
+    job.gate_retries = 0;
     job.reviews = { ...job.reviews, human: 'CHANGES' };
     nextRound(c, job);
     job.decision = null;
@@ -2061,6 +2101,7 @@ function workerPrompt(c, id) {
     `Base branch: ${branch}`,
     `Language: ${c.lang}`,
     ...(job.round >= 2 ? previousHeadLine(job) : []),
+    ...(job.stage === 'build' && job.gate_fail?.round === job.round && Number.isInteger(job.gate_fail.k) ? [`Gate failed: read round-${job.round}/gate-fail-${job.gate_fail.k}.md`] : []),
     ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length ? reviewLines(c, job) : []),
     ...(job.round >= 1 && Object.keys(job.agents?.reviewers ?? {}).length && existsSync(join(c.root, 'factory/review.md')) ? ['Review policy: factory/review.md (main checkout)'] : []),
   ].join('\n');

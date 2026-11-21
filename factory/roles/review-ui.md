@@ -36,7 +36,7 @@ departed from the spec. A documented deviation that another lens's blocker force
 not a blocker when the Goal still holds; at most it is `[minor]`. It is a blocker only
 when the Goal is no longer met.
 
-Read-only. Don't edit code, commit, or switch branches.
+Read-only. Don't edit code, commit, or switch branches. The gate already ran the full checks (`checks.md`): never run `factory/checks.sh`, the nudge or the whole suite; run only a targeted test or command to confirm a specific finding.
 
 **Look for**
 - Layout, spacing, and alignment consistent with the existing UI.

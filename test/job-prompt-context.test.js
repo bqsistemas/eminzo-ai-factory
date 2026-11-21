@@ -91,7 +91,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     assert.match(out, /^Carried: ux from R1$/m);
   });
 
-  test('AC-10: a lens reviewing for the first time at round 2 (gate failure, human rework, newly routed) gets "First review for this lens"', async () => {
+  test('AC-10: a lens reviewing for the first time (after a gate failure, human rework, newly routed) gets "First review for this lens"', async () => {
     const t = setup();
     const id = await accepted(t, 'none');
     t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
@@ -99,12 +99,12 @@ describe('factory/bin/job', { concurrency: true }, () => {
     assert.match(await prompt(t, id), /^code: First review for this lens$/m, 'gate failure');
     t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    await startRound(t, id, 2);
+    await startRound(t, id, 1);
     editJob(t, id, (j) => { j.agents.reviewers.security = 'opus'; }); // security newly routed mid-job
-    verdictFiles(t, id, 2, { code: 'PASS' });
+    verdictFiles(t, id, 1, { code: 'PASS' });
     assert.match(await prompt(t, id), /^security: First review for this lens$/m, 'newly routed lens');
     await refused(t, id, 'to', 'approve'); // review-security.md is required
-    verdictFiles(t, id, 2, { security: 'PASS' });
+    verdictFiles(t, id, 1, { security: 'PASS' });
     ok(t, await t.job(id, 'to', 'approve'));
     t.write(id, 'decision.md', 'ESCALATE\nA human should look.\n');
     ok(t, await t.job(id, 'to', 'needs-human'));
@@ -200,25 +200,25 @@ describe('factory/bin/job', { concurrency: true }, () => {
     ok(t, await t.job(id, 'to', 'build'));
     t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    await startRound(t, id, 3);
+    await startRound(t, id, 2);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui']);
-    assert.deepEqual(t.json(id).carried, { ux: { verdict: 'PASS', round: 1 } }, 'ux carried across the failed round 2');
-    verdictFiles(t, id, 3, { code: 'PASS', ui: 'PASS' });
+    assert.deepEqual(t.json(id).carried, { ux: { verdict: 'PASS', round: 1 } }, 'ux carried across the failed gate of round 2');
+    verdictFiles(t, id, 2, { code: 'PASS', ui: 'PASS' });
     ok(t, await t.job(id, 'to', 'approve'));
     t.write(id, 'decision.md', 'ESCALATE\nA human should look.\n');
     ok(t, await t.job(id, 'to', 'needs-human'));
     t.setPr(31, { reviews: [{ author: { login: 'owner' }, authorAssociation: 'OWNER', state: 'CHANGES_REQUESTED', body: 'Rework it.' }] });
-    ok(t, await t.job(id, 'to', 'build')); // round 4, a full round
+    ok(t, await t.job(id, 'to', 'build')); // round 3, a full round
     t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    await startRound(t, id, 4);
+    await startRound(t, id, 3);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui', 'ux']);
-    verdictFiles(t, id, 4, { code: 'PASS', ux: 'PASS', ui: 'CHANGES' });
+    verdictFiles(t, id, 3, { code: 'PASS', ux: 'PASS', ui: 'CHANGES' });
     ok(t, await t.job(id, 'to', 'build'));
     t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    await startRound(t, id, 5);
-    assert.deepEqual(t.json(id).carried, { ux: { verdict: 'PASS', round: 4 } }, 'carried from the rework round, not from round 1');
+    await startRound(t, id, 4);
+    assert.deepEqual(t.json(id).carried, { ux: { verdict: 'PASS', round: 3 } }, 'carried from the rework round, not from round 1');
   });
 
   test('AC-14: in the last round a rerun CHANGES cannot go back to build, and approve is allowed with the carried PASS', async () => {

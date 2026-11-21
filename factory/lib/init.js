@@ -7,7 +7,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_AC_PATTERN } from './selfcheck.js';
-import { acPattern, checksFor, commands, detectStack, monorepoOf, packageManager, prepareCommand, scriptCommand as scriptFor, span, stacksIn } from './stacks.js';
+import { simpleCommands, normalize } from './guard-tests.js';
+import { acPattern, checksFor, commands, knownSuiteCommands, detectStack, monorepoOf, packageManager, prepareCommand, scriptCommand as scriptFor, span, stacksIn } from './stacks.js';
 import { Usage, engineCommand, factoryRoot, isMain, run, runCli, writeAtomic } from './util.js';
 
 const readJson = (file) => {
@@ -161,6 +162,35 @@ export function initAcPattern(root, stack) {
   return { changed: true, pattern };
 }
 
+/**
+ * Writes `checks.suite_commands` (the full-run test commands of the checks.sh setup generated) into
+ * factory/config.json when the key is absent; an existing value, even an empty list, stays. The edit is
+ * anchored inside an existing "checks" object, so the rest of the file keeps its layout; without one the
+ * file is rewritten with the key added.
+ * @returns {{changed: boolean, suite?: string[]}}
+ */
+export function initSuiteCommands(root, suite) {
+  const path = join(root, 'factory/config.json');
+  if (!existsSync(path) || !Array.isArray(suite) || !suite.length) return { changed: false };
+  const config = readJson(path);
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return { changed: false };
+  if (config.checks !== undefined && (config.checks === null || typeof config.checks !== 'object' || Array.isArray(config.checks))) return { changed: false };
+  if (Object.hasOwn(config.checks ?? {}, 'suite_commands')) return { changed: false };
+  const text = readFileSync(path, 'utf8');
+  const list = JSON.stringify(suite);
+  const re = /("checks"\s*:\s*\{)(\s*)(?=\S)/;
+  const rewrite = () => writeFileSync(path, `${JSON.stringify({ ...config, checks: { ...(config.checks ?? {}), suite_commands: suite } }, null, 2)}\n`);
+  if (config.checks && re.test(text) && !/^\s*\}/.test(text.slice(text.search(re) + text.match(re)[0].length))) {
+    writeFileSync(path, text.replace(re, (_, head, gap) => `${head}${gap}"suite_commands": ${list},${gap || ' '}`));
+    // The first "checks" in the text may be a nested one: only the top-level key counts.
+    const after = readJson(path)?.checks?.suite_commands;
+    if (JSON.stringify(after) !== list) { writeFileSync(path, text); rewrite(); }
+  } else {
+    rewrite();
+  }
+  return { changed: true, suite };
+}
+
 /** Copies the commented factory/review.md template unless the repo has a review.md. @returns {{created: boolean, path: string}} */
 export function initReview(root) {
   const path = join(root, 'factory/review.md');
@@ -184,6 +214,29 @@ function readChecks(path) {
 }
 
 /**
+ * For an existing checks.sh: the known full-run test commands it contains, when config.json has no
+ * `checks.suite_commands` yet, as the suggestion line to show a person. Never writes anything.
+ * @returns {string[]} zero or one line
+ */
+export function suiteSuggestion(root, checksPath) {
+  const config = readJson(join(root, 'factory/config.json'));
+  if (!config || Object.hasOwn(config.checks ?? {}, 'suite_commands')) return [];
+  const text = readChecks(checksPath);
+  if (text === null) return [];
+  const known = knownSuiteCommands();
+  const found = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    for (const tokens of simpleCommands(line)) {
+      const command = normalize(tokens).join(' ');
+      if (known.includes(command) && !found.includes(command)) found.push(command);
+    }
+  }
+  return found.length ? [`suggestion: add "suite_commands": ${JSON.stringify(found)} to "checks" in factory/config.json so the builder cannot run the full suite (the gate runs it)`] : [];
+}
+
+/**
  * `init checks`: writes factory/checks.sh when it is missing. When it exists, the repo is an Nx or Turborepo
  * workspace and the file does not name FACTORY_BASE (it checks every project on every job), it also proposes the
  * affected-only script and leaves the file byte-identical.
@@ -194,6 +247,7 @@ export function initChecksReport(root) {
   if (checks.created) return [`wrote ${checks.path} for the ${checks.stack} stack; review it`];
   const lines = [`factory/checks.sh already exists; left untouched`];
   if (!checks.executable) lines.push(`warning: ${checks.path} is not executable; run: chmod +x factory/checks.sh`);
+  lines.push(...suiteSuggestion(root, checks.path));
   const repo = repoOf(root);
   const tool = stacksIn(repo.files).includes('node') ? monorepoOf(repo) : null;
   const text = tool ? readChecks(checks.path) : null;
@@ -229,7 +283,11 @@ function main(args) {
   const checks = initChecks(root);
   process.stdout.write(checks.created ? `wrote ${checks.path} for the ${checks.stack} stack; review it\n` : `${checks.path} already exists; left untouched\n`);
   if (!checks.created && !checks.executable) process.stdout.write(`warning: ${checks.path} is not executable; run: chmod +x factory/checks.sh\n`);
+  if (!checks.created) for (const line of suiteSuggestion(root, checks.path)) process.stdout.write(`${line}\n`);
+  const generated = checks.created ? checksFor(repoOf(root)) : null;
   const stack = checks.stack ?? checksFor(repoOf(root)).stack;
+  const suite = generated ? initSuiteCommands(root, generated.suite) : { changed: false };
+  if (suite.changed) process.stdout.write(`set checks.suite_commands to ${JSON.stringify(suite.suite)} in factory/config.json; the builder's guard-tests hook refuses these\n`);
   const ac = initAcPattern(root, stack);
   if (ac.changed) process.stdout.write(`set selfcheck.ac_pattern to ${ac.pattern} in factory/config.json\n`);
 }

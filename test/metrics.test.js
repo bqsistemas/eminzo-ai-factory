@@ -66,6 +66,12 @@ test('P7: --last N keeps the newest jobs, and the median of an even count is the
   assert.equal(median([3, 1, 2]), 2);
 });
 
+test('a round-1 gate that failed and was retried in the same round does not count as a first pass', () => {
+  const root = fixture({ '001-a': { round: 1, gates: ['PASS'], reviews: [{ code: 'PASS' }], time: undefined, lessons: [] } });
+  writeFileSync(join(root, 'factory/jobs/001-a/round-1/gate-fail-1.md'), 'GATE: FAIL\n');
+  assert.deepEqual(computeMetrics(root, 20).gate_pass_round1, { passed: 0, total: 1, rate: 0 });
+});
+
 test('P7 AC-2: a job without time_by_kind still counts for the other metrics', () => {
   const root = fixture({ '001-a': { ...JOBS['003-c'], time: undefined } });
   const m = computeMetrics(root, 20);

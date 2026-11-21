@@ -131,7 +131,7 @@ export function periodSummary(root, { from, to, now = Date.now() } = {}) {
     rounds: {
       total: rounds.reduce((s, r) => s + r, 0),
       extra: rounds.reduce((s, r) => s + Math.max(0, r - 1), 0),
-      one_round_jobs: rounds.filter((r) => r === 1).length,
+      one_round_jobs: finished.filter((v) => v.round === 1 && v.gate_retries === 0).length,
     },
     cost_usd: { known: sum(costs), jobs_with_cost: costs.length, jobs_without_cost: finished.length - costs.length },
     by_lane: byLane,

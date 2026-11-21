@@ -129,9 +129,9 @@ describe('factory/bin/job', { concurrency: true }, () => {
     ok(t, await t.job(id, 'to', 'build'));
     t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    await startRound(t, id, 2);
+    await startRound(t, id, 1);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui', 'ux'], 'no lens was ever reviewed: all run');
-    verdictFiles(t, id, 2, { code: 'PASS', ux: 'PASS', ui: 'PASS' });
+    verdictFiles(t, id, 1, { code: 'PASS', ux: 'PASS', ui: 'PASS' });
     ok(t, await t.job(id, 'to', 'approve'));
     t.write(id, 'decision.md', 'ESCALATE\nA human should look.\n');
     ok(t, await t.job(id, 'to', 'needs-human'));
@@ -139,7 +139,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     ok(t, await t.job(id, 'to', 'build'));
     t.write(id, 'build.md', 'STATUS: READY\n\n# Build\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    await startRound(t, id, 3);
+    await startRound(t, id, 2);
     assert.deepEqual(Object.keys(t.json(id).reviews).sort(), ['code', 'ui', 'ux'], 'a human round reruns every lens');
     assert.deepEqual(t.json(id).carried ?? {}, {});
   });

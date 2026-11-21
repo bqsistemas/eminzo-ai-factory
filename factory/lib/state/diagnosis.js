@@ -47,7 +47,7 @@ function proposals({ causes, extra, lenses, escalation, costByRisk, jobs, config
   if (gate >= THRESHOLDS.causeRounds && share(gate, extra) >= THRESHOLDS.causeShare) {
     out.push({
       id: 'gate-failures',
-      text: `${gate} of ${extra} extra rounds started because the gate failed. Have the builder run the focused checks (eminzo nudge <job>) before STATUS: READY, and look in checks.log for tests that fail and then pass without a change.`,
+      text: `${gate} of ${extra} extra attempts (rounds and gate retries) came from a failed gate. Read the archived gate-fail-*.md reports in those jobs' round folders to see what failed, and make the builder run the targeted tests of the files it touched before STATUS: READY (the full checks run only in the gate). Look for tests that fail and then pass without a change.`,
       evidence: { extra_rounds: gate, of: extra },
     });
   }
@@ -106,11 +106,16 @@ export function diagnosis(root, { from, to, now = Date.now(), config = {} } = {}
 
   const causes = {};
   let extra = 0;
+  let retries = 0; // failed gates that went back to build inside a round: attempts that are not rounds
   const lenses = {};
   const byRole = {};
   const byRisk = {};
   const escalation = {};
   for (const d of details) {
+    if (d.gate_retries > 0) {
+      retries += d.gate_retries;
+      causes.gate = (causes.gate ?? 0) + d.gate_retries;
+    }
     for (const r of d.rounds.slice(1)) {
       extra += 1;
       const list = roundCauses(d.rounds[r.round - 2]);
@@ -140,15 +145,16 @@ export function diagnosis(root, { from, to, now = Date.now(), config = {} } = {}
   const roleTotal = Object.values(byRole).reduce((s, v) => s + v, 0);
   const costByRole = Object.entries(byRole).map(([role, usd]) => ({ role, usd: money(usd), share: share(usd, roleTotal) })).sort((a, b) => b.usd - a.usd);
   const costByRisk = Object.entries(byRisk).map(([risk, v]) => ({ risk, usd: money(v.usd), jobs: v.jobs, share: share(v.usd, known) })).sort((a, b) => b.usd - a.usd);
-  const extraCauses = Object.entries(causes).map(([cause, rounds]) => ({ cause, label: causeLabel(cause), rounds, share: share(rounds, extra) }))
+  const extraCauses = Object.entries(causes).map(([cause, rounds]) => ({ cause, label: causeLabel(cause), rounds, share: share(rounds, extra + retries) }))
     .sort((a, b) => b.rounds - a.rounds || a.cause.localeCompare(b.cause));
   const rounds = details.map((d) => d.round);
+  const firstPass = details.filter((d) => d.round === 1 && d.gate_retries === 0).length;
   const timeBySize = Object.fromEntries(SIZES.map((size) => [size, spread(details.filter((d) => d.size === size).map((d) => d.minutes.until_approval))]));
 
-  const found = proposals({ causes, extra, lenses, escalation, costByRisk, jobs: details.length, config });
+  const found = proposals({ causes, extra: extra + retries, lenses, escalation, costByRisk, jobs: details.length, config });
   const top = extraCauses[0];
   const summary = details.length
-    ? `${details.length} jobs finished from ${iso(start)} to ${iso(end)} with ${extra} extra round${extra === 1 ? '' : 's'}`
+    ? `${details.length} jobs finished from ${iso(start)} to ${iso(end)} with ${extra} extra round${extra === 1 ? '' : 's'}${retries ? ` and ${retries} gate ${retries === 1 ? 'retry' : 'retries'}` : ''}`
       + `${top ? `, most often because ${top.label} (${top.rounds})` : ''}; $${known.toFixed(2)} of known cost`
       + `${costByRisk[0] ? `, ${pct(costByRisk[0].share ?? 0)} of it in ${costByRisk[0].risk}-risk jobs` : ''}. ${found.length} proposal${found.length === 1 ? '' : 's'}.`
     : `No job finished from ${iso(start)} to ${iso(end)}, so there is nothing to diagnose yet.`;
@@ -158,7 +164,8 @@ export function diagnosis(root, { from, to, now = Date.now(), config = {} } = {}
     from: iso(start),
     to: iso(end),
     jobs: details.length,
-    rounds: { total: rounds.reduce((s, r) => s + r, 0), extra, one_round_jobs: rounds.filter((r) => r === 1).length },
+    rounds: { total: rounds.reduce((s, r) => s + r, 0), extra, one_round_jobs: firstPass },
+    gate_retries: retries,
     extra_round_causes: extraCauses,
     first_review_changes: lenses,
     cost: { known, by_role: costByRole, by_risk: costByRisk },

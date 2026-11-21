@@ -358,3 +358,142 @@ test('E2: init checks is silent when checks.sh names FACTORY_BASE or the repo is
   assert.match(checks(fresh), /FACTORY_BASE/);
   assert.doesNotMatch(res.stdout, /suggestion:/);
 });
+
+// The guard-tests hook refuses the commands in checks.suite_commands, so setup writes the list next to the checks.sh it generates.
+const suite = (root) => JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8')).checks?.suite_commands;
+const STACK_SUITES = [
+  ['node npm', { 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) }, ['npm test']],
+  ['node pnpm', { 'package.json': JSON.stringify({ scripts: { test: 'jest' } }), 'pnpm-lock.yaml': '' }, ['pnpm test']],
+  ['node yarn', { 'package.json': JSON.stringify({ scripts: { test: 'jest' } }), 'yarn.lock': '' }, ['yarn test']],
+  ['node bun', { 'package.json': JSON.stringify({ scripts: { test: 'jest' } }), 'bun.lock': '' }, ['bun run test']],
+  ['go', { 'go.mod': 'module x\n' }, ['go test ./...']],
+  ['python', { 'pyproject.toml': '[tool.pytest]\n', 'pytest.ini': '' }, ['python -m pytest']],
+  ['rust', { 'Cargo.toml': '[package]\n' }, ['cargo test']],
+  ['maven', { 'pom.xml': '<project/>' }, ['mvn -B -q test']],
+  ['gradle wrapper', { 'build.gradle': '', gradlew: '' }, ['./gradlew test']],
+  ['gradle', { 'build.gradle': '' }, ['gradle test']],
+  ['ruby', { Gemfile: '', 'spec/': '' }, ['bundle exec rspec', 'bundle exec rake test']],
+  ['nx', { 'package.json': JSON.stringify({ scripts: { test: 'nx test' } }), 'nx.json': '{}', 'pnpm-lock.yaml': '' }, ['pnpm exec nx run-many -t test']],
+  ['turbo', { 'package.json': JSON.stringify({ scripts: { test: 'turbo run test' } }), 'turbo.json': '{"tasks":{"test":{}}}' }, ['npx --no-install turbo run test']],
+];
+for (const [name, files, expected] of STACK_SUITES) {
+  test(`suite_commands: ${name}: init writes ${JSON.stringify(expected)} with the checks.sh it generates`, () => {
+    const root = sandbox(files);
+    assert.equal(init(root).status, 0);
+    assert.deepEqual(suite(root), expected);
+    assert.deepEqual(checksFor({ files: Object.keys(files).map((f) => f.replace(/\/$/, '')), packageJson: files['package.json'] ? JSON.parse(files['package.json']) : null, read: (f) => files[f] ?? '' }).suite, expected);
+  });
+}
+
+test('suite_commands: an existing value is never overwritten, a hand-written checks.sh gets none, a second init changes nothing', () => {
+  const mine = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(mine, 'factory/config.json'), '{\n  "checks": { "suite_commands": ["make test"] },\n  "selfcheck": { "ac_pattern": "AC-\\\\d+" }\n}\n');
+  init(mine);
+  assert.deepEqual(suite(mine), ['make test']);
+
+  const hand = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(hand, 'factory/checks.sh'), '#!/bin/sh\nexit 0\n');
+  init(hand);
+  assert.equal(suite(hand), undefined);
+
+  const twice = sandbox({ 'go.mod': 'module x\n' });
+  init(twice);
+  const before = readFileSync(join(twice, 'factory/config.json'), 'utf8');
+  init(twice);
+  assert.equal(readFileSync(join(twice, 'factory/config.json'), 'utf8'), before);
+
+  const none = sandbox({ 'README.md': 'x' });
+  init(none);
+  assert.equal(suite(none), undefined, 'no stack, no list');
+});
+
+test('suite_commands: init keeps the layout of a config that has a checks object', () => {
+  const root = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(root, 'factory/config.json'), '{\n  "checks": { "max_runs_per_round": 6 },\n  "selfcheck": { "ac_pattern": "AC-\\\\d+" }\n}\n');
+  init(root);
+  const text = readFileSync(join(root, 'factory/config.json'), 'utf8');
+  assert.match(text, /"checks": \{ "suite_commands": \["go test \.\/\.\.\."\], "max_runs_per_round": 6 \}/);
+  assert.deepEqual(suite(root), ['go test ./...']);
+});
+
+test('suite_commands: eminzo enable writes it into the new config.json only when it generates checks.sh', () => {
+  const template = readFileSync(join(repo, 'factory/templates/config.json'), 'utf8');
+  const fill = { repoUrl: 'https://github.com/a/b', defaultBranch: 'main', version: '1.2.3' };
+  const checks = detectChecks({ files: ['go.mod'], packageJson: null, read: () => '' });
+  assert.deepEqual(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: checks.suite })).checks.suite_commands, ['go test ./...']);
+  assert.equal(Object.hasOwn(JSON.parse(configText(template, { ...fill, stack: checks.stack, suite: [] })).checks, 'suite_commands'), false);
+  assert.equal(Object.hasOwn(JSON.parse(configText(template, { ...fill })).checks, 'suite_commands'), false);
+});
+
+test('suite_commands: enable keeping a hand-written checks.sh leaves the key absent, so setup then suggests the line', () => {
+  const template = readFileSync(join(repo, 'factory/templates/config.json'), 'utf8');
+  const config = configText(template, { repoUrl: 'https://github.com/a/b', defaultBranch: 'main', version: '1.2.3', stack: 'node', suite: [] });
+  const root = sandbox({ 'package.json': '{}' }, { config: false });
+  writeFileSync(join(root, 'factory/config.json'), config);
+  writeFileSync(join(root, 'factory/checks.sh'), '#!/bin/sh\nnpm test\n');
+  assert.match(initChecksCmd(root).stdout, /^suggestion: add "suite_commands": \["npm test"\] to "checks"/m);
+  // an explicit empty list set by a team stays set: no nagging
+  writeFileSync(join(root, 'factory/config.json'), JSON.stringify({ ...JSON.parse(config), checks: { suite_commands: [] } }));
+  assert.doesNotMatch(initChecksCmd(root).stdout, /suggestion:/);
+});
+
+test('suite_commands: a nested "checks" object is not mistaken for the top-level one', () => {
+  const root = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(root, 'factory/config.json'), '{"providers":{"x":{"checks":{"a":1}}},"checks":{"max_runs_per_round":6}}\n');
+  init(root);
+  const cfg = JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8'));
+  assert.deepEqual(cfg.checks.suite_commands, ['go test ./...']);
+  assert.deepEqual(cfg.providers.x.checks, { a: 1 }, 'the nested object is untouched');
+  assert.equal(cfg.checks.max_runs_per_round, 6);
+});
+
+// An existing checks.sh is never rewritten, so setup suggests the checks.suite_commands line instead of writing it.
+const initChecksCmd = (root) => spawnSync(join(repo, 'factory/bin/init'), ['checks'], { cwd: root, encoding: 'utf8', env: { ...process.env, FACTORY_ROOT: root } });
+const SUGGEST = /^suggestion: add "suite_commands": (\[.*\]) to "checks" in factory\/config\.json so the builder cannot run the full suite \(the gate runs it\)$/m;
+
+test('suggestion: an existing checks.sh with a known full-run command gets a suggestion for config.json, and nothing is written', () => {
+  for (const [lines, expected] of [
+    ['npm run lint\nnpm test\n', ['npm test']],
+    ['set -e\ngo vet ./...\ngo test ./...\n', ['go test ./...']],
+    ['CI=1 pnpm test > out.log 2>&1\n', ['pnpm test']],
+    ['bundle exec rspec\nbundle exec rake test\n', ['bundle exec rspec', 'bundle exec rake test']],
+    ['mvn -B -q test\n', ['mvn -B -q test']],
+  ]) {
+    const root = sandbox({ 'go.mod': 'module x\n' });
+    const script = `#!/bin/sh\n${lines}`;
+    writeFileSync(join(root, 'factory/checks.sh'), script);
+    const configBefore = readFileSync(join(root, 'factory/config.json'), 'utf8');
+    const res = initChecksCmd(root);
+    assert.equal(res.status, 0, res.stderr);
+    const m = SUGGEST.exec(res.stdout);
+    assert.ok(m, `suggestion for ${JSON.stringify(lines)}: ${res.stdout}`);
+    assert.deepEqual(JSON.parse(m[1]), expected);
+    assert.equal(readFileSync(join(root, 'factory/checks.sh'), 'utf8'), script);
+    assert.equal(readFileSync(join(root, 'factory/config.json'), 'utf8'), configBefore);
+  }
+});
+
+test('suggestion: nothing when the key exists (even an empty list), when no known command is in checks.sh, or when checks.sh is generated', () => {
+  const has = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(has, 'factory/checks.sh'), '#!/bin/sh\nnpm test\n');
+  writeFileSync(join(has, 'factory/config.json'), '{ "checks": { "suite_commands": [] } }\n');
+  assert.doesNotMatch(initChecksCmd(has).stdout, /suggestion:/);
+
+  const unknown = sandbox({ 'go.mod': 'module x\n' });
+  writeFileSync(join(unknown, 'factory/checks.sh'), '#!/bin/sh\nmake check\nnpm run lint\necho "npm test"\n');
+  assert.doesNotMatch(initChecksCmd(unknown).stdout, /suggestion:/);
+
+  const fresh = sandbox({ 'go.mod': 'module x\n' });
+  const res = initChecksCmd(fresh);
+  assert.match(res.stdout, /^wrote /m);
+  assert.doesNotMatch(res.stdout, /suggestion:/);
+});
+
+test('suggestion: both skills tell the orchestrator to show it, like the Nx one, and never write it', () => {
+  for (const f of ['.claude/skills/eminzo-factory/SKILL.md', '.agents/skills/eminzo-factory/SKILL.md']) {
+    const text = readFileSync(join(repo, f), 'utf8');
+    const rule = text.slice(text.indexOf('<!-- rule: base-check -->')).slice(0, 2200);
+    assert.match(rule, /suite_commands/, f);
+    assert.match(rule, /Never write/i, f);
+  }
+});

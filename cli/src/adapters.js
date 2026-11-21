@@ -168,7 +168,7 @@ export function sharedFragments(text) {
   return out;
 }
 
-// Optional per role: protect (Claude PreToolUse hook), nudge (Stop hook), alsoWrites (extra files it may write), mustPrint.
+// Optional per role: protect and guardTests (Claude PreToolUse hooks), nudge (Stop hook, no role uses it now), alsoWrites (extra files it may write), mustPrint.
 const FIELDS = ['description', 'codexDescription', 'tools', 'model', 'scope', 'file', 'regex', 'tokens', 'inputs', 'rules'];
 
 function check(role, meta) {
@@ -208,7 +208,11 @@ export function repoClaudeAgent(role, meta, { claude, shared }) {
   if (meta.nudge) stop.push(hook(`'"$CLAUDE_PROJECT_DIR"/factory/bin/nudge'`));
   stop.push(hook(`"\\"$CLAUDE_PROJECT_DIR\\"/factory/bin/ensure-output '{${meta.scope}}/${meta.file}' '${meta.regex}'"`));
   // A role with `protect` also gets a PreToolUse hook that denies edits of protected tests (Codex has no hooks).
-  const pre = meta.protect ? [`  PreToolUse:\n    - matcher: ${PROTECT_MATCHER}\n      hooks:\n${hook(`'"$CLAUDE_PROJECT_DIR"/factory/bin/protect-tests'`)}`] : [];
+  // A role with `guardTests` also gets a Bash PreToolUse hook that refuses the full suite (the gate runs it once per round).
+  const matchers = [];
+  if (meta.protect) matchers.push(`    - matcher: ${PROTECT_MATCHER}\n      hooks:\n${hook(`'"$CLAUDE_PROJECT_DIR"/factory/bin/protect-tests'`)}`);
+  if (meta.guardTests) matchers.push(`    - matcher: Bash\n      hooks:\n${hook(`'"$CLAUDE_PROJECT_DIR"/factory/bin/guard-tests'`)}`);
+  const pre = matchers.length ? [`  PreToolUse:\n${matchers.join('\n')}`] : [];
   const hooks = [`  Stop:\n    - hooks:\n${stop.join('\n')}`, ...pre].join('\n'); // Stop stays first: the desktop parses it
   const vars = { ...parts(role, meta, shared, { path: `${folder}/${meta.file}`, hookNote: ' A stop hook checks this and will not let you finish otherwise.' }), hooks };
   return fill(claude, vars, `agent-claude.md (${role})`);

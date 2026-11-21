@@ -65,10 +65,11 @@ a los repos nuevos.
   usa los IDs configurados en `providers.codex` (`gpt-6-luna` y
   `gpt-6.1-sol`); su disponibilidad depende de la cuenta, plan y cliente, por
   lo que deben validarse antes de ejecutar una cola real.
-- El hook `Stop` de `.claude/agents/eminzo-builder.md` sigue siendo específico de Claude.
-  En Codex, el builder corre `factory/bin/nudge <id>` antes de escribir `STATUS: READY`,
-  la skill corre `factory/bin/nudge <id>` antes de `job <id> to gate` y el gate
-  explícito (`factory/bin/gate`) es la barrera obligatoria.
+- Las comprobaciones completas corren solo en el gate (`factory/bin/gate`), una vez por
+  ronda. El builder corre únicamente los archivos de test que escribió o cambió, y la skill
+  pasa de un build `READY` (más `amend`) directo a `job <id> to gate`, sin correr el nudge.
+  Codex no tiene hooks: el texto del rol es su única barrera contra la suite completa
+  (Claude suma además el hook `PreToolUse` `guard-tests`, que rechaza `factory/checks.sh`, el nudge y los comandos de suite completa).
 - No se agregó persistencia ni una migración a Agents API: GitHub, worktrees,
   scripts y artefactos de etapa siguen siendo la frontera compartida.
 

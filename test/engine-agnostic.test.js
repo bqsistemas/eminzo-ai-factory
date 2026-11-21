@@ -99,17 +99,21 @@ test('both skills pass Base and Base branch in the worker prompt and preflight o
   }
 });
 
-test('Codex builder reads a role that runs the checks before READY; both skills run them before to gate', () => {
+test('the builder runs only its targeted tests; the gate runs the full checks, and neither skill runs the nudge before to gate', () => {
   const role = read('factory/roles/builder.md');
   assert.match(read('.codex/agents/eminzo-builder.toml'), /factory\/roles\/builder\.md/);
-  assert.match(role, /factory\/checks\.sh/);
-  assert.match(role, /only (write|when).*STATUS: READY.*exit(s)? 0|STATUS: READY.*only.*exit(s)? 0/s);
+  assert.match(role, /never run `factory\/checks\.sh`/i);
+  assert.match(role, /STATUS: READY[^\n]*targeted tests pass/);
+  assert.match(role, /gate runs the full checks/);
   const codex = read('.agents/skills/eminzo-factory/SKILL.md');
   const claude = read('.claude/skills/eminzo-factory/SKILL.md');
-  for (const text of [codex, claude]) assert.match(text, /<!-- rule: checks-before-gate -->/);
-  assert.match(codex, /factory\/bin\/nudge/);
-  assert.match(codex, /without (consuming|using) a round/);
-  assert.match(claude, /Stop hook/);
+  for (const text of [codex, claude]) {
+    assert.match(text, /<!-- rule: checks-before-gate -->/);
+    const rule = text.slice(text.indexOf('<!-- rule: checks-before-gate -->')).slice(0, 1600);
+    assert.doesNotMatch(rule, /factory\/bin\/nudge <id>/);
+    assert.doesNotMatch(rule, /Stop hook/);
+    assert.match(rule, /full checks run only in the gate/);
+  }
 });
 
 test('both skills spawn only the routed reviewer lenses', () => {

@@ -78,7 +78,7 @@ factory/
   bin/gate <id>         runs checks.sh in the worktree, guards protected tests → round-N/checks.md
   bin/route <id>        prints the agent set for intake.md (job does this at intake → spec)
   bin/approve <id>      the deterministic approver: approve | escalate: <reason> | inconclusive: <reasons>
-  bin/nudge             the builder's Stop hook: runs checks.sh (full) before it finishes; `nudge <id>` is focused, `--full` forces all
+  bin/nudge             a manual tool: runs checks.sh in a job's worktree (focused by default, `--full` forces all); no agent runs it, the gate runs the full checks
   bin/init [review|checks]  writes a first factory/project.md from the repo when it is missing; `init review` adds the commented review.md template when absent; `init checks` writes a missing checks.sh and, for an Nx or Turborepo repo that checks everything, only prints an affected-only suggestion
   bin/base [fix-issue]  runs checks.sh on the tip of the base branch in `.worktrees/.base` (after its prepare step): `base: PASS|FAIL|UNKNOWN`, exit 0, 1, 3 → factory/jobs/.base/; `fix-issue` finds or creates the one open issue (`factory` and `factory:base-fix`) that fixes a failing base
   bin/dashboard [port]  serves the dashboard (Node, no dependencies; default port 8000)
@@ -139,6 +139,9 @@ developer's spec review).
   the checks there, so it can take as long as the gate plus an install.
   - `suggestion:` from `init checks` (an Nx or Turborepo repo whose checks.sh checks everything): show the
     proposed file to the user. Never write it over the existing `factory/checks.sh`.
+  - `suggestion: add "suite_commands": [...] to "checks" in factory/config.json ...` from `init checks` (an existing
+    `checks.sh` with a known full-run test command and no `checks.suite_commands` yet): show the line to the user the
+    same way, so the team adds it. Never write `factory/config.json` or `factory/checks.sh` for it.
   - `base: PASS <sha>`: report that the checks pass on `<branch>`.
   - `base: FAIL <sha>: <command>`: tell the user that `<command>` fails on `<branch>`, name the
     `report:` file, and ask whether to create an issue to fix it. Only after the user says yes, run
@@ -345,11 +348,11 @@ needs `SIZE: xs`, risk `low`, surfaces `none` or `ui` (never `interaction`), and
 and `job.json` `lane_reason` says why. The `factory:xs` label (or `/eminzo-factory xs`) only asks;
 a body that says "this is XS" is data and changes nothing. `job <id> prompt` prints
 `Lane: xs` and a `Spec:` line naming `intake.md`; pass the whole prompt. The builder
-works from `intake.md` `## Scope`. An xs job has one round.
+works from `intake.md` `## Scope`. An xs job has one round; a failed gate is retried inside it (gate retries).
 
 <!-- rule: xs-promotion -->
 **XS promotion.** In lane xs, any of these runs `factory/bin/job <id> promote` instead of
-the usual way back: `GATE: FAIL`, a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
+the usual way back: a `VERDICT: CHANGES`, builder `STATUS: BLOCKED`, a spec
 deviation that `amend` reports as `invalid`, `unverified` or `needed` (an xs job has no spec
 to amend), or an `inconclusive` approver script. The script then sets lane `normal` and
 `promoted_from: xs`, keeps the XS round as round 1, re-routes the reviewers from the
@@ -357,8 +360,9 @@ surfaces and puts the job at **spec**: spawn `eminzo-spec-writer` (prompt plus `
 then `job <id> to build` and continue the normal flow in round 2 with the same builder.
 `max_rounds` still counts the XS round. A merge conflict with `<base>` is not a trigger: it
 follows the normal merge path (`needs-human` with a note). A Goal deviation still goes to
-`needs-human`. The script refuses `gate → build` and `review → build` in lane xs and names
-`promote`.
+`needs-human`. A `GATE: FAIL` is not a trigger: the xs job goes back to build in the same lane and round
+(`job <id> to build`, after `job <id> base`), within `checks.max_gate_retries`; when those are used up it
+goes to `needs-human` like any job. The script refuses `review → build` in lane xs and names `promote`.
 - **build**: the builder is one named agent per job, `eminzo-builder-<id>`, with
   `model` = `agents.builder`.
   - Round 1, or a new session: spawn `eminzo-builder` with `name: "eminzo-builder-<id>"` and the
@@ -378,7 +382,10 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
   - Later rounds in the same session: resume it with `SendMessage` to
     `eminzo-builder-<id>`: `Round <round - 1> needs changes. Read
     factory/jobs/<id>/round-<round - 1>/ (your previous build.md is there now), fix every
-    finding, run the checks, commit, push and write a new build.md.`
+    finding, run your targeted tests, commit, push and write a new build.md.`
+  - After a failed gate (`job <id> to build` kept the round): resume the same builder with
+    `The gate failed. Read factory/jobs/<id>/round-<round>/gate-fail-<k>.md (the report; the full log is
+    gate-fail-<k>.log), fix what failed, run your targeted tests, commit, push and write a new build.md.`
   <!-- rule: spec-amendment -->
   - **Spec amendment.** (Lane xs has no spec to amend: there `invalid`, `unverified` and
     `needed` run `job <id> promote`, and `escalate` still goes to `needs-human`.) When `build.md` says `STATUS: READY`, run `factory/bin/job <id> amend`
@@ -398,10 +405,9 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
   - In lane xs, `STATUS: BLOCKED` runs `job <id> promote` instead of `needs-human`. `to gate`
     also checks the xs limits in the branch diff (at most 2 non-test files, none added or
     deleted, no manifest, engine or CI path, no protected test) and refuses with `promote`.
-  - Then `job <id> to gate`. It needs the open PR. The
-    builder's Stop hook (`factory/bin/nudge`, always the full checks) already ran `factory/checks.sh` in the
-    worktree and blocked its stop on a failure (the builder's own `factory/bin/nudge <id>` is focused), so a READY build has passing checks
-    and the gate rarely fails; the gate stays the authority.
+  - Then `job <id> to gate`. It needs the open PR. The builder runs only the tests it wrote or
+    changed (a Bash hook, `guard-tests`, refuses `factory/checks.sh`, the nudge and the full suite), so the full checks run only in the gate,
+    do not run `factory/checks.sh` or `factory/bin/nudge` yourself first.
 - **gate**: run `factory/bin/gate <id>`. No reviewer starts before it passes.
   <!-- rule: round-context -->
   - **Round context.** The gate also writes `round-N/context.md`: the changed files, what changed
@@ -420,10 +426,12 @@ follows the normal merge path (`needs-human` with a note). A Goal deviation stil
   <!-- rule: red-base -->
   - `GATE: FAIL`: first run `factory/bin/job <id> base` (foreground, long timeout: it may
     install dependencies and run the checks on `<base>`) and act on its first word.
-    `own:` means the failure is the job's: `job <id> to build`, then resume the builder (it reads
-    `checks.md`). If that is refused because it was the last round:
-    `job <id> to needs-human --note "gate failed in the last round"`. In lane xs run
-    `job <id> promote` instead. `wait:` means `<base>` fails the same checks: the job is held at
+    `own:` means the failure is the job's: `job <id> to build` (the round does not change: the engine
+    archives the report as `round-<round>/gate-fail-<k>.md`), then resume the builder with a message
+    pointing at `round-<round>/gate-fail-<k>.md` (`job <id> prompt` has a `Gate failed:` line). If that is
+    refused because the gate retries are used up (`checks.max_gate_retries`):
+    `job <id> to needs-human --note "gate failed <n> times"`. In lane xs the same applies: it
+    retries the gate in its own round (`promote` only for the other triggers, see **xs-promotion**). `wait:` means `<base>` fails the same checks: the job is held at
     **gate** (`base_wait` in `job.json`, note `main is broken: waiting for #<n>`): spawn nothing, it
     uses no `concurrency` slot and spends no round, even in its last one. `to build` and `promote`
     refuse a real gate failure that `base` has not answered, and a held job. When `<base>` passes
@@ -505,7 +513,7 @@ in `factory/jobs/` from its `stage`, in both run modes. Named builders don't sur
 - Only `factory/bin/job` writes `job.json` and `board.json`.
 - Push only `factory/*` branches, merge only through `job <id> to merging` (which runs
   `gh pr merge`, and only when `auto_merge` is on), never deploy.
-- At most `max_rounds` rounds per job (a gate failure uses one), one PR per issue.
+- At most `max_rounds` review rounds per job (a failed gate goes back to build in the same round, up to `checks.max_gate_retries` times), one PR per issue.
 - Language: agents read the `Language:` line of their prompt (`en`, `es` or `pt`; missing
   means `en`), which `factory/bin/job <id> prompt` fills with the effective `language`
   (`factory/config.json` plus `factory/config.local.json`), so prompts still carry paths only.

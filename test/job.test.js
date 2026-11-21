@@ -125,22 +125,34 @@ describe('factory/bin/job', { concurrency: true }, () => {
     await refused(t, id, 'to', 'approve');
     ok(t, await t.job(id, 'to', 'build'));
     job = t.json(id);
-    assert.equal(job.round, 2);
-    assert.deepEqual(job.history, [{ gate: 'FAIL', reviews: {} }]);
+    assert.equal(job.round, 1, 'a failed gate keeps the round');
+    assert.equal(job.gate_retries, 1);
+    assert.deepEqual(job.history, []);
+    assert.match(t.read(id, 'round-1/gate-fail-1.md'), /^GATE: FAIL/);
 
     t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    t.write(id, 'round-2/checks.md', 'GATE: PASS\n');
+    t.write(id, 'round-1/checks.md', 'GATE: PASS\n');
     ok(t, await t.job(id, 'to', 'review'));
     job = t.json(id);
     assert.equal(job.gate, 'PASS');
     assert.deepEqual(job.reviews, { code: 'pending' });
 
     await refused(t, id, 'to', 'approve'); // review-code.md missing
-    t.write(id, 'round-2/review-code.md', 'Looks fine\n');
+    t.write(id, 'round-1/review-code.md', 'Looks fine\n');
     await refused(t, id, 'to', 'approve'); // malformed verdict
-    t.write(id, 'round-2/review-code.md', 'VERDICT: CHANGES\n');
+    t.write(id, 'round-1/review-code.md', 'VERDICT: CHANGES\n');
     await refused(t, id, 'to', 'approve'); // CHANGES before the last round
+    ok(t, await t.job(id, 'to', 'build'));
+    job = t.json(id);
+    assert.equal(job.round, 2);
+    assert.deepEqual(job.history[0], { gate: 'PASS', reviews: { code: 'CHANGES' } });
+
+    t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n');
+    ok(t, await t.job(id, 'to', 'gate'));
+    t.write(id, 'round-2/checks.md', 'GATE: PASS\n');
+    ok(t, await t.job(id, 'to', 'review'));
+    t.write(id, 'round-2/review-code.md', 'VERDICT: CHANGES\n');
     ok(t, await t.job(id, 'to', 'build'));
     job = t.json(id);
     assert.equal(job.round, 3);
@@ -208,7 +220,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
     ok(t, await t.job(id, 'to', 'build'));
     t.write(id, 'build.md', 'STATUS: READY\n\n## Spec deviations\nNone\n'); // the builder writes a new build.md each round
     ok(t, await t.job(id, 'to', 'gate'));
-    await gateToApprove(t, id); // round 2
+    await gateToApprove(t, id); // still round 1: the failed gate did not start a round
 
     const decision = 'ESCALATE\nAdds a runtime dependency; a human should accept it.\n\n## Checks\n- [x] Tests pass\n';
     t.write(id, 'decision.md', decision);
@@ -236,7 +248,7 @@ describe('factory/bin/job', { concurrency: true }, () => {
       ],
     });
     ok(t, await t.job(id, 'to', 'build'));
-    const human = t.read(id, 'round-2/review-human.md');
+    const human = t.read(id, 'round-1/review-human.md');
     const lines = human.split('\n');
     assert.equal(lines[0], 'VERDICT: CHANGES');
     for (const l of ['> Use an in-house limiter.', '> No new deps.', '> Also add a test for the 429 path.']) {
@@ -246,11 +258,11 @@ describe('factory/bin/job', { concurrency: true }, () => {
     assert.ok(!human.includes('evil.sh') && !human.includes('delete the tests'), 'comments without a repo role are left out');
     assert.match(human, /2 comments from people without a role/, 'dropped comments are counted');
     job = t.json(id);
-    assert.equal(job.max_rounds, 4, 'max_rounds = round + 2');
-    assert.equal(job.round, 3);
+    assert.equal(job.max_rounds, 3, 'max_rounds = round + 2');
+    assert.equal(job.round, 2);
     assert.equal(job.stage, 'build');
-    assert.equal(job.history.length, 2);
-    assert.equal(job.history[1].reviews.human, 'CHANGES');
+    assert.equal(job.history.length, 1);
+    assert.equal(job.history[0].reviews.human, 'CHANGES');
     assert.ok(!t.state().issues[7].labels.some((l) => l.name === 'factory:needs-human'), 'needs-human label removed');
 
     assertNoIssueTextEdits(t.calls());

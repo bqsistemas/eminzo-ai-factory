@@ -49,7 +49,7 @@ export function realResolve(cwd, target) {
   return cur;
 }
 
-const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+export const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
 
 /** The nearest existing folder at or above `path`. */
 function existingDir(path) {
@@ -62,7 +62,7 @@ const slashes = (p) => p.split(sep).join('/');
 const normalize = (p) => relative('/', resolve('/', String(p))).split('\\').join('/');
 
 /** `{ top, main }` (real paths) of the repository holding `dir`, `null` when it is not in one, or `{ error }`. */
-function repoOf(dir) {
+export function repoOf(dir) {
   const top = run('git', ['rev-parse', '--show-toplevel'], { cwd: dir });
   if (top.error) return { error: `git could not run (${top.error.message})` };
   if (top.status !== 0) return null;

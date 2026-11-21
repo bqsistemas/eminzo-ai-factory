@@ -88,13 +88,37 @@ test('diagnosis: first-review changes by lens, cost by role and by risk, escalat
 test('diagnosis proposes only what the evidence supports, and respects spec_review', () => {
   const d = diagnosis(root, { now: NOW, config: FIXTURE_CONFIG });
   assert.deepEqual(d.proposals.map((p) => p.id), ['gate-failures', 'review-ui-changes', 'cost-high-risk']);
-  assert.match(d.proposals[0].text, /^3 of 7 extra rounds started because the gate failed/);
+  assert.match(d.proposals[0].text, /^3 of 7 extra attempts \(rounds and gate retries\) came from a failed gate/);
   assert.match(d.proposals[1].text, /review-ui asked for changes on 2 of 5 first reviews \(40%\)/);
   assert.match(d.proposals[2].text, /high-risk jobs were 3 of 10 jobs and 75% of the known cost \(\$68\.00\)/);
   const noSpecReview = diagnosis(root, { now: NOW, config: { ...FIXTURE_CONFIG, spec_review: false } });
   assert.ok(noSpecReview.proposals.some((p) => p.id === 'high-risk-escalates'), 'high risk always escalates and spec_review does not cover it');
   assert.match(d.summary, /^10 jobs finished from .* with 7 extra rounds, most often because the gate failed \(3\); \$91\.00 of known cost, 75% of it in high-risk jobs\. 3 proposals\.$/);
   assert.match(d.note, /nothing was changed/);
+});
+
+test('gate retries: a job with gate_retries > 0 is not first pass, the gate cause counts them, and the proposal points at the archived reports', async () => {
+  const retried = (issue, retries) => {
+    const j = finished(issue, { size: 's', risk: 'low', rounds: [{ gate: 'PASS', code: 'PASS' }], cost: 2, byRole: { builder: 2 } });
+    j.job.gate_retries = retries;
+    return j;
+  };
+  const jobs = { '301-a': retried(301, 1), '302-b': retried(302, 2), '303-c': retried(303, 1), '304-d': retried(304, 0) };
+  const fx = stateFixture({ now: NOW, jobs, config: FIXTURE_CONFIG });
+  const d = diagnosis(fx.root, { now: NOW, config: FIXTURE_CONFIG });
+  assert.equal(d.rounds.one_round_jobs, 1, 'only the job that never retried the gate is first pass');
+  assert.deepEqual(d.extra_round_causes.map((c) => [c.cause, c.rounds]), [['gate', 4]]);
+  assert.equal(d.gate_retries, 4);
+  const p = d.proposals.find((x) => x.id === 'gate-failures');
+  assert.ok(p, 'the gate-failures proposal fires on retries');
+  assert.match(p.text, /gate-fail-\*\.md/);
+  assert.match(p.text, /targeted tests/);
+  assert.doesNotMatch(p.text, /nudge/);
+  const { jobDetail, readJobs } = await import('../factory/lib/state/jobs.js');
+  const job = readJobs(fx.root).find((j) => j.id === '302-b');
+  assert.equal(jobDetail(fx.root, job, NOW).gate_retries, 2);
+  const { periodSummary } = await import('../factory/lib/state/queries.js');
+  assert.equal(periodSummary(fx.root, { from: ago(48), to: ago(1), now: NOW }).rounds.one_round_jobs, 1);
 });
 
 test('diagnosis of an empty window says there is nothing to diagnose', () => {

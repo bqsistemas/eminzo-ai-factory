@@ -145,13 +145,14 @@ describe('P0-6: the xs lane itself', { concurrency: true }, () => {
     assert.doesNotMatch(ok(t, await t.job(id, 'prompt')), /^Lane:/m);
   });
 
-  test('xs rounds are limited to one: gate FAIL and review CHANGES refuse the usual way back to build', async () => {
+  test('xs rounds are limited to one: review CHANGES refuses the usual way back to build (a failed gate retries in the lane)', async () => {
     const t = setup();
     const id = await xsToBuild(t);
     await xsToGate(t, id);
     t.write(id, 'round-1/checks.md', 'GATE: FAIL\n');
-    await refused(t, id, 'to', 'build');
-    assert.match((await t.job(id, 'to', 'build')).stderr, /promote/);
+    ok(t, await t.job(id, 'to', 'build'));
+    assert.equal(t.json(id).lane, 'xs');
+    assert.equal(t.json(id).round, 1);
 
     const t2 = setup();
     const id2 = await xsToBuild(t2);

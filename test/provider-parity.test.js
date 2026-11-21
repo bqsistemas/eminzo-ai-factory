@@ -136,9 +136,9 @@ test('hook regexes reject near-miss first lines', () => {
   }
 });
 
-test('the builder keeps nudge next to ensure-output', () => {
+test('the builder has no nudge Stop hook, only ensure-output', () => {
   const commands = stopCommands(read('.claude/agents/eminzo-builder.md'));
-  assert.ok(commands.some((c) => c.endsWith('factory/bin/nudge')));
+  assert.ok(!commands.some((c) => c.includes('factory/bin/nudge')));
   assert.ok(commands.some((c) => c.includes('factory/bin/ensure-output')));
 });
 

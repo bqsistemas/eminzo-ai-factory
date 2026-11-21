@@ -180,7 +180,7 @@ const gateAndReview = async (t, id) => {
   for (const lens of Object.keys(t.json(id).reviews)) t.write(id, `round-1/review-${lens}.md`, 'VERDICT: PASS\n');
 };
 
-test('engine_version is recorded at job creation and refreshed when a round starts', async () => {
+test('engine_version is recorded at job creation and refreshed when a round starts or a failed gate goes back to build', async () => {
   const t = setup();
   t.env.EMINZO_VERSION = '7.7.7';
   const id = await building(t);
@@ -196,7 +196,7 @@ test('engine_version is recorded at job creation and refreshed when a round star
   assert.match(ok(await t.job(id, 'base')), /^own: /); // a real gate failure is answered before the job goes back
   t.env.EMINZO_VERSION = '8.0.0';
   ok(await t.job(id, 'to', 'build'));
-  assert.equal(t.json(id).round, 2);
+  assert.equal(t.json(id).round, 1, 'a failed gate keeps the round');
   assert.equal(t.json(id).engine_version, '8.0.0');
 });
 

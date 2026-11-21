@@ -4,13 +4,21 @@ What a builder, its reviewers and the approver do in one round, and what each le
 
 ### Checks: focused and full
 
+The full checks run only in the gate, once per gate attempt (a failed gate is retried within the job's total budget, see below). The builder runs only the test files it wrote or changed and never `factory/checks.sh`, the nudge or the whole suite; when the gate fails, the builder is resumed with its log. `nudge` stays as a manual command a person can run.
+
+On Claude this is enforced: the builder has a `PreToolUse` hook on `Bash` (`guard-tests`) that refuses `factory/checks.sh`, the nudge and the commands listed in `checks.suite_commands` in `factory/config.json` (nothing is guessed from `checks.sh`, so `npm run lint` or `go vet ./...` stay allowed; with no list only `checks.sh` and the nudge are refused, silently). A listed command followed by a non-option argument (a path, a package, a test name) or by a test-selection option (`-k`, `--tests`, `-Dtest`, `-run`, `-t`, `--grep`, ...) is targeted and passes; followed only by other flags (`go test -race ./...`, `npm test -- --coverage`) it is still the full suite. Cheap wrappers (`time`, `nohup`, `command`, `exec`, `env`, `timeout`, a trailing `&`, `bash -lc "..."`) do not hide it. Heredoc bodies (`git commit -F - <<EOF ... EOF`) are data, not commands, and flag order does not matter for a command with several plain words (`mvn test` matches a listed `mvn -B -q test`). Grouping (`(cd x; npm test)`, `{ npm test; }`) is looked through.
+
+Known limits, because the hook is best effort and fails open: backquotes and command substitution inside an argument are not inspected, and an option that takes a value (`--reporter dot`, `-p no:cacheprovider`) counts as a flag followed by a plain word, so the command reads as targeted. The gate still runs the full checks either way.
+
+`eminzo setup` (`factory/bin/init`) and `eminzo enable` write `checks.suite_commands` with the `checks.sh` they generate, from the same stack table as the script (for example `npm test`, `go test ./...`, `python -m pytest`, `cargo test`, `mvn -B -q test`, `./gradlew test`, `bundle exec rspec` and `bundle exec rake test`, or the `run-many` / `turbo run` command of an Nx or Turborepo workspace). They never overwrite an existing value and never touch a hand-written `checks.sh`. A repository installed before this change adds the line by hand, for example `"checks": { "suite_commands": ["npm test"] }`,. Setup only fills the key when it generates `checks.sh`. For a `checks.sh` that already exists, `factory/bin/init checks` (and setup) prints a `suggestion: add "suite_commands": ["npm test"] to "checks" in factory/config.json ...` when the file contains a known full-run test command and the key is missing; it writes neither file, and the team adds the line. This repository already has it. The hook fails open (it prints `guard-tests: not enforced: <why>` and allows) when it cannot decide. Codex has no hooks, so the role text is its only guard.
+
 The engine runs your `factory/checks.sh` with these variables:
 
 | Variable | Value |
 |---|---|
-| `FACTORY_CHECK_MODE` | `focused` for the builder's own `nudge <id>`; `full` for `nudge <id> --full`, the Claude Stop hook, the gate and the merge |
+| `FACTORY_CHECK_MODE` | `focused` for a manual `nudge <id>`; `full` for `nudge <id> --full`, the gate and the merge |
 | `FACTORY_CHANGED_FILES` | in focused mode, a file with one changed path per line (against the merge-base with the job's base) |
-| `FACTORY_BASE` | the commit the job's branch left the base at (the merge-base). Set for the gate, the merge and the builder's focused `nudge <id>` (not for `--full` or the Stop hook, which run everything), so a `checks.sh` can check only the projects the job touched. Not set for a job that fixes the base (`factory:base-fix`) or when you run `checks.sh` by hand: then everything runs |
+| `FACTORY_BASE` | the commit the job's branch left the base at (the merge-base). Set for the gate, the merge and a focused manual `nudge <id>` (not for `--full`, which runs everything), so a `checks.sh` can check only the projects the job touched. Not set for a job that fixes the base (`factory:base-fix`) or when you run `checks.sh` by hand: then everything runs |
 | `FACTORY_HEAD` | the commit under test: the tested head for the gate, the merge commit for the merge. Not set for the nudge, which also sees uncommitted files |
 
 The gate report names the first one as `Checks base: <sha>|none`. Values already in the environment are dropped, and each variable is set only from a full commit sha.
@@ -18,8 +26,12 @@ The gate report names the first one as `Checks base: <sha>|none`. Values already
 - **Ignoring the variables is safe.** A `checks.sh` that ignores them runs everything, as before.
 - **The template.** `setup` writes one per stack (`factory/templates/checks/<stack>.sh`: Node, Go, Python, Rust, Ruby, Maven, Gradle) that narrows only when that is reliable and otherwise runs everything. For an Nx or Turborepo workspace it writes `factory/templates/checks/node-affected.sh` instead: `nx affected` or `turbo run --filter=...[base]` over the `lint`, `typecheck` and `test` targets the repo has, using `FACTORY_BASE` and `FACTORY_HEAD`. `factory/bin/init checks` proposes it for an existing `checks.sh` and never overwrites it.
 - **The safety net.** A focused pass is never reused by a full caller, and a focused nudge pass is reused only for the same merge-base (a full pass ran everything, so it needs no scope). The gate and the merge run the job's scope: everything for a `checks.sh` that ignores `FACTORY_BASE`, the affected projects for one that reads it.
-- **Cap.** At most `checks.max_runs_per_round` check runs per round (default 6). Past it the nudge exits 2 with `cap reached: write build.md with what is still failing`.
+- **Cap.** At most `checks.max_runs_per_round` manual nudge runs per round (default 6). Past it the nudge exits 2 with `cap reached: write build.md with what is still failing`.
 - **Flaky checks.** A check that fails and then passes with no code change goes to `build.md` `## Flaky` (`command | error`) instead of being fixed in the job.
+
+### A failed gate does not burn a round
+
+When the gate fails (and the base is not the cause, see below), `job <id> to build` keeps the round: `job.round` does not change and `max_rounds` is not used. The engine counts the retry in `job.gate_retries` and archives the failed run in the same round folder: `round-<n>/checks.md` becomes `gate-fail-<k>.md`, `checks.log` becomes `gate-fail-<k>.log`, `visual.md` becomes `gate-fail-<k>.visual.md`, and `build.md` becomes `build-gate-fail-<k>.md`, so the next `to gate` needs a fresh `build.md` and the next gate writes a fresh `checks.md`. `job <id> prompt` then has a `Gate failed: read round-<n>/gate-fail-<k>.md` line for the builder. `checks.max_gate_retries` (default 3) bounds the retries per job in total, across all its rounds; when they are used up `to build` is refused, naming the key and `to needs-human --note "gate failed <n> times"`. A human rework (`to build` from `needs-human` with a PR) starts a fresh budget. `max_rounds` counts only review rounds. Lane xs retries the gate the same way, inside the lane and within the same budget: a failed gate is not a promotion trigger (a review with `CHANGES`, a blocked builder, unsettled deviations and an inconclusive approver script still are), and when the retries are used up the xs job goes to `needs-human` like any job.
 
 ### When the base is red
 
@@ -52,7 +64,7 @@ A gate failure is the job's own unless the base branch fails the same checks. Af
   - `## Risks`
   - `## Proof`: the test for each AC
 - **Self-check.** Before `STATUS: READY` it runs `selfcheck` (see the command reference).
-- **build.md across rounds.** `build.md` lives in the job folder while its round runs. When the job goes back to build (a failed gate, a review with `CHANGES`, a rework), the engine moves it to `round-<n>/build.md`, so the next builder reads its handoff (`## Notes for the next round`) there and the job never loses it. The dashboard lists it as `round-<n>/build.md`.
+- **build.md across rounds.** `build.md` lives in the job folder while its round runs. When the job goes back to build for a review with `CHANGES` or a rework, the engine moves it to `round-<n>/build.md`, so the next builder reads its handoff (`## Notes for the next round`) there and the job never loses it. The dashboard lists it as `round-<n>/build.md`. After a failed gate the round does not change (see below): the file moves to `round-<n>/build-gate-fail-<k>.md`.
 - **What review-code checks.** That the diff matches the plan, or that `build.md` explains why it does not.
 
 ### Review policy (optional)
@@ -84,5 +96,5 @@ A gate failure is the job's own unless the base branch fails the same checks. Af
   and Ask Eminzo's estimates, can learn from finished jobs (`factory/lib/record-facts.js` parses it).
 
   The engine updates only that section, and only when the PR is open.
-- **The engine version.** `job.json` records `engine_version` when the job starts and at every round.
+- **The engine version.** `job.json` records `engine_version` when the job starts, at every round and when a failed gate goes back to build.
 - **Lessons.** `decision.md` ends with `## Lessons`; `eminzo job lessons` turns repeated ones into a pull request for `factory/project.md`.
