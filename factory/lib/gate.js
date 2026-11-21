@@ -144,7 +144,8 @@ export function uncommitted(worktree) {
  * Runs the gate for a job and writes the report.
  * @returns {boolean} true on PASS
  */
-export function gate(root, job, outFile, { onWait, onAcquire } = {}) {
+export function gate(root, job, outFile, { onStart, onWait, onAcquire } = {}) {
+  try { onStart?.(); } catch { /* a hook never fails the gate */ }
   const config = loadConfig(root);
   const { base } = baseRef(config);
   const dirty = uncommitted(job.worktree); // before the checks, which may write files

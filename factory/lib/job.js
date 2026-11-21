@@ -146,13 +146,22 @@ function saveJob(c, job) {
  * job.json when the gate runs as its own process (`gate <id>`). Saved through saveJob like every other change, so
  * board.json follows. Best effort: the hooks run inside runChecks, which ignores a hook that throws.
  */
+const WAITING_NOTE = 'waiting for the checks of this repository: ';
+
 function waitHooks(c, load) {
   let waiting = null;
   return {
+    /** A gate killed while it waited leaves its note behind (nothing runs after a kill): the next gate of the job clears it. */
+    onStart() {
+      const job = load();
+      if (typeof job.note !== 'string' || !job.note.startsWith(WAITING_NOTE)) return;
+      job.note = '';
+      saveJob(c, job);
+    },
     onWait({ holder, since }) {
       const job = load();
       const at = Number.isFinite(since) ? new Date(since).toTimeString().slice(0, 5) : null;
-      waiting = { had: Object.hasOwn(job, 'note'), before: job.note, text: `waiting for the checks of this repository: ${holder} runs them${at ? ` since ${at}` : ''}` };
+      waiting = { had: Object.hasOwn(job, 'note'), before: job.note, text: `${WAITING_NOTE}${holder} runs them${at ? ` since ${at}` : ''}` };
       job.note = waiting.text;
       saveJob(c, job);
     },

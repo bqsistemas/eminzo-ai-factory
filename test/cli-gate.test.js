@@ -1,9 +1,9 @@
 // The installed CLI runs an engine command as `node <engine>/lib/<command>.js` (cli/src/engine.js); only a repository
 // that commits its own engine uses factory/bin/<command>. So the file the CLI resolves must run the command itself.
-import { before, test } from 'node:test';
+import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,17 +14,25 @@ import { ENGINE_COMMANDS, JOB_ALIASES } from '../cli/src/engine.js';
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const bin = join(repo, 'cli/bin/eminzo.js');
 const GIT_ENV = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@e.x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@e.x' };
+const made = [];
 let dist;
 
 before(() => {
-  dist = join(mkdtempSync(join(tmpdir(), 'eminzo-gate-dist-')), 'dist');
+  const dir = mkdtempSync(join(tmpdir(), 'eminzo-gate-dist-'));
+  made.push(dir);
+  dist = join(dir, 'dist');
   build({ out: dist });
+});
+
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
 });
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...GIT_ENV }, stdio: ['ignore', 'pipe', 'pipe'] });
 
 test('eminzo gate <id> through the installed CLI runs the gate and writes round-N/checks.md', () => {
   const dir = mkdtempSync(join(tmpdir(), 'eminzo-gate-'));
+  made.push(dir);
   const home = join(dir, 'home');
   mkdirSync(home);
   const origin = join(dir, 'origin.git');

@@ -126,6 +126,29 @@ test('a gate that does not wait never touches job.json or board.json', async () 
   assert.equal(existsSync(t.boardPath) ? statSync(t.boardPath).mtimeMs : null, boardBefore, 'board.json is not rewritten');
 });
 
+test('a gate that starts clears a waiting note left behind by a gate that was killed, and no other note', async () => {
+  const { t, id } = await atGate();
+  arm(t, id, snapshotChecks());
+  setNote(t, id, 'waiting for the checks of this repository: gate 044-other runs them since 20:31');
+  const res = await t.bin('gate', [id]);
+  assert.equal(res.status, 0, res.stderr + res.stdout);
+  assert.equal(t.json(id).note, '', 'the leftover note is gone');
+  await until(() => boardNote(t, id) === '', 'board.json to follow');
+  setNote(t, id, 'a note somebody wrote');
+  assert.equal((await t.bin('gate', [id])).status, 0);
+  assert.equal(t.json(id).note, 'a note somebody wrote', 'any other note stays');
+});
+
+test('the merge gate clears a leftover waiting note too', async () => {
+  const t = setup();
+  const id = await approvedWithRealGate(t);
+  arm(t, id, snapshotChecks());
+  t.local({ concurrency: 1 }); // the merge runs the checks again
+  setNote(t, id, 'waiting for the checks of this repository: gate 044-other runs them since 20:31');
+  assert.equal(ok(await t.job(id, 'to', 'merging')), `${id} merged`);
+  assert.doesNotMatch(JSON.parse(readFileSync(join(t.dir, 'snap.json'), 'utf8')).note, /^waiting for the checks/, 'cleared before checks.sh started');
+});
+
 test('the merge gate shows the wait in the job note too, and the note moves on once the lock is taken', async (ctx) => {
   const t = setup();
   const id = await approvedWithRealGate(t);
