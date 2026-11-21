@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
+import { gitHelp, helpLocale } from './git-help.js';
 import { preflight } from './installer/preflight.js';
 import { normalizeGithubRemote } from './installer/remote.js';
 import { acPattern, detectChecks } from './installer/checks.js';
@@ -94,8 +95,9 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     return { code: res.error ? 1 : res.status ?? 1, stdout: res.stdout ?? '', stderr: res.stderr || res.error?.message || '' };
   };
   const git = (...args) => run('git', args);
+  const helpFor = (res) => gitHelp(res.stderr, helpLocale(env));
   const must = (res, what) => {
-    if (res.code !== 0) throw new CliError(`${what} failed: ${firstLine(res.stderr) || firstLine(res.stdout) || `exit ${res.code}`}`);
+    if (res.code !== 0) throw new CliError(`${what} failed: ${firstLine(res.stderr) || firstLine(res.stdout) || `exit ${res.code}`}`, 1, helpFor(res));
     return res;
   };
 
@@ -213,8 +215,13 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     return 0;
   }
 
-  const branchTaken = git('show-ref', '--verify', '--quiet', `refs/heads/${ENABLE_BRANCH}`).code === 0
-    || git('ls-remote', '--exit-code', '--heads', 'origin', ENABLE_BRANCH).code === 0;
+  let branchTaken = git('show-ref', '--verify', '--quiet', `refs/heads/${ENABLE_BRANCH}`).code === 0;
+  if (!branchTaken) {
+    const remoteBranch = git('ls-remote', '--exit-code', '--heads', 'origin', ENABLE_BRANCH);
+    // 2 is "no such branch"; any other failure is only worth reporting when the guide explains it (SSH authentication).
+    if (remoteBranch.code !== 0 && remoteBranch.code !== 2 && helpFor(remoteBranch)) must(remoteBranch, 'git ls-remote origin');
+    branchTaken = remoteBranch.code === 0;
+  }
   if (branchTaken) throw new CliError(`the branch ${ENABLE_BRANCH} already exists (here or on origin); merge or close its pull request, delete the branch, then run eminzo enable again`);
 
   must(git('checkout', '-q', '-b', ENABLE_BRANCH, base), `git checkout -b ${ENABLE_BRANCH}`);
@@ -262,7 +269,7 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     const pushed = git('push', '-q', '-u', 'origin', ENABLE_BRANCH);
     if (pushed.code !== 0) {
       throw new CliError(`git push origin ${ENABLE_BRANCH} failed: ${firstLine(pushed.stderr) || `exit ${pushed.code}`}. `
-        + `The commit is on the local branch ${ENABLE_BRANCH}: push it and open the pull request, or delete the branch and run eminzo enable again`);
+        + `The commit is on the local branch ${ENABLE_BRANCH}: push it and open the pull request, or delete the branch and run eminzo enable again`, 1, helpFor(pushed));
     }
     const pr = run(gh, ['pr', 'create', '--repo', slug, '--base', defaultBranch, '--head', ENABLE_BRANCH, '--title', COMMIT_MESSAGE,
       '--body', prBody({ version, stack: checks.stack, files, kept })]);
