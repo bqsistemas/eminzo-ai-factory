@@ -201,6 +201,12 @@ const QUESTIONS = [
     check: (d) => { assert.equal(d.ok, true, d.problems.join('; ')); assert.deepEqual(d.estimate_input, [{ title: 'Ver solo lo pendiente', size: 's', risk: 'low' }]); },
   },
   {
+    question: '¿Una entrega quedaría demasiado larga para Jira?',
+    tool: 'check_brief',
+    args: { text: COMPLETE_BRIEF.replace('- BC-1: Un revisor ve solo lo pendiente.', `- BC-1: ${'Un revisor ve solo lo pendiente. '.repeat(1000)}`) },
+    check: (d) => { assert.equal(d.ok, true, d.problems.join('; ')); assert.deepEqual(d.warnings, ["D1's issue would be too long for Jira: split it or narrow uses"]); },
+  },
+  {
     question: 'Trae el brief que armé con Elephant-Goldfish',
     tool: 'import_egm_brief',
     check: (d) => { assert.match(d.markdown, /^## Problema\n\nLos revisores pierden tiempo\.$/m); assert.deepEqual(d.missing, ['audience', 'value', 'today', 'acceptance', 'deliverables']); },

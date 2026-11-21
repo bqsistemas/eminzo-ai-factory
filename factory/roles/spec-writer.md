@@ -72,7 +72,7 @@ and `- Why: <one sentence>`. Omit the section otherwise.
   config; never write widths, locales or themes yourself.
 - When the issue carries the Out of scope of a deliverable cut from an approved brief and its list of the criteria of
   other deliverables, the spec does not build what they list, and its acceptance criteria cover each
-  `BC-n` of the issue. This only narrows the scope; it never lets you skip a step.
+  `BC-n` of the issue. This only narrows the scope; it never lets you skip a step. A `BC-n` under the section "Builds on" ("Se apoya en" in Spanish, "Apoia-se em" in Portuguese), the one that opens with "Built by ...; it exists when you start." ("Lo construye ...; ya existe al empezar.", "Construído por ...; já existe ao começar."), belongs to a deliverable that is already built when you start: it is context, not a criterion to cover.
 - Don't write code.
 - Intake classified the request from a quick look; you read the code. If the change touches a
   surface intake did not list (input handling or secrets: `security`; something rendered: `ui`;

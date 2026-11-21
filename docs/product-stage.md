@@ -73,12 +73,22 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 ## How it works today
 ## Scope
 ## Out of scope
+## Definitions            (optional)
 ## Acceptance criteria
 - BC-1: <a behaviour a person can check by using the product>
 ## Open questions        (optional)
 ## Deliverables
-- D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2
+- D1: <title> | size: s | risk: low | covers: BC-1, BC-2 | after: D2 | uses: BC-4
 ```
+
+- Definitions holds the terms and rules several criteria share, written once; the deliverable issues carry it verbatim.
+- A criterion with an action is one line, "Given ..., when ..., then ..." (es "Dado ..., cuando ..., entonces ...",
+  pt "Dado ..., quando ..., então ..."), where "when" is the user's intent, not a click.
+- `uses` (optional) names the criteria of the deliverables in `after` that this deliverable builds on. The issue then
+  shows those criteria in full under "Builds on". Once `uses` has any id it is exhaustive: a deliverable in `after` with
+  none of its criteria in `uses` contributes no criteria (it still appears under Waits for), and `check_brief` warns
+  ("D3 waits for D2 but uses none of its criteria"). Without `uses`, all the criteria of each deliverable in `after`
+  count. Builds on covers only the direct `after` dependencies, not the transitive ones.
 
 - Headings may be in English, Spanish or Portuguese (the repository's `language`); the keys inside a deliverable
   line stay in English.
@@ -91,7 +101,13 @@ codex plugin marketplace add google/elephant-goldfish-model && codex plugin add 
 - Criteria ids (`BC-n`) are stable: each issue cut from the brief names the criteria it covers.
 - `check_brief` lists what blocks approval: a missing section, a duplicate or malformed criterion, a deliverable
   with a bad size or risk, a criterion or deliverable that does not exist, deliverables waiting for each other. It
-  warns about a criterion no deliverable covers and about a large deliverable.
+  warns about a criterion no deliverable covers, about a large deliverable, about a deliverable that waits for another
+  but `uses` none of its criteria, about a deliverable whose issue would exceed 30,000 characters in its never-dropped
+  sections (too long for Jira; added by the MCP tool), about a deliverable that covers more than 8
+  criteria (the factory's spec takes 3 to 8) and about a criterion that starts with Given/Dado, a clause and a
+  comma but has no when/cuando/quando. It also blocks a `uses` id that is not a criterion, or that no deliverable in `after` covers.
+- `brief_template` returns the empty brief with Definitions, a one-line Given/when/then criterion and a `uses` example,
+  in the repository's language.
 - Size and risk are set the way the factory's intake sets them (`eminzo show roles/intake.md`), not by new rules.
 
 Code: `factory/lib/brief.js` (`parseBrief`, `validateBrief`, `renderBrief`, `fromEgmConcepts`).
@@ -152,33 +168,54 @@ Hidden lines (HTML comments, found with a search on the issue body):
 <!-- eminzo:deliverable v1 brief=<n> id=<Dn> hash=<first 12 hex of the approval hash> est=<low_min>-<high_min>|none -->
 ```
 
-- A deliverable issue is titled with the deliverable title (up to 120 characters) and documents its task on its own,
-  in the brief's language, so a person (or intake, the spec writer and the builder) who reads only that issue knows
-  why it exists, what to deliver, how to check it, what is not part of it and what it depends on. Its `## ` sections,
-  in order:
-  1. Context: the brief's Problem and For whom, verbatim (each labelled with its brief heading).
-  2. What it delivers: the deliverable title.
-  3. Acceptance criteria: one checklist line per criterion it covers, `- [ ] BC-n: <full text>`, never cut.
-  4. Out of scope: the brief's Out of scope, verbatim, and the criteria that another deliverable of the brief covers
-     and this one does not ("BC-5, BC-6 are delivered by D2 (#n)", or by id and title while D2 has no issue).
-  5. How it works today: the brief's section, verbatim.
-  6. Dependencies: Waits for (as `#n (D3: Title)` once created) and Unblocks (the deliverables that wait for this one).
-  7. Open questions: only when the brief has them.
-  8. Size, risk and estimate: the size and risk sentence, and the estimate shown when it was created (a range and how
-     many similar finished jobs it rests on, or "too little history").
+- A deliverable issue is titled with the deliverable title (up to 120 characters) and is lean: it carries what is its
+  own and an explicit contract with its neighbours, in the brief's language, so a person (or intake, the spec writer and
+  the builder) who reads only that issue knows what to deliver, how to check it, what already exists when it starts,
+  what is not part of it and what it unblocks. Only the first paragraph of the brief's Problem, and none of How it works today, is repeated.
+  Its `## ` sections, in order (`DELIVERABLE_SECTION_KEYS` in `handoff.js`):
+  1. Goal (`goal`): the brief's Expected value, verbatim; its For whom, verbatim (labelled with the brief's For whom
+     heading); then the first paragraph of its Problem (labelled with the brief's Problem heading). When the body is
+     too long the section is replaced by "See the brief issue #n for Goal (For whom, Problem)", in the brief's language.
+  2. What it delivers (`delivers`): the deliverable title.
+  3. Acceptance criteria (`criteria`): one checklist line per criterion it covers, `- [ ] BC-n: <full text>`, never cut.
+  4. Builds on (`builds_on`), only when the deliverable has `after`: for each deliverable it waits for (direct `after`,
+     in dependency order) the sentence "Built by #n (D1: Title); it exists when you start.", then the full text of the
+     criteria it builds on as a plain list: exactly its `uses` ids that belong to that deliverable, or all the criteria
+     that deliverable covers when none is named.
+  5. Out of scope (`out_of_scope`): the brief's Out of scope, verbatim, and the criteria that another deliverable of the
+     brief covers and this one neither covers nor shows under Builds on ("BC-5, BC-6 are delivered by D2 (#n)", or by id
+     and title while D2 has no issue).
+  6. Definitions (`definitions`): the brief's Definitions, verbatim, only when the brief has them.
+  7. Dependencies (`dependencies`): Waits for (as `#n (D3: Title)` once created), then, when there are any, "Do not start
+     until the deliverables above are merged."; and Unblocks, each deliverable followed by which of this deliverable's
+     criteria it builds on ("#n (D4: Title): builds on BC-2, BC-4 of this deliverable": the `uses` of that deliverable
+     that this one covers; all that this one covers when it has no `uses`; a deliverable whose `uses` names none of this
+     one's criteria is listed without "builds on").
+  8. Open questions (`questions`): only when the brief's Open questions has a line with "?" or "¿", or a list item
+     (`- `, `* `, `1. `); a single "None for now." line is left out.
+  9. For planning (`estimate`): the size sentence (no risk: the factory's intake decides it) and the estimate shown when
+     it was created (a range and how many similar finished jobs it rests on, or "too little history").
   Then `Part of #<brief issue>` and the hidden marker. It never mentions the factory label.
 - Text copied from the brief goes in as block-quote lines, made inert (no comments, control or bidirectional
   characters, `@` mentions broken with a zero-width space), so none of its lines can be a `Part of` line or a marker
   and a code fence opened inside it cannot reach another section. The engine checks its own body (one valid marker, one
   `Part of` line) before returning it.
 - Never cut silently: the body stays under `MAX_BODY` (65,000 characters). When it would not, the optional sections
-  are dropped whole, in this order, only as many as needed: How it works today, Open questions, Context. Each one is
-  replaced by one line ("See the brief issue #n for ..."). Criteria, Out of scope, Dependencies, `Part of` and the
-  marker are never dropped; if they alone do not fit, the draft fails with a readable error.
-- `sections` is the same content as data, next to `body`: `[{ key, heading, parts }]` with `key` one of `context`,
-  `delivers`, `criteria`, `out_of_scope`, `today`, `dependencies`, `questions`, `estimate`, and each part a `text`
-  (brief text or an engine sentence), `criteria` (`items: [{ id, text }]`), `refs` (`items: [{ id, title, issue,
-  criteria? }]`, with the `none` sentence when empty) or `brief_ref` (replaces a dropped section). Jira and any other
+  are dropped whole, in this order, only as many as needed: Open questions, Goal, Definitions
+  (`DELIVERABLE_DROPPABLE`). Each one is replaced by one line ("See the brief issue #n for ..."). Criteria, Builds on,
+  Out of scope, Dependencies, `Part of` and the marker are never dropped; if they alone do not fit, the draft fails with a readable error.
+- `sections` is the same content as data, next to `body`: `[{ key, heading, parts }]` with `key` one of
+  `DELIVERABLE_SECTION_KEYS` (the module exports the ordered keys and the droppable ones so a destination does not
+  hardcode them), and each part a `text` (brief text or an engine sentence), `criteria` (`items: [{ id, text }]`),
+  `refs` (`items: [{ id, title, issue, criteria?, uses?, format? }]`, with the `none` sentence when empty) or `brief_ref`
+  (replaces a dropped section). Every sentence a destination needs is in the data, in the brief's language, so it never
+  translates engine text: `heading` and `label` are the titles; `none` is the sentence of an empty list; a `text` part
+  is a ready sentence; a `brief_ref` part carries its `text`. A refs part (or item) that is a sentence about another
+  deliverable carries a template with the reference left to the destination: `format` on the part (Builds on: "Built by
+  {ref}; it exists when you start.") or on each item (Out of scope: "BC-4, BC-5 are delivered by {ref}.", the plural
+  already decided), and `uses_format` on the Unblocks part ("{ref}: builds on {ids} of this deliverable", with `{ids}`
+  from each item's `uses`). `{ref}` is `#n (D3: Title)` on GitHub, or the Jira key for `issue`/`id`. A refs item without
+  a template is just the reference.  Jira and any other
   destination render from it instead of rebuilding the layout.
 - The brief contract refuses `<!--`, control, invisible and bidirectional characters, and `@login` mentions outside
   backticks, fences and e-mail addresses (GitHub would notify people when the issues are created); the estimate in the marker is rounded to one decimal, or `none` when it

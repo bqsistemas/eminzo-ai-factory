@@ -7,9 +7,9 @@ import { isAbsolute, join, relative } from 'node:path';
 
 import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
 import { approveBrief, briefStatus, canonicalBrief } from '../brief-approval.js';
-import { LOGIN_PATTERN, fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../brief.js';
+import { LOGIN_PATTERN, fromEgmConcepts, parseBrief, renderBrief, renderBriefTemplate, validateBrief } from '../brief.js';
 import { discoveryMethods } from '../discovery.js';
-import { briefIssueDraft, deliverableIssueDrafts, deliverableSections } from '../handoff.js';
+import { briefIssueDraft, deliverableIssueDrafts, deliverableSections, oversizedDeliverables } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { deliveryMetrics } from '../state/delivery.js';
@@ -277,11 +277,12 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'check_brief',
       title: 'Check a brief',
-      description: 'Checks a brief against the Eminzo brief contract (problem, for whom, expected value, how it works today, scope, out of scope, acceptance criteria BC-n, open questions, deliverables Dn with size, risk and covers) and returns the problems that block approval, warnings, and the deliverables ready for estimate_work. Never changes anything.',
+      description: 'Checks a brief against the Eminzo brief contract (problem, for whom, expected value, how it works today, scope, out of scope, acceptance criteria BC-n, definitions, open questions, deliverables Dn with size, risk, covers, after and uses) and returns the problems that block approval, warnings, and the deliverables ready for estimate_work. Never changes anything.',
       inputSchema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: briefText } },
       answer: (args) => {
         const parsed = parseBrief(args.text);
         const check = validateBrief(parsed);
+        for (const id of oversizedDeliverables(args.text)) check.warnings.push(`${id}'s issue would be too long for Jira: split it or narrow uses`);
         const summary = check.ok
           ? `The brief is complete: ${parsed.criteria.length} acceptance criteria and ${parsed.deliverables.length} deliverables${check.warnings.length ? `; ${check.warnings.length} warning${check.warnings.length === 1 ? '' : 's'}` : ''}.`
           : `The brief cannot be approved yet: ${check.problems.length} problem${check.problems.length === 1 ? '' : 's'}.`;
@@ -291,9 +292,9 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'brief_template',
       title: 'Brief template',
-      description: 'An empty brief in the repository\'s language, with every section of the contract to fill in. Use it to start the Define step.',
+      description: 'An empty brief in the repository\'s language, with every section of the contract to fill in (including the optional Definitions), one example criterion written as Given, when, then, and one deliverable that builds on another with `after` and `uses`. Use it to start the Define step.',
       inputSchema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 200, description: 'The brief title, in functional words.' } } },
-      answer: (args, c) => ({ summary: 'An empty brief to fill in.', markdown: renderBrief({ title: args.title, sections: {}, criteria: [], deliverables: [] }, languageOf(c.root)) }),
+      answer: (args, c) => ({ summary: 'An empty brief to fill in.', markdown: renderBriefTemplate(args.title, languageOf(c.root)) }),
     }, ctx),
     tool({
       name: 'import_egm_brief',

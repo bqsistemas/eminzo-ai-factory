@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BRIEF_MARKER, SECTIONS, fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../factory/lib/brief.js';
+import { BRIEF_MARKER, SECTIONS, fromEgmConcepts, parseBrief, renderBrief, renderBriefTemplate, validateBrief } from '../factory/lib/brief.js';
 
 const BRIEF = {
   title: 'Filtro de sugerencias',
@@ -23,9 +23,9 @@ const BRIEF = {
     { id: 'BC-3', text: 'Las pendientes de más de 7 días se marcan.' },
   ],
   deliverables: [
-    { id: 'D1', title: 'Ver solo lo pendiente', size: 's', risk: 'low', covers: ['BC-1'], after: [] },
-    { id: 'D2', title: 'Conservar el filtro', size: 's', risk: 'low', covers: ['BC-2'], after: ['D1'] },
-    { id: 'D3', title: 'Aviso de pendientes antiguas', size: 'm', risk: 'high', covers: ['BC-3'], after: [] },
+    { id: 'D1', title: 'Ver solo lo pendiente', size: 's', risk: 'low', covers: ['BC-1'], after: [], uses: [] },
+    { id: 'D2', title: 'Conservar el filtro', size: 's', risk: 'low', covers: ['BC-2'], after: ['D1'], uses: [] },
+    { id: 'D3', title: 'Aviso de pendientes antiguas', size: 'm', risk: 'high', covers: ['BC-3'], after: [], uses: [] },
   ],
 };
 
@@ -49,7 +49,7 @@ test('headings are recognized in English and Portuguese too, ignoring case and a
   assert.deepEqual(parseBrief(renderBrief(BRIEF, 'pt')).criteria, BRIEF.criteria);
   const loose = renderBrief(BRIEF, 'es').replace('## Para quién', '## PARA QUIEN');
   assert.equal(parseBrief(loose).sections.audience, 'Revisores de contenido.');
-  assert.equal(SECTIONS.length, 9);
+  assert.equal(SECTIONS.length, 10);
 });
 
 test('validateBrief names every blocking problem', () => {
@@ -88,7 +88,7 @@ test('an emphasized id and colon is read as the plain id, and the text is kept a
       const dId = id.replace('BC-1', 'D1');
       const b = withLines([`${bullet} ${id} La página abre **rápido**.`], [`${bullet} ${dId} Encabezado | size: s | risk: low | covers: BC-1`]);
       assert.deepEqual(b.criteria, [{ id: 'BC-1', text: 'La página abre **rápido**.' }], `${bullet} ${id}`);
-      assert.deepEqual(b.deliverables, [{ id: 'D1', title: 'Encabezado', size: 's', risk: 'low', covers: ['BC-1'], after: [] }], `${bullet} ${dId}`);
+      assert.deepEqual(b.deliverables, [{ id: 'D1', title: 'Encabezado', size: 's', risk: 'low', covers: ['BC-1'], after: [], uses: [] }], ` `);
       assert.deepEqual(validateBrief(b).problems.filter((p) => /could not be read/.test(p)), []);
     }
   }
@@ -108,7 +108,7 @@ test('unbalanced or odd emphasis is reported, never guessed', () => {
 test('validateBrief warns about what is legal but worth a second look', () => {
   const brief = structuredClone(BRIEF);
   brief.deliverables[2] = { ...brief.deliverables[2], size: 'l', covers: ['BC-1'] };
-  brief.deliverables.push({ id: 'D4', title: 'Ciclo', size: 's', risk: 'low', covers: ['BC-1'], after: ['D5'] }, { id: 'D5', title: 'Ciclo 2', size: 's', risk: 'low', covers: ['BC-1'], after: ['D4'] });
+  brief.deliverables.push({ id: 'D4', title: 'Ciclo', size: 's', risk: 'low', covers: ['BC-1'], after: ['D5'], uses: [] }, { id: 'D5', title: 'Ciclo 2', size: 's', risk: 'low', covers: ['BC-1'], after: ['D4'] });
   const { problems, warnings } = validateBrief(parseBrief(renderBrief(brief, 'en')));
   assert.deepEqual(problems, ['deliverables D4, D5 wait for each other']);
   assert.deepEqual(warnings, [
@@ -221,4 +221,118 @@ test('the mention scan is linear on hostile lines', () => {
   const started = Date.now();
   parseBrief(`# Brief: x\n## Problema\n${'`` ` '.repeat(100_000)}\n${'a@'.repeat(100_000)}\n`);
   assert.ok(Date.now() - started < 2000);
+});
+
+// ---- Definitions, `uses` and the new warnings ------------------------------------------------------------------
+
+test('Definitions is an optional section in en, es and pt, between Out of scope and Acceptance criteria', () => {
+  const keys = SECTIONS.map((s) => s.key);
+  assert.equal(keys.indexOf('definitions'), keys.indexOf('out_of_scope') + 1);
+  assert.equal(keys.indexOf('acceptance'), keys.indexOf('definitions') + 1);
+  const heading = { en: 'Definitions', es: 'Definiciones', pt: 'Definições' };
+  for (const lang of ['en', 'es', 'pt']) {
+    const text = renderBrief({ ...BRIEF, sections: { ...BRIEF.sections, definitions: '- Pending: not yet reviewed.' } }, lang);
+    assert.match(text, new RegExp(`^## ${heading[lang]}$`, 'm'));
+    const parsed = parseBrief(text);
+    assert.equal(parsed.sections.definitions, '- Pending: not yet reviewed.');
+    assert.equal(parsed.language, lang);
+    assert.equal(validateBrief(parsed).problems.length, 0);
+  }
+  // optional: omitted when empty, and a brief without it is still valid
+  assert.doesNotMatch(renderBrief(BRIEF, 'en'), /Definitions/);
+});
+
+test('Definitions counts in the language vote', () => {
+  const text = ['# Brief: x', '## Problem', 'p', '## Definiciones', 'd', '## Definiciones', 'd'].join('\n');
+  assert.equal(parseBrief(text).language, 'es');
+});
+
+test('a deliverable line may say which criteria it `uses`, and render/parse round-trip keeps them', () => {
+  const brief = structuredClone(BRIEF);
+  brief.deliverables[1].uses = ['BC-1'];
+  const text = renderBrief(brief, 'en');
+  assert.match(text, /^- D2: Conservar el filtro \| size: s \| risk: low \| covers: BC-2 \| after: D1 \| uses: BC-1$/m);
+  const parsed = parseBrief(text);
+  assert.deepEqual(parsed.deliverables[1].uses, ['BC-1']);
+  assert.deepEqual(parsed.deliverables[0].uses, []);
+  assert.deepEqual(validateBrief(parsed), { ok: true, problems: [], warnings: [] });
+});
+
+test('`uses` is a problem when the id is unknown or not covered by a deliverable in `after`', () => {
+  const brief = structuredClone(BRIEF);
+  brief.deliverables[1].uses = ['BC-9', 'BC-3', 'BC-1'];
+  const { ok, problems } = validateBrief(parseBrief(renderBrief(brief, 'en')));
+  assert.equal(ok, false);
+  assert.deepEqual(problems, [
+    'deliverable D2: uses BC-9, which is not an acceptance criterion',
+    'deliverable D2: uses BC-3, which no deliverable it waits for covers',
+  ]);
+  const none = structuredClone(BRIEF);
+  none.deliverables[0].uses = ['BC-2'];
+  assert.deepEqual(validateBrief(parseBrief(renderBrief(none, 'en'))).problems, ['deliverable D1: uses BC-2, which no deliverable it waits for covers']);
+});
+
+test('warns about a deliverable that covers more than 8 criteria', () => {
+  const brief = structuredClone(BRIEF);
+  brief.criteria = Array.from({ length: 9 }, (_, i) => ({ id: `BC-${i + 1}`, text: `Thing ${i + 1} works.` }));
+  brief.deliverables = [{ id: 'D1', title: 'Big', size: 'm', risk: 'low', covers: brief.criteria.map((c) => c.id), after: [] }];
+  const { problems, warnings } = validateBrief(parseBrief(renderBrief(brief, 'en')));
+  assert.deepEqual(problems, []);
+  assert.deepEqual(warnings, ['deliverable D1 covers 9 acceptance criteria; the factory\'s spec takes 3 to 8: split it or move shared rules to Definitions']);
+  brief.criteria = brief.criteria.slice(0, 8);
+  brief.deliverables[0].covers = brief.criteria.map((c) => c.id);
+  assert.deepEqual(validateBrief(parseBrief(renderBrief(brief, 'en'))).warnings, []);
+});
+
+test('warns about a criterion that starts with Given/Dado but has no when/cuando/quando', () => {
+  const brief = structuredClone(BRIEF);
+  brief.criteria = [
+    { id: 'BC-1', text: 'Given a reviewer on the list, then only pending items show.' },
+    { id: 'BC-2', text: 'Dado un revisor en la lista, cuando abre el filtro, entonces ve pendientes.' },
+    { id: 'BC-3', text: 'Dado un revisor, entonces ve algo.' },
+    { id: 'BC-6', text: 'Given name is shown on the profile.' },
+    { id: 'BC-4', text: 'Dado um revisor, quando abre, então vê.' },
+    { id: 'BC-5', text: 'Given a reviewer, when they open it, then it shows.' },
+  ];
+  brief.deliverables = [{ id: 'D1', title: 'A', size: 's', risk: 'low', covers: ['BC-1', 'BC-2', 'BC-3', 'BC-4', 'BC-5', 'BC-6'], after: [] }];
+  const { warnings } = validateBrief(parseBrief(renderBrief(brief, 'en')));
+  assert.deepEqual(warnings, [
+    'acceptance criterion BC-1 starts with "Given" but has no "when": write it as "Given …, when …, then …"',
+    'acceptance criterion BC-3 starts with "Dado" but has no "when": write it as "Given …, when …, then …"',
+  ]);
+});
+
+test('the brief template shows Definitions, a one-line Given/when/then criterion and a `uses` example, in its language', () => {
+  const expected = {
+    en: { def: '## Definitions', given: /^- BC-1: Given .+, when .+, then .+$/m },
+    es: { def: '## Definiciones', given: /^- BC-1: Dado .+, cuando .+, entonces .+$/m },
+    pt: { def: '## Definições', given: /^- BC-1: Dado .+, quando .+, então .+$/m },
+  };
+  for (const lang of ['en', 'es', 'pt']) {
+    const text = renderBriefTemplate('Filter', lang);
+    assert.ok(text.startsWith(`${BRIEF_MARKER}\n# Brief: Filter\n`));
+    assert.ok(text.includes(`\n${expected[lang].def}\n`), lang);
+    assert.match(text, expected[lang].given, lang);
+    assert.match(text, /^- D2: .+ \| size: s \| risk: low \| covers: BC-2 \| after: D1 \| uses: BC-1$/m, lang);
+    const parsed = parseBrief(text);
+    assert.equal(parsed.language, lang);
+    assert.equal(parsed.criteria[0].id, 'BC-1');
+    assert.deepEqual(parsed.deliverables[1].uses, ['BC-1']);
+    assert.equal(validateBrief(parsed).ok, false, 'still a draft: the sections are to be completed');
+  }
+});
+
+test('warns when a deliverable waits for another but uses none of its criteria', () => {
+  const brief = structuredClone(BRIEF);
+  brief.deliverables[1].uses = ['BC-3'];
+  assert.deepEqual(validateBrief(parseBrief(renderBrief(brief, 'en'))).problems.length, 1, 'BC-3 is not covered by D1: still a problem');
+  const ok = structuredClone(BRIEF);
+  ok.deliverables.push({ id: 'D4', title: 'Cuarta', size: 's', risk: 'low', covers: ['BC-3'], after: ['D1', 'D2'], uses: ['BC-2'] });
+  ok.deliverables[2].covers = [];
+  ok.deliverables.splice(2, 1);
+  const { problems, warnings } = validateBrief(parseBrief(renderBrief(ok, 'en')));
+  assert.deepEqual(problems, []);
+  assert.deepEqual(warnings, ['deliverable D4 waits for D1 but uses none of its criteria: fine if it only needs the order; otherwise add them to uses']);
+  const none = structuredClone(BRIEF);
+  assert.deepEqual(validateBrief(parseBrief(renderBrief(none, 'en'))).warnings, [], 'no `uses` at all: all of each dependency, no warning');
 });
