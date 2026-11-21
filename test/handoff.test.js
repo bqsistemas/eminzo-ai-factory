@@ -246,15 +246,15 @@ test('AC-1: the layout is lean in en, es and pt, in the brief language, and equa
     for (const d of drafts) {
       assert.deepEqual(headingsOf(d.body), d.sections.map((s) => s.heading), lang);
       assert.equal(d.sections.some((s) => ['context', 'today'].includes(s.key)), false, 'no context, no today');
-      assert.doesNotMatch(d.body, new RegExp(`${h.audience}|${h.today}`));
-      assert.doesNotMatch(d.body, /Reviewers\.\nTheir leads\.|Everything is mixed|Second paragraph/);
+      assert.doesNotMatch(d.body, new RegExp(`### ${h.today}|## ${h.today}`));
+      assert.doesNotMatch(d.body, /Everything is mixed|Second paragraph/);
     }
     const d2 = draftOf(drafts, 'D2');
     assert.deepEqual(d2.sections.map((s) => s.key), KEYS, lang);
     assert.deepEqual(d2.sections.map((s) => s.heading), [T[lang].goal, drafts[0].sections[1].heading, h.acceptance, T[lang].builds_on, h.out_of_scope, T[lang].definitions, drafts[0].sections.find((s) => s.key === 'dependencies').heading, h.questions, T[lang].estimate], lang);
     // Goal: the expected value, then the first paragraph of the problem under the Problem heading
-    assert.deepEqual(sectionOf(d2, 'goal').parts, [{ kind: 'text', text: 'Less time.' }, { kind: 'text', label: h.problem, text: 'Reviewers lose time.\nThey scroll all day.' }]);
-    assert.equal(sliceOf(d2.body, T[lang].goal), `> Less time.\n\n### ${h.problem}\n\n> Reviewers lose time.\n> They scroll all day.\n`);
+    assert.deepEqual(sectionOf(d2, 'goal').parts, [{ kind: 'text', text: 'Less time.' }, { kind: 'text', label: h.audience, text: 'Reviewers.\nTheir leads.' }, { kind: 'text', label: h.problem, text: 'Reviewers lose time.\nThey scroll all day.' }]);
+    assert.equal(sliceOf(d2.body, T[lang].goal), `> Less time.\n\n### ${h.audience}\n\n> Reviewers.\n> Their leads.\n\n### ${h.problem}\n\n> Reviewers lose time.\n> They scroll all day.\n`);
     assert.deepEqual(sectionOf(d2, 'definitions').parts, [{ kind: 'text', text: '- Pending: not yet reviewed.' }]);
     assert.equal(sliceOf(d2.body, T[lang].builds_on).split('\n')[0], T[lang].built, 'the sentence of the neighbour');
     assert.ok(sliceOf(d2.body, sectionOf(d2, 'dependencies').heading).includes(T[lang].stop));
@@ -379,6 +379,8 @@ test('AC-3: sections that do not fit are dropped whole and in order (questions, 
       }
       assert.equal(d.body.split('\n').filter((l) => l.includes('#7') && !l.startsWith('Part of')).length, dropped.length);
       assert.deepEqual(headingsOf(d.body), d.sections.map((s) => s.heading));
+      const goalDrop = gone.find((s) => s.key === 'goal');
+      if (goalDrop) assert.equal(goalDrop.parts[0].text, `See the brief issue #7 for Goal (For whom, Problem)`, 'the pointer lists what the section carried');
       for (const key of ['delivers', 'criteria', 'out_of_scope', 'dependencies', 'estimate']) assert.ok(sectionOf(d, key).parts.every((p) => p.kind !== 'brief_ref'), key);
       if (d.after.length) assert.ok(sectionOf(d, 'builds_on').parts.every((p) => p.kind !== 'brief_ref'), 'Builds on is never dropped');
       assert.equal(parseDeliverableMarker(d.body).brief, 7);

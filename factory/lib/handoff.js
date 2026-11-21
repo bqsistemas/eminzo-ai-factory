@@ -268,7 +268,7 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
   const verbatim = (key, label) => (brief.sections[key] === undefined ? [] : [{ kind: 'text', ...(label ? { label } : {}), text: sanitizeBlock(brief.sections[key]) }]);
   const out = [];
   const add = (key, parts) => { if (parts.length) out.push({ key, heading: t[key], parts }); };
-  add('goal', [...verbatim('value'), ...(brief.sections.problem === undefined ? [] : [{ kind: 'text', label: briefHeading('problem', lang), text: sanitizeBlock(firstParagraph(brief.sections.problem)) }])]);
+  add('goal', [...verbatim('value'), ...verbatim('audience', briefHeading('audience', lang)), ...(brief.sections.problem === undefined ? [] : [{ kind: 'text', label: briefHeading('problem', lang), text: sanitizeBlock(firstParagraph(brief.sections.problem)) }])]);
   add('delivers', [{ kind: 'text', text: sanitize(d.title) }]);
   add('criteria', [{ kind: 'criteria', items: d.covers.map((id) => ({ id, text: sanitize(criteria.get(id)) })) }]);
   add('builds_on', buildsOn.flatMap(({ dep, ids }) => [
@@ -294,8 +294,10 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
 }
 
 /** A section replaced by one line that points at the brief issue. */
-function briefRef(section, { t, briefIssue }) {
-  return { key: section.key, heading: section.heading, parts: [{ kind: 'brief_ref', issue: briefIssue, text: t.seeBrief(briefIssue, section.heading) }] };
+function briefRef(section, { t, lang, briefIssue }) {
+  // The goal carries two labelled brief texts: the pointer names them, as the old context pointer did.
+  const what = section.key === 'goal' ? `${section.heading} (${briefHeading('audience', lang)}, ${briefHeading('problem', lang)})` : section.heading;
+  return { key: section.key, heading: section.heading, parts: [{ kind: 'brief_ref', issue: briefIssue, text: t.seeBrief(briefIssue, what) }] };
 }
 
 /**
@@ -373,7 +375,7 @@ export function deliverableIssueDrafts(briefText, { briefIssue, estimates = {}, 
     for (const key of DELIVERABLE_DROPPABLE) {
       if (body.length <= MAX_BODY) break;
       if (!sections.some((s) => s.key === key)) continue;
-      sections = sections.map((s) => (s.key === key ? briefRef(s, { t, briefIssue }) : s));
+      sections = sections.map((s) => (s.key === key ? briefRef(s, { t, lang, briefIssue }) : s));
       body = render(sections);
     }
     checkBody(body);

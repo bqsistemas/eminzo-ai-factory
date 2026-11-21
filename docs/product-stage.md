@@ -171,10 +171,11 @@ Hidden lines (HTML comments, found with a search on the issue body):
 - A deliverable issue is titled with the deliverable title (up to 120 characters) and is lean: it carries what is its
   own and an explicit contract with its neighbours, in the brief's language, so a person (or intake, the spec writer and
   the builder) who reads only that issue knows what to deliver, how to check it, what already exists when it starts,
-  what is not part of it and what it unblocks. The brief's Problem, For whom and How it works today are not repeated.
+  what is not part of it and what it unblocks. Only the first paragraph of the brief's Problem, and none of How it works today, is repeated.
   Its `## ` sections, in order (`DELIVERABLE_SECTION_KEYS` in `handoff.js`):
-  1. Goal (`goal`): the brief's Expected value, verbatim, then the first paragraph of its Problem (labelled with the
-     brief's Problem heading).
+  1. Goal (`goal`): the brief's Expected value, verbatim; its For whom, verbatim (labelled with the brief's For whom
+     heading); then the first paragraph of its Problem (labelled with the brief's Problem heading). When the body is
+     too long the section is replaced by "See the brief issue #n for Goal (For whom, Problem)", in the brief's language.
   2. What it delivers (`delivers`): the deliverable title.
   3. Acceptance criteria (`criteria`): one checklist line per criterion it covers, `- [ ] BC-n: <full text>`, never cut.
   4. Builds on (`builds_on`), only when the deliverable has `after`: for each deliverable it waits for (direct `after`,
