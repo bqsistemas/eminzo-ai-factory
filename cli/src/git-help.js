@@ -8,6 +8,8 @@ export const HELP_TOPICS = ['ssh-auth', 'signing', 'troubleshooting'];
 const SSH_AUTH = [
   /Permission denied \(publickey/i,
   /Host key verification failed/i,
+  /sign_and_send_pubkey: signing failed/i,
+  /agent refused operation/i,
 ];
 
 // GPG and SSH signing failures. `failed to write commit object` alone is not matched: it also follows unrelated errors.
@@ -15,10 +17,14 @@ const SIGNING = [
   /gpg failed to sign the data/i,
   /gpg: signing failed/i,
   /^error: gpg/im,
-  /gpg: skipped .*: No secret key/i,
+  /gpg: skipped [^\n]{0,200}: No secret key/i,
   /Couldn't sign message/i,
-  /Load key ".*": incorrect passphrase/i,
+  /Couldn't load public key/i,
+  /Load key "[^"\n]{0,300}": incorrect passphrase/i,
 ];
+
+// git's own stderr can be large (enable allows 64 MB): the messages above are at the end, so read only the tail.
+const TAIL = 8 * 1024;
 
 /** 'es' when the first of LC_ALL, LC_MESSAGES, LANG that is set starts with `es`, else 'en'. */
 export function helpLocale(env = process.env) {
@@ -28,7 +34,7 @@ export function helpLocale(env = process.env) {
 
 /** @returns {{ topic: string, url: string } | null} */
 export function gitHelp(stderr, locale = 'en') {
-  const text = String(stderr ?? '');
+  const text = String(stderr ?? '').slice(-TAIL);
   const topic = SSH_AUTH.some((re) => re.test(text)) ? 'ssh-auth'
     : SIGNING.some((re) => re.test(text)) ? 'troubleshooting'
       : null;

@@ -215,10 +215,13 @@ export async function enable({ dist, version, env = process.env, cwd = process.c
     return 0;
   }
 
-  const remoteBranch = git('ls-remote', '--exit-code', '--heads', 'origin', ENABLE_BRANCH);
-  // 2 is "no such branch"; any other failure is only worth reporting when the guide explains it (SSH authentication).
-  if (remoteBranch.code !== 0 && remoteBranch.code !== 2 && helpFor(remoteBranch)) must(remoteBranch, 'git ls-remote origin');
-  const branchTaken = git('show-ref', '--verify', '--quiet', `refs/heads/${ENABLE_BRANCH}`).code === 0 || remoteBranch.code === 0;
+  let branchTaken = git('show-ref', '--verify', '--quiet', `refs/heads/${ENABLE_BRANCH}`).code === 0;
+  if (!branchTaken) {
+    const remoteBranch = git('ls-remote', '--exit-code', '--heads', 'origin', ENABLE_BRANCH);
+    // 2 is "no such branch"; any other failure is only worth reporting when the guide explains it (SSH authentication).
+    if (remoteBranch.code !== 0 && remoteBranch.code !== 2 && helpFor(remoteBranch)) must(remoteBranch, 'git ls-remote origin');
+    branchTaken = remoteBranch.code === 0;
+  }
   if (branchTaken) throw new CliError(`the branch ${ENABLE_BRANCH} already exists (here or on origin); merge or close its pull request, delete the branch, then run eminzo enable again`);
 
   must(git('checkout', '-q', '-b', ENABLE_BRANCH, base), `git checkout -b ${ENABLE_BRANCH}`);

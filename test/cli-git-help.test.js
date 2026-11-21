@@ -4,7 +4,7 @@
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,30 @@ test('gitHelp: commit signing failures map to troubleshooting', () => {
     'Load key "/home/dev/.ssh/id_ed25519": incorrect passphrase supplied to decrypt private key\nfatal: failed to write commit object',
     'Load key "/home/dev/.ssh/id_ed25519": incorrect passphrase\nfatal: failed to write commit object',
   ]) assert.deepEqual(gitHelp(stderr), { topic: 'troubleshooting', url: `${EN}#troubleshooting` }, stderr);
+});
+
+test('gitHelp: ssh-agent failures map to ssh-auth, a missing public key to troubleshooting', () => {
+  for (const stderr of ['sign_and_send_pubkey: signing failed for ED25519 "/k": agent refused operation\ngit@github.com: Permission', 'agent refused operation'])
+    assert.deepEqual(gitHelp(stderr), { topic: 'ssh-auth', url: `${EN}#ssh-auth` }, stderr);
+  assert.deepEqual(gitHelp("Couldn't load public key /home/dev/.ssh/id.pub: No such file or directory?\nfatal: failed to write commit object"), { topic: 'troubleshooting', url: `${EN}#troubleshooting` });
+});
+
+test('gitHelp: adversarial stderr of 1 MB answers fast (no catastrophic backtracking)', () => {
+  const MB = 1024 * 1024;
+  for (const unit of ['gpg: skipped ', 'Load key "', 'gpg: skipped "', 'Load key "x": incorrect ']) {
+    const stderr = unit.repeat(Math.ceil(MB / unit.length));
+    const start = performance.now();
+    gitHelp(stderr);
+    const ms = performance.now() - start;
+    console.log(`# adversarial ${JSON.stringify(unit)}: ${ms.toFixed(1)} ms`);
+    assert.ok(ms < 100, `${unit}: ${ms} ms`);
+  }
+});
+
+test('gitHelp: only the tail of a huge stderr is read', () => {
+  const noise = 'x\n'.repeat(100_000);
+  assert.equal(gitHelp(`error: gpg failed to sign the data\n${noise}`), null);
+  assert.equal(gitHelp(`${noise}error: gpg failed to sign the data\n`).topic, 'troubleshooting');
 });
 
 test('gitHelp: unrelated failures get no help', () => {
@@ -77,7 +101,7 @@ const GIT_ENV = {
 };
 
 /** A temp repo whose origin is a local bare repo; `git` on PATH is a shim that fails `fetch` with `fetchError` when given. */
-function setup({ fetchError = null, extraEnv = {} } = {}) {
+function setup({ fetchError = null, lsRemoteError = null, extraEnv = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'eminzo-help-'));
   const origin = join(dir, 'origin.git');
   const root = join(dir, 'shop');
@@ -102,12 +126,14 @@ function setup({ fetchError = null, extraEnv = {} } = {}) {
   const shimDir = join(dir, 'shim');
   mkdirSync(shimDir);
   const shim = join(shimDir, 'git');
-  writeFileSync(shim, `#!/bin/sh\nif [ "$1" = fetch ] && [ -n "${fetchError ? '1' : ''}" ]; then\n  printf '%s\\n' ${JSON.stringify(fetchError ?? '')} >&2\n  echo 'fatal: Could not read from remote repository.' >&2\n  exit 128\nfi\nexec "${realGit}" "$@"\n`);
+  const calls = join(dir, 'git.calls');
+  const failing = (sub, message) => (message ? `if [ "$1" = ${sub} ]; then\n  printf '%s\\n' ${JSON.stringify(message)} >&2\n  echo 'fatal: Could not read from remote repository.' >&2\n  exit 128\nfi\n` : '');
+  writeFileSync(shim, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${calls}"\n${failing('fetch', fetchError)}${failing('ls-remote', lsRemoteError)}exec "${realGit}" "$@"\n`);
   chmodSync(shim, 0o755);
   const run = (args = [], more = {}) => spawnSync(process.execPath, [bin, 'enable', ...args], {
     cwd: root, encoding: 'utf8', env: { ...env, FACTORY_GH: gh, PATH: `${shimDir}:${process.env.PATH}`, ...extraEnv, ...more },
   });
-  return { dir, root, git, run };
+  return { dir, root, git, run, calls: () => (existsSync(calls) ? readFileSync(calls, 'utf8') : '') };
 }
 
 test('enable: a fetch that fails on SSH authentication names the guide, in text and in --json', () => {
@@ -155,4 +181,20 @@ test('enable: a failure the guide does not cover has no help, in text or in --js
   assert.equal(out.ok, false);
   assert.match(out.error, /Repository not found/);
   assert.equal('help' in out, false);
+});
+
+test('enable: an ls-remote that fails on SSH authentication names the guide', () => {
+  const t = setup({ lsRemoteError: 'git@github.com: Permission denied (publickey).' });
+  const out = JSON.parse(t.run(['--json']).stdout);
+  assert.match(out.error, /^git ls-remote origin failed: .*Permission denied \(publickey\)/);
+  assert.deepEqual(out.help, { topic: 'ssh-auth', url: `${EN}#ssh-auth` });
+});
+
+test('enable: when the local enable branch exists, ls-remote is not run at all', () => {
+  const t = setup({ lsRemoteError: 'git@github.com: Permission denied (publickey).' });
+  t.git(t.root, 'branch', 'chore/enable-factory');
+  const out = JSON.parse(t.run(['--json']).stdout);
+  assert.match(out.error, /already exists/);
+  assert.equal('help' in out, false);
+  assert.doesNotMatch(t.calls(), /^ls-remote .*chore\/enable-factory/m);
 });
