@@ -440,6 +440,52 @@ test('golden: handoff_drafts refuses a changed brief with the gate reason, and u
   assert.match(extra.content[0].text, /labels/);
 });
 
+test('AC-5: golden: handoff_drafts with brief_issue adds sections, with and without kind: deliverables', async () => {
+  const text = await approvedTwo();
+  const base = { text, brief_issue: 40, created: [{ id: 'D2', issue: 41 }] };
+  const plain = (await ask('handoff_drafts', base)).structuredContent;
+  const typed = (await ask('handoff_drafts', { ...base, kind: 'deliverables' })).structuredContent;
+  assert.deepEqual(typed.drafts, plain.drafts);
+  assert.equal(typed.kind, 'deliverables');
+  assert.deepEqual(plain.drafts.map((x) => x.id), ['D2', 'D1']);
+  assert.deepEqual(plain.drafts.map((x) => x.after), [[], ['D2']]);
+  for (const x of plain.drafts) {
+    assert.deepEqual(x.labels, ['eminzo-deliverable']);
+    assert.match(x.body, /Parte de #40/);
+    assert.match(x.body, /<!-- eminzo:deliverable v1 brief=40 id=D[12] hash=[0-9a-f]{12} est=none -->/);
+    assert.deepEqual(x.sections.map((s) => s.key), ['context', 'delivers', 'criteria', 'out_of_scope', 'today', 'dependencies', 'estimate', 'part_of']);
+    assert.deepEqual(x.sections.find((s) => s.key === 'criteria').parts[0].items, [{ id: 'BC-1', text: 'Un revisor ve solo lo pendiente.' }]);
+    assert.deepEqual(x.sections.find((s) => s.key === 'part_of').parts, [{ type: 'brief', issue: 40 }]);
+    for (const part of x.sections.flatMap((s) => s.parts).filter((p) => p.type === 'text')) assert.ok(x.body.includes(part.text), part.from);
+  }
+  const d1 = plain.drafts[1];
+  assert.deepEqual(d1.sections.find((s) => s.key === 'dependencies').parts[0].items, [{ id: 'D2', title: 'Guardar el filtro', issue: 41 }]);
+  const brief = (await ask('handoff_drafts', { text })).structuredContent;
+  assert.equal(brief.kind, 'brief');
+  assert.equal(brief.draft.sections, undefined);
+  assert.equal(brief.drafts, undefined);
+});
+
+test('AC-6: golden: handoff_drafts with kind: deliverables and no brief_issue returns bodiless deliverables, and refuses the rest', async () => {
+  const text = await approvedTwo();
+  const bare = (await ask('handoff_drafts', { text, kind: 'deliverables' })).structuredContent;
+  const full = (await ask('handoff_drafts', { text, brief_issue: 40 })).structuredContent;
+  assert.equal(bare.kind, 'deliverables');
+  assert.deepEqual(bare.drafts.map((x) => x.id), full.drafts.map((x) => x.id));
+  for (const x of bare.drafts) {
+    assert.equal(x.body, null);
+    assert.ok(x.sections.length > 0);
+    assert.equal(JSON.stringify(x.sections).match(/"issue":\d/), null);
+    assert.equal(x.sections.find((s) => s.key === 'delivers').parts[0].text, x.title);
+  }
+  for (const args of [{ text, kind: 'brief', brief_issue: 40 }, { text, created: [{ id: 'D1', issue: 5 }] }, { text, kind: 'deliverables', created: [{ id: 'D1', issue: 5 }] }, { text, kind: 'other' }]) {
+    assert.equal((await ask('handoff_drafts', args)).isError, true, JSON.stringify(args).slice(0, 80));
+  }
+  const unapproved = await ask('handoff_drafts', { text: COMPLETE_BRIEF, kind: 'deliverables' });
+  assert.equal(unapproved.isError, true);
+  assert.match(unapproved.content[0].text, /^The brief is not approved yet\.$/);
+});
+
 test('golden: initiative reads a known deliverable issue the search has not shown yet', async () => {
   const { data, drafts } = await setUpInitiative();
   const d1 = drafts.D1;

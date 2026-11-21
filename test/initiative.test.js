@@ -141,6 +141,28 @@ test('a localized Part of line is accepted', () => {
   assert.equal(byId(initiative('/repo', { issue: BRIEF_ISSUE, gh: 'gh', runner })).D5.status, 'waiting-tech-lead');
 });
 
+test('AC-7: a deliverable issue with the previous layout and one with the new layout are both recognised as deliverables of the brief', () => {
+  const hash = /sha256=([0-9a-f]{12})/.exec(approved)[1];
+  const previous = [
+    '## What it delivers', '', '> Deliverable 5', '',
+    '## Acceptance criteria it covers', '', '> BC-1: A reviewer sees what is pending.', '',
+    'Size: s. Risk: low.', '',
+    '## Waits for', '', 'Nothing: it can start right away.', '',
+    '## Estimate when this issue was created', '', 'About 1 h to 2 h until ready for approval, from 6 similar finished jobs. It is a range, not a date.', '',
+    'Part of #40', '',
+    `<!-- eminzo:deliverable v1 brief=40 id=D5 hash=${hash} est=60-120 -->`, '',
+  ].join('\n');
+  assert.doesNotMatch(previous, /## Context/);
+  const w = world({ deliverables: [issue('D5', 45, { body: previous }), issue('D2', 42, { body: drafts.D2.body })] });
+  const r = initiative('/repo', { issue: BRIEF_ISSUE, gh: 'gh', runner: w.runner });
+  assert.equal(byId(r).D5.status, 'waiting-tech-lead');
+  assert.equal(byId(r).D5.issue, 45);
+  assert.deepEqual(byId(r).D5.estimate && { low: byId(r).D5.estimate.low_min, high: byId(r).D5.estimate.high_min }, { low: 60, high: 120 });
+  assert.equal(byId(r).D2.issue, 42);
+  assert.notEqual(byId(r).D2.status, 'not-created');
+  assert.deepEqual(r.warnings.filter((m) => /looks like a deliverable/.test(m)), []);
+});
+
 test('two valid issues for one deliverable: the earliest valid one counts and the others are named', () => {
   const w = world({ deliverables: [issue('D5', 46, { createdAt: '2026-11-12T17:00:00Z' }), issue('D5', 45, { createdAt: '2026-11-12T18:00:00Z' }), issue('D5', 48, { author: 'mallory', createdAt: '2026-11-12T15:30:00Z' })] });
   const r = go(w);

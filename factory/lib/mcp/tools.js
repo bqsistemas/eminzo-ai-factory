@@ -9,7 +9,7 @@ import { REVIEW_LENSES, mergeFindings, reviewPrompt } from '../brief-review.js';
 import { approveBrief, briefStatus, canonicalBrief } from '../brief-approval.js';
 import { LOGIN_PATTERN, fromEgmConcepts, parseBrief, renderBrief, validateBrief } from '../brief.js';
 import { discoveryMethods } from '../discovery.js';
-import { briefIssueDraft, deliverableIssueDrafts } from '../handoff.js';
+import { briefIssueDraft, deliverableIssueDrafts, deliverableSections } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { deliveryMetrics } from '../state/delivery.js';
@@ -380,12 +380,13 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'handoff_drafts',
       title: 'Issue drafts for an approved brief',
-      description: 'The texts of the GitHub issues cut from an APPROVED brief, behind the approval gate: without `brief_issue`, the draft of the brief issue (the approved text plus a hidden line, label eminzo-brief); with `brief_issue` (the number the brief issue got), one draft per deliverable in dependency order (functional text, the criteria it covers, size and risk, what it waits for, the estimate shown at creation, label eminzo-deliverable), plus `estimate_input`. When the gate is closed it fails with the gate\'s reason. It stores and creates nothing and never sets the factory label: the Eminzo desktop creates the issues after the person confirms them, and the tech lead adds the factory label to the deliverables that enter the factory. Pass `created` (id and issue number of deliverables already created) so later drafts refer to them as #n.',
+      description: 'The texts of the GitHub issues cut from an APPROVED brief, behind the approval gate: without `brief_issue`, the draft of the brief issue (the approved text plus a hidden line, label eminzo-brief); with `brief_issue` (the number the brief issue got), one draft per deliverable in dependency order, plus `estimate_input`. Each deliverable issue stands on its own: context (problem and audience), what it delivers, the acceptance criteria it covers as a checklist, what is out of scope (including the criteria other deliverables cover), how it works today, dependencies (waits for and unblocks), open questions, size, risk and the estimate shown at creation, then the `Part of` line and a hidden line, label eminzo-deliverable. Every draft also carries `sections`: the same content as structured parts (`key`, `heading`, `dropped`, `parts`), in the brief language; `dropped` marks a section the `body` replaced by a pointer to the brief issue to fit GitHub\'s limit, while `sections` keeps it whole. `kind: "deliverables"` without `brief_issue` returns the deliverables before any issue exists (`body` null, no issue numbers) so a caller that publishes elsewhere builds its own text from `sections`; `kind: "brief"` cannot be combined with `brief_issue`. When the gate is closed it fails with the gate\'s reason. It stores and creates nothing and never sets the factory label: the Eminzo desktop creates the issues after the person confirms them, and the tech lead adds the factory label to the deliverables that enter the factory. Pass `created` (id and issue number of deliverables already created, only with `brief_issue`) so later drafts refer to them as #n.',
       inputSchema: {
         type: 'object', additionalProperties: false, required: ['text'],
         properties: {
           text: briefText,
           brief_issue: { type: 'integer', minimum: 1, maximum: 999_999_999, description: 'The number of the brief issue, once it exists.' },
+          kind: { type: 'string', enum: ['brief', 'deliverables'], description: 'Which drafts to return; without it, the brief issue draft when `brief_issue` is absent and the deliverables when it is given.' },
           created: {
             type: 'array', maxItems: 100, description: 'Deliverables whose issue already exists.',
             items: { type: 'object', additionalProperties: false, required: ['id', 'issue'], properties: { id: { type: 'string', pattern: '^D\\d{1,4}$' }, issue: { type: 'integer', minimum: 1, maximum: 999_999_999 } } },
@@ -397,7 +398,8 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
         if (!gate.can_create_issues) throw new ToolError(gate.reason);
         if (args.created !== undefined && args.brief_issue === undefined) throw new ToolError('`created` only applies together with `brief_issue`');
         const estimateInput = parseBrief(canonicalBrief(args.text)).deliverables.filter((d) => d.size && d.risk).map((d) => ({ title: d.title.slice(0, 200), size: d.size, risk: d.risk }));
-        if (args.brief_issue === undefined) {
+        if (args.kind === 'brief' && args.brief_issue !== undefined) throw new ToolError('`kind: "brief"` does not apply together with `brief_issue`');
+        if (args.brief_issue === undefined && args.kind !== 'deliverables') {
           const draft = briefIssueDraft(args.text);
           return { summary: 'The brief issue is ready to create; this creates nothing, the Eminzo desktop creates it after the person confirms.', kind: 'brief', draft, estimate_input: estimateInput };
         }
@@ -408,6 +410,10 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
           const one = estimate.deliverables[i];
           return [d.id, one.factory_minutes ? { low_min: one.factory_minutes.low, high_min: one.factory_minutes.high, jobs: one.basis.jobs } : null];
         }));
+        if (args.brief_issue === undefined) {
+          const drafts = deliverableSections(args.text, { estimates });
+          return { summary: `${drafts.length} deliverable${drafts.length === 1 ? '' : 's'} in dependency order; the brief issue does not exist yet, so there are no bodies and no issue numbers. This creates nothing.`, kind: 'deliverables', drafts, estimate_input: estimateInput };
+        }
         const drafts = deliverableIssueDrafts(args.text, { briefIssue: args.brief_issue, estimates, issues: Object.fromEntries((args.created ?? []).map((x) => [x.id, x.issue])) });
         return { summary: `${drafts.length} deliverable issue${drafts.length === 1 ? '' : 's'} ready to create in this order; this creates nothing, the Eminzo desktop creates them after the person confirms.`, kind: 'deliverables', drafts, estimate_input: estimateInput };
       },

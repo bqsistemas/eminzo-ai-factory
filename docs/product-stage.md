@@ -152,24 +152,38 @@ Hidden lines (HTML comments, found with a search on the issue body):
 <!-- eminzo:deliverable v1 brief=<n> id=<Dn> hash=<first 12 hex of the approval hash> est=<low_min>-<high_min>|none -->
 ```
 
-- A deliverable issue is titled with the deliverable title (up to 120 characters) and says: what it delivers, the
-  acceptance criteria it covers (the `BC-n` lines, quoted), size and risk, what it waits for (other deliverables,
-  as `#n` once they exist), the estimate shown when it was created (a range and how many similar finished jobs it
-  rests on, or "too little history"), and `Part of #<brief issue>`. It is written in the brief's language and never
-  mentions the factory label.
+- A deliverable issue is titled with the deliverable title (up to 120 characters) and stands on its own, in the
+  brief's language and in this order: Context (the brief's Problem and For whom), what it delivers, the
+  acceptance criteria it covers as a checklist (`- [ ] BC-n: <full text>`), Out of scope (the brief's, plus the
+  criteria that other deliverables cover and this one does not, grouped by deliverable), How it works today,
+  Dependencies (what it waits for and what it unblocks), Open questions (only when the brief has them), and
+  size, risk and the estimate shown when it was created (a range and how many similar finished jobs it rests on,
+  or "too little history"). It ends with `Part of #<brief issue>` and the hidden line, and never mentions the
+  factory label. The brief's texts are copied whole, line by line, through the same inert treatment as every
+  brief-derived string, and a code fence a block leaves open is closed so it cannot swallow the hidden line.
+- When the body would exceed GitHub's limit, whole sections are replaced, one at a time, by a single line that
+  points to the brief issue (`#n` and the section's heading): How it works today first, then Open questions, then
+  Context. Criteria, Out of scope, Dependencies, `Part of` and the hidden line are never dropped; if the body is
+  still too long, the draft fails with the usual error instead of being cut.
+- Every deliverable draft also carries `sections`: the same content as structured parts in the order of the body
+  (`key`, `heading`, `dropped`, `parts`; criteria as `{ id, text }`, other deliverables as `{ id, title, issue }`).
+  `sections` always holds the whole text; `dropped: true` only says the `body` replaced that section by a
+  pointer. A destination with other limits (for example Jira) builds its own text from `sections`.
+- `handoff_drafts` without `brief_issue` returns the brief issue draft. With `brief_issue` it returns one draft per
+  deliverable in dependency order (`after` first), plus `estimate_input`. `kind: "deliverables"` without
+  `brief_issue` returns the same deliverables before any issue exists (`body` null, every `issue` null);
+  `kind: "brief"` cannot be combined with `brief_issue`, and `created` still needs `brief_issue`. Pass `created`
+  (`[{ id, issue }]`) so a draft refers to the deliverables already created as `#n`. It calls the gate first and
+  fails with its `reason` when `can_create_issues` is false, including a brief edited after approval.
 - The brief contract refuses `<!--`, control, invisible and bidirectional characters, and `@login` mentions outside
   backticks, fences and e-mail addresses (GitHub would notify people when the issues are created); the estimate in the marker is rounded to one decimal, or `none` when it
   does not fit.
-- `handoff_drafts` without `brief_issue` returns the brief issue draft. With `brief_issue` it returns one draft per
-  deliverable in dependency order (`after` first), plus `estimate_input`. Pass `created` (`[{ id, issue }]`) so a
-  draft refers to the deliverables already created as `#n`. It calls the gate first and fails with its `reason`
-  when `can_create_issues` is false, including a brief edited after approval.
 - The brief issue is never edited by Eminzo afterwards: it is the approved record. Whoever created it, and when, is
   GitHub's record of who approved.
 - Markers are read in linear time: one well-formed unindented line outside code fences, every field checked, at most
   200 characters. A body with two markers, or a text inside a code fence, is not trusted.
 
-Code: `factory/lib/handoff.js` (`briefIssueDraft`, `deliverableIssueDrafts`, `parseBriefIssueMarker`,
+Code: `factory/lib/handoff.js` (`briefIssueDraft`, `deliverableIssueDrafts`, `deliverableSections`, `parseBriefIssueMarker`,
 `parseDeliverableMarker`, `briefIssueValidity`).
 
 ## Following an initiative
@@ -312,7 +326,8 @@ These were chosen to keep moving and are pending the owner's confirmation:
   plus the hidden line `eminzo:brief-issue`, and Eminzo never edits it afterwards (it is the approved record).
 - Each deliverable becomes ONE issue labeled `eminzo-deliverable`, never `factory`: the tech lead adds `factory`
   when they accept it. Its hidden line `eminzo:deliverable` carries the brief issue number, the deliverable id, the
-  first 12 hex of the approval hash and the estimate shown at creation.
+  first 12 hex of the approval hash and the estimate shown at creation. Its body carries the context of the brief
+  (see the deliverable layout above), so it can be read, and worked on, without opening the brief issue.
 - An initiative is the brief issue plus its deliverable issues, found by those markers; its state is computed from
   GitHub only.
 - `available` means the issue is closed as completed AND a merged pull request closes it. The estimate is compared
