@@ -84,7 +84,7 @@ function parseFragment(text) {
 
 /**
  * A Claude artifact link, normalized (https, lowercase host, no query, no trailing slash, only a safe
- * `#artboard-<path>` or `#page-<id>` fragment), or null. `fragment.value` is decoded.
+ * `#artboard-<name>` or `#page-<id>` fragment), or null. `fragment.value` is decoded.
  * @returns {{ url: string, id: string, folder: string, fragment: { kind: string, value: string } | null } | null}
  */
 export function parseClaudeLink(text) {
@@ -261,36 +261,48 @@ export function withSection(markdown, links) {
 
 // --- artboards and images --------------------------------------------------------------------------------------
 
-/** The file of a board path, or null when the path could leave the folder. */
+/** The file of a board key (it already ends in `.dc.html`), or null when the path could leave the folder. */
 function boardFile(path) {
   if (!path || path.length > 512 || path.startsWith('/') || path.includes('\\') || CONTROL.test(path) || path.split('/').includes('..')) return null;
-  return `project/${path.endsWith('.dc.html') ? path : `${path}.dc.html`}`;
+  return `project/${path}`;
+}
+
+const BOARD_EXT = '.dc.html';
+
+/** The name `#artboard-<name>` matches: the key without `.dc.html`, every character but a letter, digit, `_` or `-` as `-`. */
+function boardName(key) {
+  return key.slice(0, -BOARD_EXT.length).replace(/[^\p{L}\p{N}_-]/gu, '-');
 }
 
 /**
- * The artboard files to read from a canvas.json, in the order of `boards`, at most MAX_ARTBOARDS: with
- * `#artboard-<path>` of a listed board, that board; with `#page-<id>` that `pages` lists, the boards of that page
- * (the first page also takes the boards without `page`); otherwise every board.
+ * The artboard files to read from a canvas.json (index v3: `boards` is an object keyed by the file, `order` lists
+ * keys): the keys of `order` that `boards` has, then the others by name, at most MAX_ARTBOARDS. With
+ * `#artboard-<name>` of a listed board, the boards of that name; with `#page-<id>` that `pages` lists, the boards of
+ * that page (the first page also takes the boards without `page`); otherwise every board. A key that is not a safe
+ * `*.dc.html` path is dropped.
  */
 export function selectArtboards(canvas, fragment) {
   const pages = (Array.isArray(canvas?.pages) ? canvas.pages : [])
     .map((p) => (typeof p === 'string' ? p : isObject(p) && typeof p.id === 'string' ? p.id : null)).filter((p) => p !== null);
-  const boards = (Array.isArray(canvas?.boards) ? canvas.boards : [])
-    .filter((b) => isObject(b) && typeof b.path === 'string').map((b) => ({ path: b.path, page: typeof b.page === 'string' ? b.page : null }));
+  const index = isObject(canvas?.boards) ? canvas.boards : {};
+  const keys = Object.keys(index);
+  const keySet = new Set(keys);
+  const listed = [...new Set(Array.isArray(canvas?.order) ? canvas.order : [])].filter((k) => typeof k === 'string' && keySet.has(k));
+  const listedSet = new Set(listed);
+  const sorted = keys.filter((k) => !listedSet.has(k)).sort();
+  const boards = [];
+  for (const key of [...listed, ...sorted]) {
+    const file = key.endsWith(BOARD_EXT) ? boardFile(key) : null;
+    if (file) boards.push({ file, name: boardName(key), page: isObject(index[key]) && typeof index[key].page === 'string' ? index[key].page : null });
+  }
   let chosen = boards;
   if (fragment?.kind === 'artboard') {
-    const hit = boards.filter((b) => b.path === fragment.value);
+    const hit = boards.filter((b) => b.name === fragment.value);
     if (hit.length) chosen = hit;
   } else if (fragment?.kind === 'page' && pages.includes(fragment.value)) {
     chosen = boards.filter((b) => b.page === fragment.value || (b.page === null && fragment.value === pages[0]));
   }
-  const out = [];
-  for (const b of chosen) {
-    const file = boardFile(b.path);
-    if (file && !out.includes(file)) out.push(file);
-    if (out.length === MAX_ARTBOARDS) break;
-  }
-  return out;
+  return chosen.map((b) => b.file).slice(0, MAX_ARTBOARDS);
 }
 
 // `<img` with its attributes (bounded, never across a tag), or a CSS `url(...)` value: one linear pass in document order.
