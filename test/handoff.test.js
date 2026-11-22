@@ -564,7 +564,7 @@ test('AC-4: design is never dropped, bodies fit, and oversizedDeliverables count
   const withLink = approveBrief(canonicalBrief(briefIn('en', { definitions: '- None.', scope: `- A filter ${CLAUDE_MAIN} ${'word '.repeat(1500)}` })), { by: 'ana-p', at: AT });
   const noLink = withLink.replace(`${CLAUDE_MAIN} `, 'x ');
   assert.deepEqual(oversizedDeliverables(noLink, 6000), []);
-  assert.deepEqual(oversizedDeliverables(withLink, 6000), ['D3', 'D1', 'D2']);
+  assert.deepEqual(oversizedDeliverables(withLink, 6000), ['D1', 'D2', 'D3', 'D4']);
 });
 
 test('AC-5: the links of the design section are the ones detectLinks finds in the body', async () => {
