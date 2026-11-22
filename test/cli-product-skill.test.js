@@ -108,3 +108,14 @@ test('the source guides criteria and deliverables: one owner, one behaviour, at 
   ]) assert.ok(flat.includes(rule), rule);
   for (const provider of ['claude', 'codex']) assert.ok(productSkill(source, { version, provider }).includes('One owner per criterion'), provider);
 });
+
+test('a decision question carries why it matters, each option\'s consequence and a recommendation, never bare choices', () => {
+  const codex = productSkill(source, { version, provider: 'codex' });
+  for (const text of [source, codex]) {
+    const flat = text.replace(/\s+/g, ' ');
+    for (const rule of [
+      'One question at a time while exploring', 'never bare choices', 'why it matters', 'its consequence in plain words',
+      'your recommendation and its reason', 'no preference and why', 'option you did not recommend', 'say it once',
+    ]) assert.ok(flat.includes(rule), rule);
+  }
+});
