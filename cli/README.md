@@ -368,6 +368,15 @@ for tools such as the Eminzo desktop app. The exit status is the same as without
   repository yet: push your branch, then enable the factory." and gives only `git push -u origin <branch>`. The
   remote is asked with `git ls-remote` under a 20 second limit and no prompt. The plain-text output prints them indented after the message.
 - Any other refusal or failure: `{ "ok": false, "error": "..." }`.
+- A failed git step (`git fetch`, `git ls-remote`, `git commit`, `git push`) that the public guide explains also carries
+  `help`: `{ "ok": false, "error": "...", "help": { "topic": "ssh-auth", "url": "https://eminzo.dev/help/commit-signing/#ssh-auth" } }`.
+  `error` is unchanged. `topic` is `ssh-auth` (SSH authentication failed: `Permission denied (publickey)`, `Host key
+  verification failed`, `sign_and_send_pubkey: signing failed`, `agent refused operation`), `troubleshooting` (commit signing failed: `gpg failed to sign the data`, `gpg: signing failed`,
+  `Couldn't sign message`, `Couldn't load public key`, `Load key "...": incorrect passphrase`) or `signing` (reserved: setting up signing without a terminal;
+  no error maps to it today, but consumers should accept it). The URLs are stable anchors of the site, the same in both
+  languages; with a Spanish locale (the first of `LC_ALL`, `LC_MESSAGES`, `LANG` starting with `es`) they live under
+  `https://eminzo.dev/es/help/commit-signing/`. Any other failure has no `help`. The plain-text output prints one more line
+  after the error: `help: <url>`.
 
 ## Building the package (this repository)
 
