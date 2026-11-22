@@ -212,7 +212,7 @@ function runAndReport({ root, job, runs, wantFull, stampFile, logFile, tree, inp
   } catch { /* no config or no base: everything runs */ }
   try {
     // A focused nudge sets FACTORY_BASE only (it also sees uncommitted and untracked files, so there is no head to name); a full one sets nothing.
-    result = runChecks(root, job.worktree, { ...focus.options, scope: { base: scopeBaseSha ?? undefined }, ...(childFile ? { pidFile: childFile } : {}) });
+    result = runChecks(root, job.worktree, { label: `nudge ${job.id}`, ...focus.options, scope: { base: scopeBaseSha ?? undefined }, ...(childFile ? { pidFile: childFile } : {}) });
   } finally {
     focus.cleanup();
   }

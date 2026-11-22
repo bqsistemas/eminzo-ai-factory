@@ -149,7 +149,7 @@ Use the scripts for every transition. The stage contract is:
      changed and why, decisions not to undo, anything deferred). When a round ends the engine moves
      it to `round-<n>/build.md`. A fresh builder for a later round reads those notes
      (`round-<round - 1>/build.md`) and the findings first, and opens only the files they name.
-5. **gate**: run `factory/bin/gate <id>`. A pass moves to review. Never spawn reviews before this step.
+5. **gate**: run `factory/bin/gate <id>`. A pass moves to review. Never spawn reviews before this step. The gate may wait for another job's full checks of the same repository (it says so on stderr and in the job's `note`, which names whom it waits for); that is not a hang, so do not kill it.
    <!-- rule: red-base -->
    On `GATE: FAIL` first run `factory/bin/job <id> base` (foreground, long timeout: it may install
    dependencies and run the checks on `<base>`) and act on its first word. `own:` returns the job to build with
