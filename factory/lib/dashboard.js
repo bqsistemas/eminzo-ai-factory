@@ -4,7 +4,7 @@
 // the engine and only board.json and jobs/ come from the repo's factory/ folder.
 import { createServer } from 'node:http';
 import { readFile, realpath } from 'node:fs/promises';
-import { extname, join, resolve, sep } from 'node:path';
+import { extname, join, relative, resolve, sep } from 'node:path';
 
 import { Usage, factoryRoot, installedEngine, isMain, runCli } from './util.js';
 
@@ -26,6 +26,12 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+/**
+ * True for anything inside a job's design/ folder (`jobs/<id>/design/...`, in any letter case). It holds HTML and SVG
+ * downloaded from an artifact: served from this origin, their scripts would run beside the dashboard.
+ */
+const inJobDesign = (parts) => parts.length >= 3 && parts[0].toLowerCase() === 'jobs' && parts[2].toLowerCase() === 'design';
+
 /** The file a request path names inside `root`, or null when it is unsafe. */
 export async function resolveRequest(root, rawPath) {
   let path;
@@ -37,12 +43,14 @@ export async function resolveRequest(root, rawPath) {
   if (path.includes('\0') || path.includes('\\')) return null;
   const parts = path.split('/').filter(Boolean);
   if (parts.some((part) => part === '..' || part === '.' || part.startsWith('.'))) return null;
+  if (inJobDesign(parts)) return null;
   const base = await realpath(root);
   const target = resolve(base, ...(parts.length ? parts : ['dashboard.html']));
   if (target !== base && !target.startsWith(base + sep)) return null;
   try {
     const real = await realpath(target);
-    return real.startsWith(base + sep) ? real : null;
+    // The resolved file too: a symlink elsewhere in the job folder must not reach design/.
+    return real.startsWith(base + sep) && !inJobDesign(relative(base, real).split(sep)) ? real : null;
   } catch {
     return null;
   }

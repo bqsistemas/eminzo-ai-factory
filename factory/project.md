@@ -33,7 +33,9 @@ The gate reports uncovered added/moved modules as a non-blocking freshness warni
   state and performs engine merge side effects. `job new` claims the issue (`claim.js`:
   refused when assigned to someone else or when `factory/<id>` exists on the base remote;
   otherwise assigned to the gh user). `config.run_mode`: `own` (default) continues only local
-  jobs; `queue` also drains every open `factory` issue. Tests: `test/job*.test.js`,
+  jobs; `queue` also drains every open `factory` issue. Before intake (after `job new` and after a NEEDS-INFO
+  answer) a Claude Code session downloads the Claude artifacts the issue links into `jobs/<id>/design/` and records
+  each result with `job <id> design-done|design-failed`; Codex records them as not downloaded. Tests: `test/job*.test.js`,
   `gate.test.js`, `route.test.js`, `codex-routing.test.js`, `lane-xs*.test.js`.
 - **Rules:** code review always runs; `ui` includes everyday UX; `interaction` adds
   UX and UI; `security` adds security review. Wait for all routed lenses after a
@@ -141,7 +143,9 @@ Portable factory engine:
   hook; `approve.js` deterministic approval; `diff.js` scope/XS limits; `overlap.js` shared
   file scheduling; `round-context.js` review handoffs; `cost.js` provider accounting;
   `visual*.js` browser checks; `project-map.js` context freshness; `run-mode.js`
-  `config.run_mode`; `claim.js` the `job new` issue claim; `util.js` config, paths and
+  `config.run_mode`; `claim.js` the `job new` issue claim; `designs.js` the designs an issue links (link
+  detection, `design/index.json`, the `## Designs` section of issue.md and the `design-*` commands; only `job.js`
+  imports it; tests `designs*.test.js`, `job-designs.test.js`); `util.js` config, paths and
   `EMINZO_ENGINE` (`installedEngine()`/`engineDir()`/`engineCommand()`); `stacks.js` per-stack
   detection, commands, `ac_pattern`, `checks.sh` (templates in `factory/templates/checks/`,
   affected-only for Nx and Turborepo) and the prepare command of each lockfile; `base.js` the base
@@ -217,7 +221,7 @@ Dashboard and office (plain browser ESM, no build):
 - **Stable ids/routes:** dashboard `#board`, `#office`, `#office-canvas`, `#pipeline`,
   `#pipeline-job`, `#pipeline-inspector`, `#drawer`, `#guide`, `#status`, `#theme-toggle`.
 - **Security/CSP:** the dashboard stays local-only (loopback server, GET/HEAD, no traversal,
-  no dotfiles); no remote resources. Under the CLI the page comes from the engine and only
+  no dotfiles, never a job's `design/` folder of downloaded HTML); no remote resources. Under the CLI the page comes from the engine and only
   `board.json` and `jobs/` from the repository.
 
 ## Conventions
