@@ -41,6 +41,14 @@
 //   job metrics delivery [--days <n> | --from <date>] [--to <date>] [--weeks <n>] [--json]
 //                                      delivery metrics (DORA), cost and work in progress of a period (default: 30 days, 4 weeks), from
 //                                      the local jobs only, no GitHub; --json is one line (schema 1, the contract of the desktop); a read
+//   job <id> designs                   "<url> <folder>" per pending Claude artifact the issue links (design/index.json), or "none"; a read
+//   job <id> design-artboards <url>    the artboard files to read, from the link's downloaded project/canvas.json (at most 20); a read
+//   job <id> design-images <url>       "<blob|path> <id or path> <local path>" per image the downloaded HTML references (at most 30),
+//                                      or "none"; a read
+//   job <id> design-done <url> <folder>  at intake only: checks design/claude-<id>, removes what may not stay (listed), writes
+//                                      assets.json, records the result in design/index.json and the ## Designs section of issue.md
+//   job <id> design-failed <url> <reason>  at intake only: records the link as not downloaded with a fixed code (no-permission,
+//                                      not-found, too-large, unsupported, no-tool, error) and removes its folder
 //
 // Issue and comment text is attacker-controlled. It reaches agents only as
 // "> "-quoted data in issue.md, and gh gets every text through --body-file.
@@ -63,6 +71,7 @@ import { checkBase, ensureFixIssue, markConfirmed, resolveTip, setFixIssue, shor
 import { BASE_FIX_LABEL } from './labels.js';
 import { endWait, gateFacts, ownChecksPassed, waitLine, waitNote } from './red-base.js';
 import { claimIssue } from './claim.js';
+import { artboardsFor, imagesFor, pendingLines, recordDone, recordFailed, refreshIndex, saveIndex, withSection } from './designs.js';
 import { factsComment, jobFacts } from './record-facts.js';
 import { reusedReport } from './report.js';
 import { runMode } from './run-mode.js';
@@ -217,6 +226,17 @@ function issueMarkdown(issue) {
   if (!replies.length) lines.push('None.', '');
   for (const cm of replies) lines.push(`### @${author} ${safeDate(cm.createdAt)}`.trimEnd(), '', quote(cm.body), '');
   return lines.join('\n');
+}
+
+/**
+ * Writes design/index.json from the links of the text issue.md quotes (the body, then the author's comments; never the
+ * title or anyone else's comment), then issue.md with the script-written `## Designs` section when there is a link.
+ * With `keep` (an answer to NEEDS-INFO) the links still present keep their results. No link: today's issue.md.
+ */
+function writeIssue(c, job, issue, { keep = false } = {}) {
+  const sources = [{ source: 'body', text: issue.body }, ...authorReplies(issue).map((cm) => ({ source: 'comment', text: cm.body }))];
+  const links = refreshIndex(jobDir(c.root, job.id), sources, { keep });
+  writeAtomic(file(c, job, 'issue.md'), withSection(issueMarkdown(issue), links));
 }
 
 function addLabel(c, job, label) {
@@ -1546,7 +1566,7 @@ export const TRANSITIONS = {
     const replied = last >= 0 && comments.slice(last + 1)
       .some((cm) => login(cm.author) === author && !isFactoryText(cm.body));
     if (!replied) throw new Refused(`no reply from @${author} after the intake comment yet`);
-    writeAtomic(file(c, job, 'issue.md'), issueMarkdown(issue));
+    writeIssue(c, job, issue, { keep: true });
     removeLabel(c, job, LABEL.needsInfo);
   },
   'spec>build'(c, job) {
@@ -1976,7 +1996,7 @@ function newJob(c, n, requestedProvider) {
     decision: null, note: '', parked_from: null, cost_usd: null,
     ...(provider === 'codex' ? { cost_status: 'unavailable', cost_reason: 'no_associated_usage' } : { cost_status: 'pending' }), started: now(), finished: null, updated: now(),
   };
-  writeAtomic(file(c, job, 'issue.md'), issueMarkdown(issue));
+  writeIssue(c, job, issue);
   saveJob(c, job);
   return id;
 }
@@ -2115,7 +2135,30 @@ function configLines(c, key) {
   return line(key);
 }
 
-const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> profile | job <id> prompt | job <id> amend | job <id> overlap | job <id> base [--fresh] | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job graph | job summary [--orchestrator] | job lessons [--last N] | job metrics [--last N] [--json] | job metrics delivery [--days <n> | --from <date>] [--to <date>] [--weeks <n>] [--json]';
+/** The design commands and their argument count (with `<id>` and the command). */
+const DESIGN_ARGS = Object.freeze({ designs: 2, 'design-artboards': 3, 'design-images': 3, 'design-done': 4, 'design-failed': 4 });
+
+/**
+ * `job <id> designs | design-artboards <url> | design-images <url>` (reads) and `design-done <url> <folder> |
+ * design-failed <url> <reason>` (writes, only at intake, so issue.md never changes after intake read it). A write
+ * records the result in design/index.json first, then rewrites the `## Designs` section of issue.md.
+ */
+function designCommand(c, id, command, args) {
+  const { job } = loadJob(c, id);
+  const dir = jobDir(c.root, job.id);
+  if (command === 'designs') return pendingLines(dir);
+  if (command === 'design-artboards') return artboardsFor(dir, args[0]);
+  if (command === 'design-images') return imagesFor(dir, args[0]);
+  if (job.stage !== 'intake') throw new Refused(`${job.id} is at ${job.stage}, not intake: design results are recorded only before intake reads issue.md`);
+  const text = readText(file(c, job, 'issue.md'));
+  if (text === null) throw new Refused('issue.md is missing');
+  const { links, line } = command === 'design-done' ? recordDone(dir, args[0], args[1]) : recordFailed(dir, args[0], args[1]);
+  saveIndex(dir, links);
+  writeAtomic(file(c, job, 'issue.md'), withSection(text, links));
+  return line;
+}
+
+const USAGE = 'job new <issue> [--provider <name>] | job run-mode | job config [<key>] | job <id> to <stage> [--note <text>] | job <id> sync | job <id> profile | job <id> prompt | job <id> amend | job <id> overlap | job <id> base [--fresh] | job <id> lane | job <id> promote | job <id> selfcheck | job <id> approve-spec | job <id> revise-spec --notes-file <path> | job <id> provider <name> | job <id> designs | job <id> design-artboards <url> | job <id> design-images <url> | job <id> design-done <url> <folder> | job <id> design-failed <url> <reason> | job graph | job summary [--orchestrator] | job lessons [--last N] | job metrics [--last N] [--json] | job metrics delivery [--days <n> | --from <date>] [--to <date>] [--weeks <n>] [--json]';
 
 /** `job <id> selfcheck`: warnings, then one line per problem, or `selfcheck: ok`. Exit 1 on any problem. */
 function selfcheck(c, id) {
@@ -2182,6 +2225,8 @@ function main(args) {
     out = amend(context(), first);
   } else if (JOB_ID.test(first ?? '') && second === 'base' && (args.length === 2 || (args.length === 3 && third === '--fresh'))) {
     out = baseCommand(context(), first, args.length === 3);
+  } else if (JOB_ID.test(first ?? '') && Object.hasOwn(DESIGN_ARGS, second ?? '') && DESIGN_ARGS[second] === args.length) {
+    out = designCommand(context(), first, second, args.slice(2));
   } else if (JOB_ID.test(first ?? '') && second === 'overlap' && args.length === 2) {
     const c = context();
     out = overlapReport(overlaps(c.root, loadJob(c, first).job, allJobs(c.root)));

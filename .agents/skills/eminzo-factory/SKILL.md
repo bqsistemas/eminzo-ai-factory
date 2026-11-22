@@ -120,6 +120,12 @@ Use the scripts for every transition. The stage contract is:
    for `normal` (the wrong one is refused with the right command in the reason); on
    `NEEDS-INFO` or `REJECT`, use the matching transition. The script routes agents and
    creates the worktree.
+   <!-- rule: designs -->
+   - **Designs.** Codex does not open Claude artifacts: only a Claude Code session logged in to claude.ai
+     downloads them. Before you spawn `eminzo-intake` (after `factory/bin/job new`, and when a job in `needs-info`
+     comes back to `intake`), run `factory/bin/job <id> designs` and record each `<url> <folder>` line it prints with
+     `factory/bin/job <id> design-failed '<url>' no-tool`. A design that was not downloaded never stops the job.
+     Never edit `issue.md` or anything under `design/`: the engine writes them.
 3. **spec**: spawn `eminzo-spec-writer` using `job.models.spec-writer`; when `spec.md` is valid, run
    `job <id> to build`. A job in lane xs never has this stage; a promoted job comes back to it
    (see **xs-promotion**). When `to build` is refused naming the spec review (`spec_review` asks

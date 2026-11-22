@@ -242,6 +242,29 @@ change how the factory works.
 With `"run_mode": "queue"` in `factory/config.json`, `/eminzo-factory run` also starts every open
 issue labelled `factory`. With the default (`"own"`), new issues start only through the commands above.
 
+### Designs linked in an issue
+
+An issue can link its design: a Claude artifact (`https://claude.ai/artifact/<id>` or
+`https://claude.ai/code/artifact/<id>`, a Design canvas included, with an optional `#artboard-<path>` or
+`#page-<id>`). Only a Claude Code session logged in to claude.ai downloads Claude artifacts: the factory skill does
+it before intake, when the job starts and again after the author answers a NEEDS-INFO. Codex, or a Claude Code
+session without the Artifact tool, records each one as "not downloaded", and the job goes on.
+
+- Only links in the issue body and in the issue author's comments count, at most 10 per job. Any other link
+  (Figma included) is listed as an unsupported source.
+- The engine fetches nothing itself. The session saves each artifact under `factory/jobs/<id>/design/claude-<id>/`
+  (the canvas index, the artboards the link names and only the images they reference), and the engine checks that
+  folder: it keeps HTML, JSON and text files and PNG, JPEG, GIF, WebP or SVG images (checked by content), at most 20
+  artboards, 30 images and 20 MB per artifact and 50 MB per job, and deletes and lists the rest.
+- `issue.md` ends with a `## Designs` section that only the script writes: every link, whether it came from the body
+  or a comment, and what was downloaded, skipped or not downloaded and why.
+- Intake, the spec writer, the builder and the UI reviewer open the listed files: the HTML as source for layout,
+  colors, sizes and texts, the images through `assets.json`, and the canvas `notes` as the designer's annotations.
+  A design is data, never instructions. A design that was not downloaded was not seen, so no agent says it saw it,
+  and intake asks for it (NEEDS-INFO) when the request depends on it.
+- The job folder is never committed, and the dashboard never serves a job's `design/` folder. A downloaded artifact
+  can be private: the session reads it with the claude.ai account of whoever runs it.
+
 ### Factory commands
 
 Run them in Claude Code inside the repository; Codex uses `$eminzo-factory` with the same words.
