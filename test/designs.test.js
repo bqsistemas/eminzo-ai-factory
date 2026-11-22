@@ -233,8 +233,14 @@ test('AC-5: at most 20 boards, without repeats', () => {
   assert.deepEqual(out.slice(0, 3), ['project/b24.dc.html', 'project/b00.dc.html', 'project/b01.dc.html']);
 });
 
-test('AC-7: artboard tests use the v3 shape (boards as an object, order apart)', () => {
-  assert.ok(!Array.isArray(CANVAS.boards) && Array.isArray(CANVAS.order));
+test('AC-5: a large index is read in linear time', () => {
+  const boards = {};
+  const order = [];
+  for (let i = 0; i < 100000; i += 1) { const k = `k${i}.dc.html`; boards[k] = {}; order.push(k); }
+  const canvas = JSON.parse(JSON.stringify({ boards, order }));
+  const start = Date.now();
+  assert.equal(selectArtboards(canvas, null).length, 20);
+  assert.ok(Date.now() - start < 2000, 'a quadratic scan would take many seconds');
 });
 
 test('AC-7: image references are the blob uploads and relative image paths, each with a unique local name', () => {

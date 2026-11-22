@@ -84,7 +84,7 @@ function parseFragment(text) {
 
 /**
  * A Claude artifact link, normalized (https, lowercase host, no query, no trailing slash, only a safe
- * `#artboard-<path>` or `#page-<id>` fragment), or null. `fragment.value` is decoded.
+ * `#artboard-<name>` or `#page-<id>` fragment), or null. `fragment.value` is decoded.
  * @returns {{ url: string, id: string, folder: string, fragment: { kind: string, value: string } | null } | null}
  */
 export function parseClaudeLink(text) {
@@ -286,8 +286,10 @@ export function selectArtboards(canvas, fragment) {
     .map((p) => (typeof p === 'string' ? p : isObject(p) && typeof p.id === 'string' ? p.id : null)).filter((p) => p !== null);
   const index = isObject(canvas?.boards) ? canvas.boards : {};
   const keys = Object.keys(index);
-  const listed = [...new Set(Array.isArray(canvas?.order) ? canvas.order : [])].filter((k) => typeof k === 'string' && keys.includes(k));
-  const sorted = keys.filter((k) => !listed.includes(k)).sort();
+  const keySet = new Set(keys);
+  const listed = [...new Set(Array.isArray(canvas?.order) ? canvas.order : [])].filter((k) => typeof k === 'string' && keySet.has(k));
+  const listedSet = new Set(listed);
+  const sorted = keys.filter((k) => !listedSet.has(k)).sort();
   const boards = [];
   for (const key of [...listed, ...sorted]) {
     const file = key.endsWith(BOARD_EXT) ? boardFile(key) : null;

@@ -245,8 +245,8 @@ issue labelled `factory`. With the default (`"own"`), new issues start only thro
 ### Designs linked in an issue
 
 An issue can link its design: a Claude artifact (`https://claude.ai/artifact/<id>` or
-`https://claude.ai/code/artifact/<id>`, a Design canvas included, with an optional `#artboard-<path>` or
-`#page-<id>`). Only a Claude Code session logged in to claude.ai downloads Claude artifacts: the factory skill does
+`https://claude.ai/code/artifact/<id>`, a Design canvas included, with an optional `#artboard-<name>` or
+`#page-<id>`; `<name>` is the board's file name without `.dc.html`, every character but a letter, digit, `_` or `-` written as `-`). Only a Claude Code session logged in to claude.ai downloads Claude artifacts: the factory skill does
 it before intake, when the job starts and again after the author answers a NEEDS-INFO. Codex, or a Claude Code
 session without the Artifact tool, records each one as "not downloaded", and the job goes on.
 
