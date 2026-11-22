@@ -11,6 +11,7 @@
 // outside code fences, one per body, every field checked with a small anchored pattern.
 import { fenceOf, briefStatus, canonicalBrief, stripEnd } from './brief-approval.js';
 import { BRIEF_MARKER, SECTIONS, parseBrief } from './brief.js';
+import { designLinks } from './designs.js';
 import { humanMinutes } from './state/estimate.js';
 import { BRIEF_ISSUE_LABEL, DELIVERABLE_LABEL } from './labels.js';
 
@@ -179,19 +180,19 @@ export function briefTitleOf(briefText) {
 export const partOfLines = (n) => [...new Set(Object.values(TEXT).map((t) => t.part(n)))];
 
 const TEXT = {
-  en: { goal: 'Goal', delivers: 'What it delivers', criteria: 'Acceptance criteria', builds_on: 'Builds on', out_of_scope: 'Out of scope', definitions: 'Definitions', dependencies: 'Dependencies', questions: 'Open questions', estimate: 'For planning',
+  en: { goal: 'Goal', delivers: 'What it delivers', criteria: 'Acceptance criteria', design: 'Design', builds_on: 'Builds on', out_of_scope: 'Out of scope', definitions: 'Definitions', dependencies: 'Dependencies', questions: 'Open questions', estimate: 'For planning',
     size: (s) => `Size: ${s}.`, waits: 'Waits for', unblocks: 'Unblocks', none: 'Nothing: it can start right away.', unblocksNone: 'Nothing: no other deliverable waits for this one.',
     builtBy: 'Built by {ref}; it exists when you start.', doNotStart: 'Do not start until the deliverables above are merged.',
     buildsOn: '{ref}: builds on {ids} of this deliverable',
     deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'is' : 'are'} delivered by ${ref}.`, seeBrief: (n, what) => `See the brief issue #${n} for ${what}`, part: (n) => `Part of #${n}`,
     range: (lo, hi, n) => `About ${lo} to ${hi} until ready for approval, from ${n} similar finished job${n === 1 ? '' : 's'}. It is a range, not a date.`, few: 'Too little history to estimate.' },
-  es: { goal: 'Objetivo', delivers: 'Qué entrega', criteria: 'Criterios de aceptación', builds_on: 'Se apoya en', out_of_scope: 'Fuera de alcance', definitions: 'Definiciones', dependencies: 'Dependencias', questions: 'Preguntas abiertas', estimate: 'Para planificar',
+  es: { goal: 'Objetivo', delivers: 'Qué entrega', criteria: 'Criterios de aceptación', design: 'Diseño', builds_on: 'Se apoya en', out_of_scope: 'Fuera de alcance', definitions: 'Definiciones', dependencies: 'Dependencias', questions: 'Preguntas abiertas', estimate: 'Para planificar',
     size: (s) => `Tamaño: ${s}.`, waits: 'Espera a', unblocks: 'Desbloquea a', none: 'Nada: puede empezar ya.', unblocksNone: 'Nada: ninguna otra entrega espera a esta.',
     builtBy: 'Lo construye {ref}; ya existe al empezar.', doNotStart: 'No empezar hasta que las entregas de arriba estén integradas.',
     buildsOn: '{ref}: se apoya en {ids} de esta entrega',
     deliveredBy: (ids, ref) => `${ids.join(', ')} ${ids.length === 1 ? 'lo entrega' : 'los entrega'} ${ref}.`, seeBrief: (n, what) => `Mira el issue del brief #${n} para ${what}`, part: (n) => `Parte de #${n}`,
     range: (lo, hi, n) => `Entre ${lo} y ${hi} hasta estar lista para aprobar, según ${n} trabajo${n === 1 ? '' : 's'} parecido${n === 1 ? '' : 's'} ya terminado${n === 1 ? '' : 's'}. Es un rango, no una fecha.`, few: 'Hay muy poco historial para estimar.' },
-  pt: { goal: 'Objetivo', delivers: 'O que entrega', criteria: 'Critérios de aceitação', builds_on: 'Apoia-se em', out_of_scope: 'Fora do escopo', definitions: 'Definições', dependencies: 'Dependências', questions: 'Perguntas em aberto', estimate: 'Para planejamento',
+  pt: { goal: 'Objetivo', delivers: 'O que entrega', criteria: 'Critérios de aceitação', design: 'Design', builds_on: 'Apoia-se em', out_of_scope: 'Fora do escopo', definitions: 'Definições', dependencies: 'Dependências', questions: 'Perguntas em aberto', estimate: 'Para planejamento',
     size: (s) => `Tamanho: ${s}.`, waits: 'Espera por', unblocks: 'Libera', none: 'Nada: pode começar já.', unblocksNone: 'Nada: nenhuma outra entrega espera por esta.',
     builtBy: 'Construído por {ref}; já existe ao começar.', doNotStart: 'Não começar até que as entregas acima estejam integradas.',
     buildsOn: '{ref}: apoia-se em {ids} desta entrega',
@@ -224,13 +225,25 @@ function dependencyOrder(deliverables) {
   return out;
 }
 
+/**
+ * The design parts of a brief: one text part per line of the brief that holds the first appearance of a design link
+ * (Claude artifact or Figma frame): those links, one per line, then the line itself. Each line goes through `sanitize`
+ * first, so a link is exactly the one the job finds in the body.
+ */
+function designParts(briefText) {
+  const lines = canonicalBrief(briefText).split('\n').map((l) => sanitize(l));
+  const byLine = new Map();
+  for (const { url, line } of designLinks(lines)) byLine.set(line, [...(byLine.get(line) ?? []), url]);
+  return [...byLine].map(([line, urls]) => ({ kind: 'text', text: `${urls.join('\n')}\n${lines[line]}` }));
+}
+
 const briefHeading = (key, lang) => SECTIONS.find((s) => s.key === key)[lang];
 /**
  * The sections of a deliverable issue, in body order. A section is left out when it has nothing to say (Builds on without
  * `after`, Definitions or Open questions when the brief has none). Exported so a destination that renders its own text
  * (the desktop app, Jira) follows the same order instead of hardcoding it.
  */
-export const DELIVERABLE_SECTION_KEYS = Object.freeze(['goal', 'delivers', 'criteria', 'builds_on', 'out_of_scope', 'definitions', 'dependencies', 'questions', 'estimate']);
+export const DELIVERABLE_SECTION_KEYS = Object.freeze(['goal', 'delivers', 'criteria', 'design', 'builds_on', 'out_of_scope', 'definitions', 'dependencies', 'questions', 'estimate']);
 /** The sections of a body that may be left out when it is too long, in the order they are left out. */
 export const DELIVERABLE_DROPPABLE = Object.freeze(['questions', 'goal', 'definitions']);
 
@@ -244,7 +257,7 @@ const firstParagraph = (text) => String(text).split(/\r?\n[ \t]*\r?\n/)[0].trim(
  * The parts of one deliverable issue, as data: `[{ key, heading, parts }]` in `DELIVERABLE_SECTION_KEYS` order (see the
  * shape in docs/product-stage.md). `issues` maps a deliverable id to its issue number; `brief` is the parsed brief.
  */
-function sectionsOf(brief, d, { t, lang, issues, estimate }) {
+function sectionsOf(brief, d, { t, lang, issues, estimate, design = [] }) {
   const ref = (id) => {
     const other = brief.deliverables.find((x) => x.id === id);
     return { id, title: sanitize(other.title), issue: Number.isInteger(issues[id]) ? issues[id] : null };
@@ -271,6 +284,7 @@ function sectionsOf(brief, d, { t, lang, issues, estimate }) {
   add('goal', [...verbatim('value'), ...verbatim('audience', briefHeading('audience', lang)), ...(brief.sections.problem === undefined ? [] : [{ kind: 'text', label: briefHeading('problem', lang), text: sanitizeBlock(firstParagraph(brief.sections.problem)) }])]);
   add('delivers', [{ kind: 'text', text: sanitize(d.title) }]);
   add('criteria', [{ kind: 'criteria', items: d.covers.map((id) => ({ id, text: sanitize(criteria.get(id)) })) }]);
+  add('design', design);
   add('builds_on', buildsOn.flatMap(({ dep, ids }) => [
     { kind: 'refs', label: null, none: null, format: t.builtBy, items: [ref(dep.id)] },
     { kind: 'criteria', items: ids.map((id) => ({ id, text: sanitize(criteria.get(id)) })) },
@@ -343,11 +357,12 @@ function plan(briefText, { estimates = {}, issues = {}, briefIssue = null } = {}
   const brief = parseBrief(canonicalBrief(briefText));
   const lang = TEXT[brief.language] ? brief.language : 'en';
   const t = TEXT[lang];
+  const design = designParts(briefText);
   return {
     status, t, lang,
     items: dependencyOrder(brief.deliverables).map((d) => {
       const estimate = fitEstimate(estimates[d.id]);
-      return { d, estimate, sections: sectionsOf(brief, d, { t, lang, issues, estimate, briefIssue }) };
+      return { d, estimate, sections: sectionsOf(brief, d, { t, lang, issues, estimate, briefIssue, design }) };
     }),
   };
 }
@@ -401,17 +416,18 @@ export function deliverableSections(briefText, { estimates = {} } = {}) {
 export const JIRA_SAFE_CHARS = 30_000;
 
 /**
- * The ids of the deliverables whose issue, with only the sections that are never dropped (criteria, Builds on, Out of
+ * The ids of the deliverables whose issue, with only the sections that are never dropped (criteria, Design, Builds on, Out of
  * scope, Dependencies), would be longer than `limit` characters. Works on any brief text, approved or not, and answers
  * `[]` for a brief it cannot cut (a problem `check_brief` already reports).
  */
 export function oversizedDeliverables(briefText, limit = JIRA_SAFE_CHARS) {
   const brief = parseBrief(canonicalBrief(briefText));
   const t = TEXT[brief.language] ?? TEXT.en;
-  const keep = new Set(['criteria', 'builds_on', 'out_of_scope', 'dependencies']);
+  const keep = new Set(['criteria', 'design', 'builds_on', 'out_of_scope', 'dependencies']);
   try {
+    const design = designParts(briefText);
     return dependencyOrder(brief.deliverables).filter((d) => {
-      const sections = sectionsOf(brief, d, { t, lang: brief.language, issues: {}, estimate: null }).filter((s) => keep.has(s.key));
+      const sections = sectionsOf(brief, d, { t, lang: brief.language, issues: {}, estimate: null, design }).filter((s) => keep.has(s.key));
       return renderSections(sections, t).join('\n').length > limit;
     }).map((d) => d.id);
   } catch {

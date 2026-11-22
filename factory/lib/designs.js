@@ -1,7 +1,8 @@
 // The designs an issue links (Claude artifacts first): which links the issue carries, what the session downloaded
 // for each one (design/index.json) and the `## Designs` section of issue.md. The engine never fetches anything: a
 // Claude Code session downloads with its Artifact tool into <job folder>/design/claude-<id>/ and records each result
-// with `job <id> design-done | design-failed`. Only job.js imports this module. Node 20, no dependencies.
+// with `job <id> design-done | design-failed`. job.js imports this module, and handoff.js only for the link detection
+// (`designLinks`). Node 20, no dependencies.
 //
 // Everything here is untrusted input: the issue text (the links) and every file the session saved from an artifact
 // (names, HTML, canvas.json). So: linear scans with bounded regexes; lstat on every step, a symlink is removed and
@@ -105,6 +106,54 @@ function record({ url, source, kind, status, reason = null, folder = null, files
   return { url, source, kind, status, reason, folder, files: [...files], skipped: skipped.map(({ path, reason: why }) => ({ path, reason: why })) };
 }
 
+/** The URLs of a text in order, trimmed, each one a candidate link (over-long runs and runs with no host are skipped). */
+function* trimmedUrls(text) {
+  for (const match of String(text ?? '').matchAll(URL_RUN)) {
+    if (match[0].length > MAX_URL) continue;
+    const raw = trimUrl(match[0]);
+    if (!/^https?:\/\/[^/?#]/i.test(raw)) continue;
+    yield raw;
+  }
+}
+
+const FIGMA_PATH = /^\/(design|file|proto)\/[A-Za-z0-9_-]{1,128}(?:\/|$)/;
+
+/**
+ * A Figma frame link, or null: https only, host `figma.com` or `www.figma.com` (no userinfo, no port), a path that starts
+ * with `/design/<key>`, `/file/<key>` or `/proto/<key>`. The URL is carried as received (the query holds `node-id`).
+ * @returns {{ url: string } | null}
+ */
+export function parseFigmaLink(text) {
+  const value = String(text ?? '');
+  if (value.length > MAX_URL) return null;
+  const m = URL_PARTS.exec(value);
+  if (!m || !['figma.com', 'www.figma.com'].includes(m[1].toLowerCase())) return null;
+  return FIGMA_PATH.test(m[2]) ? { url: value } : null;
+}
+
+/**
+ * The design links (Claude artifacts and Figma frames) of a list of lines: each distinct `url` once, with the index of the
+ * line of its first appearance, in order, at most MAX_LINKS. A Claude `url` is normalized; a Figma `url` is as written.
+ * @param {string[]} lines
+ * @returns {{ kind: 'claude' | 'figma', url: string, line: number }[]}
+ */
+export function designLinks(lines) {
+  const seen = new Set();
+  const out = [];
+  for (let line = 0; line < lines.length && out.length < MAX_LINKS; line += 1) {
+    for (const raw of trimmedUrls(lines[line])) {
+      const claude = parseClaudeLink(raw);
+      const figma = claude ? null : parseFigmaLink(raw);
+      const url = claude ? claude.url : figma?.url;
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      out.push({ kind: claude ? 'claude' : 'figma', url, line });
+      if (out.length >= MAX_LINKS) break;
+    }
+  }
+  return out;
+}
+
 /**
  * The links of the issue text, in order (`sources` is the body, then the author's comments), each distinct link once.
  * The first MAX_LINKS are classified: a Claude link is `pending` for the session, any other link is not downloaded
@@ -115,10 +164,7 @@ export function detectLinks(sources) {
   const seen = new Set();
   const links = [];
   for (const { source, text } of sources) {
-    for (const match of String(text ?? '').matchAll(URL_RUN)) {
-      if (match[0].length > MAX_URL) continue;
-      const raw = trimUrl(match[0]);
-      if (!/^https?:\/\/[^/?#]/i.test(raw)) continue;
+    for (const raw of trimmedUrls(text)) {
       const claude = parseClaudeLink(raw);
       const url = claude ? claude.url : raw;
       if (seen.has(url)) continue;

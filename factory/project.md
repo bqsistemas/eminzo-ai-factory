@@ -145,7 +145,7 @@ Portable factory engine:
   `visual*.js` browser checks; `project-map.js` context freshness; `run-mode.js`
   `config.run_mode`; `claim.js` the `job new` issue claim; `designs.js` the designs an issue links (link
   detection, `design/index.json`, the `## Designs` section of issue.md and the `design-*` commands; only `job.js`
-  imports it; tests `designs*.test.js`, `job-designs.test.js`); `util.js` config, paths and
+  imports it, and `handoff.js` only for `designLinks`; tests `designs*.test.js`, `job-designs.test.js`); `util.js` config, paths and
   `EMINZO_ENGINE` (`installedEngine()`/`engineDir()`/`engineCommand()`); `stacks.js` per-stack
   detection, commands, `ac_pattern`, `checks.sh` (templates in `factory/templates/checks/`,
   affected-only for Nx and Turborepo) and the prepare command of each lockfile; `base.js` the base
