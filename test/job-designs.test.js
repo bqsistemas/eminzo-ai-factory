@@ -153,7 +153,7 @@ describe('job designs', { concurrency: true }, () => {
     const t = setup();
     const url = 'https://claude.ai/artifact/abc';
     const id = await newJob(t, 9, { body: `${url}\nhttps://claude.ai/artifact/sum` });
-    put(t, id, 'design/claude-abc/project/canvas.json', JSON.stringify({ pages: [], boards: [{ path: 'home' }, { path: 'about' }], notes: 'Keep the top free.' }));
+    put(t, id, 'design/claude-abc/project/canvas.json', JSON.stringify({ pages: [], boards: { 'home.dc.html': {}, 'about.dc.html': {} }, order: [], notes: { top: 'Keep the top free.' } }));
     put(t, id, 'design/claude-abc/project/home.dc.html', '<img src="/_blob/png1"><div style="background:url(\'/_blob/jpg1\')"></div><img src=\'/_blob/gif1\'>');
     put(t, id, 'design/claude-abc/project/about.dc.html', '<img src="/_blob/webp1"><img src="/_blob/svg1"><img src="/_blob/missing1"><link href="fonts/a.woff2">');
     const printed = ok(t, await t.job(id, 'design-images', url)).split('\n').map((l) => l.split(' '));
@@ -404,7 +404,7 @@ describe('job designs', { concurrency: true }, () => {
     assert.equal(ok(t, await t.job(id, 'designs')), `${d} design/claude-d`);
   });
 
-  test('AC-7: design-artboards and design-images read the downloaded files of the link, and refuse what they cannot read', async () => {
+  test('AC-6: design-artboards and design-images read the downloaded files of the link, and refuse what they cannot read', async () => {
     const t = setup();
     const base = 'https://claude.ai/artifact/abc';
     const id = await newJob(t, 17, { body: `${base}#artboard-home ${base}#page-p1 ${base}#page-p9 ${base} https://example.com/x` });
@@ -413,13 +413,16 @@ describe('job designs', { concurrency: true }, () => {
     await refusedDesign(t, id, 'design-artboards', base);
     put(t, id, 'design/claude-abc/project/canvas.json', JSON.stringify({
       pages: [{ id: 'p1' }, { id: 'p2' }],
-      boards: [{ path: 'home', page: 'p1' }, { path: 'loose' }, { path: 'other', page: 'p2' }, { path: '../up' }, { path: '/abs' }, { path: 'a\\b' }],
+      boards: { 'home.dc.html': { page: 'p1' }, 'loose.dc.html': {}, 'other.dc.html': { page: 'p2' }, '../up.dc.html': {}, '/abs.dc.html': {}, 'a\\b.dc.html': {}, 'x.txt': {} },
+      order: ['other.dc.html', 'home.dc.html'],
     }));
     assert.equal(ok(t, await t.job(id, 'design-artboards', `${base}#artboard-home`)), 'project/home.dc.html');
     assert.equal(ok(t, await t.job(id, 'design-artboards', `${base}#page-p1`)), 'project/home.dc.html\nproject/loose.dc.html');
-    const all = 'project/home.dc.html\nproject/loose.dc.html\nproject/other.dc.html';
+    const all = 'project/other.dc.html\nproject/home.dc.html\nproject/loose.dc.html';
     assert.equal(ok(t, await t.job(id, 'design-artboards', `${base}#page-p9`)), all);
     assert.equal(ok(t, await t.job(id, 'design-artboards', base)), all);
+    put(t, id, 'design/claude-abc/project/canvas.json', JSON.stringify({ pages: [], boards: {}, order: [] }));
+    assert.equal(ok(t, await t.job(id, 'design-artboards', base)), 'none');
     await refusedDesign(t, id, 'design-artboards', 'https://example.com/x');
     await refusedDesign(t, id, 'design-artboards', 'https://claude.ai/artifact/nope');
 

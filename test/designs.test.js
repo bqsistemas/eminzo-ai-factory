@@ -167,40 +167,74 @@ test('AC-3: images are recognized by content, never by extension', () => {
 
 const CANVAS = {
   pages: [{ id: 'p1' }, 'p2', { name: 'no id' }],
-  boards: [
-    { path: 'home', page: 'p1' },
-    { path: 'loose' },
-    { path: 'settings.dc.html', page: 'p2' },
-    { path: 'My Home', page: 'p2' },
-    { path: '/etc/passwd' },
-    { path: '../up' },
-    { path: 'a\\b' },
-    { path: 'ctl\u0001' },
-    { path: '' },
-    { nopath: true },
-    'junk',
-  ],
-  notes: 'Keep the top 80px free.',
+  boards: {
+    'Main.dc.html': { page: 'p1' },
+    'zeta.dc.html': {},
+    'flows/Cart.dc.html': { page: 'p2' },
+    'alpha.dc.html': { page: 'p2' },
+    'My Home.dc.html': { page: 'p1' },
+    'notes.txt': {},
+    'noext': {},
+    '/etc/passwd.dc.html': {},
+    '../up.dc.html': {},
+    'a\\b.dc.html': {},
+    'ctl\u0001.dc.html': {},
+    'junk.dc.html': 'junk',
+  },
+  order: ['flows/Cart.dc.html', 'Main.dc.html', 'ghost.dc.html', 'Main.dc.html', 7],
+  notes: { top: 'Keep the top 80px free.' },
 };
-const ALL = ['project/home.dc.html', 'project/loose.dc.html', 'project/settings.dc.html', 'project/My Home.dc.html'];
+const ORDERED = ['project/flows/Cart.dc.html', 'project/Main.dc.html'];
+const REST = ['project/My Home.dc.html', 'project/alpha.dc.html', 'project/junk.dc.html', 'project/zeta.dc.html'];
+const ALL = [...ORDERED, ...REST];
+const pick = (fragment, canvas = CANVAS) => selectArtboards(canvas, parseClaudeLink(`https://claude.ai/artifact/abc${fragment}`).fragment);
 
-test('AC-7: artboards follow the fragment: one artboard, one page (the first adds boards without page), or all', () => {
-  const pick = (fragment, canvas = CANVAS) => selectArtboards(canvas, parseClaudeLink(`https://claude.ai/artifact/abc${fragment}`).fragment);
-  assert.deepEqual(pick('#artboard-home'), ['project/home.dc.html']);
-  assert.deepEqual(pick('#artboard-My%20Home'), ['project/My Home.dc.html']);
-  assert.deepEqual(pick('#artboard-settings.dc.html'), ['project/settings.dc.html']);
-  assert.deepEqual(pick('#page-p1'), ['project/home.dc.html', 'project/loose.dc.html'], 'the first page adds the boards without page');
-  assert.deepEqual(pick('#page-p2'), ['project/settings.dc.html', 'project/My Home.dc.html']);
-  assert.deepEqual(pick('#page-p9'), ALL, 'a page the index does not list means every artboard');
-  assert.deepEqual(pick('#artboard-nope'), ALL, 'an artboard the index does not list means every artboard');
-  assert.deepEqual(pick('#page-p1', { ...CANVAS, pages: [] }), ALL, 'an empty pages list means every artboard');
+test('AC-1: v3 boards come in the order of `order`, then the unlisted ones by name, with any pages and notes', () => {
   assert.deepEqual(pick(''), ALL);
-  const many = { pages: [], boards: Array.from({ length: 25 }, (_, i) => ({ path: `b${String(i).padStart(2, '0')}` })) };
-  assert.deepEqual(pick('', many), many.boards.slice(0, 20).map((b) => `project/${b.path}.dc.html`), 'at most 20, in the order of the index');
-  for (const path of selectArtboards({ boards: CANVAS.boards }, null)) {
-    assert.ok(!path.startsWith('/') && !path.includes('\\') && !path.split('/').includes('..'), path);
-  }
-  assert.deepEqual(selectArtboards({ boards: 'x', pages: 3 }, null), []);
+  assert.deepEqual(selectArtboards(CANVAS, null), ALL);
+  assert.deepEqual(pick('', { ...CANVAS, pages: [] }), ALL);
+  assert.deepEqual(pick('', { ...CANVAS, pages: [{ id: 'p1' }], notes: 'text' }), ALL);
+  assert.deepEqual(selectArtboards({ boards: { 'b.dc.html': {}, 'a.dc.html': {} } }, null), ['project/a.dc.html', 'project/b.dc.html'], 'no order: by name');
+});
+
+test('AC-2: invalid board keys are omitted, valid ones (subfolders too) stay, and a boards that is not an object gives nothing', () => {
+  const out = pick('');
+  for (const bad of ['notes.txt', 'noext', 'etc/passwd', '..', 'a\\b', 'ctl']) assert.ok(!out.some((p) => p.includes(bad)), bad);
+  for (const path of out) assert.ok(!path.includes('\\') && !path.split('/').includes('..') && /\.dc\.html$/.test(path), path);
+  assert.ok(out.includes('project/flows/Cart.dc.html'));
+  const proto = JSON.parse('{"boards":{"__proto__":{"x":1},"constructor":{},"ok.dc.html":{}}}');
+  assert.deepEqual(selectArtboards(proto, null), ['project/ok.dc.html']);
+  for (const boards of [[{ path: 'home' }], ['a.dc.html'], 'x', 3, null]) assert.deepEqual(selectArtboards({ boards, pages: 3 }, null), []);
+  assert.deepEqual(selectArtboards({}, null), []);
+  assert.deepEqual(selectArtboards(null, null), []);
+});
+
+test('AC-3: #artboard-<name> picks the boards of that normalized name, an unknown name picks all', () => {
+  assert.deepEqual(pick('#artboard-Main'), ['project/Main.dc.html']);
+  assert.deepEqual(pick('#artboard-flows-Cart'), ['project/flows/Cart.dc.html']);
+  assert.deepEqual(pick('#artboard-My-Home'), ['project/My Home.dc.html']);
+  assert.deepEqual(pick('#artboard-Desconocido'), ALL);
+  const twin = { boards: { 'a b.dc.html': {}, 'a-b.dc.html': {} } };
+  assert.deepEqual(pick('#artboard-a-b', twin), ['project/a b.dc.html', 'project/a-b.dc.html'], 'two keys with the same name are both picked');
+});
+
+test('AC-4: #page-<id> picks the boards of that page (the first page adds boards without page), else all', () => {
+  assert.deepEqual(pick('#page-p1'), ['project/Main.dc.html', 'project/My Home.dc.html', 'project/junk.dc.html', 'project/zeta.dc.html']);
+  assert.deepEqual(pick('#page-p2'), ['project/flows/Cart.dc.html', 'project/alpha.dc.html']);
+  assert.deepEqual(pick('#page-p9'), ALL, 'a page the index does not list means every artboard');
+  assert.deepEqual(pick('#page-p1', { ...CANVAS, pages: [] }), ALL, 'an empty pages list means every artboard');
+});
+
+test('AC-5: at most 20 boards, without repeats', () => {
+  const boards = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`b${String(i).padStart(2, '0')}.dc.html`, {}]));
+  const out = pick('', { pages: [], boards, order: ['b24.dc.html', 'b24.dc.html', 'b00.dc.html'] });
+  assert.equal(out.length, 20);
+  assert.equal(new Set(out).size, 20);
+  assert.deepEqual(out.slice(0, 3), ['project/b24.dc.html', 'project/b00.dc.html', 'project/b01.dc.html']);
+});
+
+test('AC-7: artboard tests use the v3 shape (boards as an object, order apart)', () => {
+  assert.ok(!Array.isArray(CANVAS.boards) && Array.isArray(CANVAS.order));
 });
 
 test('AC-7: image references are the blob uploads and relative image paths, each with a unique local name', () => {
