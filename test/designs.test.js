@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  MAX_LINKS, detectLinks, imageRefs, imageType, mergeLinks, parseClaudeLink, parseIndex, renderSection,
+  MAX_LINKS, designLinks, detectLinks, imageRefs, imageType, mergeLinks, parseClaudeLink, parseFigmaLink, parseIndex, renderSection,
   selectArtboards, serializeIndex, withSection,
 } from '../factory/lib/designs.js';
 
@@ -283,4 +283,29 @@ test('AC-7: the HTML scan answers fast on adversarial input of 2 MB', () => {
     const ms = performance.now() - start;
     assert.ok(ms < 1500, `${unit}: ${ms} ms`);
   }
+});
+
+test('AC-7: parseFigmaLink accepts https figma.com design, file and proto links as received', () => {
+  for (const url of ['https://www.figma.com/design/AbC1/Name?node-id=1-2', 'https://FIGMA.com/file/AbC1', 'https://figma.com/proto/AbC1/x']) {
+    assert.deepEqual(parseFigmaLink(url), { url });
+  }
+  for (const url of [
+    'http://www.figma.com/design/AbC1', 'https://figma.com.evil.com/design/x', 'https://evil.com/figma.com/design/x', 'https://user@figma.com/design/x',
+    'https://www.figma.com/board/x', 'https://www.figma.com/design/', `https://www.figma.com/design/${'a'.repeat(3000)}`, 'https://figma.com:8443/design/x',
+  ]) assert.equal(parseFigmaLink(url), null, url);
+});
+
+test('AC-7: designLinks lists each distinct Claude or Figma link once with its first line, at most MAX_LINKS', () => {
+  const lines = [
+    'see https://claude.ai/artifact/abc#artboard-Main and https://example.com/x',
+    'again https://Claude.AI/artifact/abc/?x=1#artboard-Main, plus https://www.figma.com/design/K1/n?node-id=1-2.',
+    'http://claude.ai/artifact/x',
+  ];
+  assert.deepEqual(designLinks(lines), [
+    { kind: 'claude', url: 'https://claude.ai/artifact/abc#artboard-Main', line: 0 },
+    { kind: 'figma', url: 'https://www.figma.com/design/K1/n?node-id=1-2', line: 1 },
+  ]);
+  const many = Array.from({ length: 12 }, (_, i) => `https://claude.ai/artifact/a${i}`);
+  assert.equal(designLinks(many).length, MAX_LINKS);
+  assert.deepEqual(designLinks(many).map((l) => l.line), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 });

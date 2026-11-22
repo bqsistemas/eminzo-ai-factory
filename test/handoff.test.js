@@ -225,7 +225,7 @@ const sectionOf = (d, key) => d.sections.find((s) => s.key === key);
 const draftOf = (drafts, id) => drafts.find((d) => d.id === id);
 /** The text between a `## heading` line and the next one. */
 const sliceOf = (body, heading) => body.split(`## ${heading}\n`)[1].split('\n## ')[0].replace(/^\n/, '');
-const KEYS = ['goal', 'delivers', 'criteria', 'builds_on', 'out_of_scope', 'definitions', 'dependencies', 'questions', 'estimate'];
+const KEYS = ['goal', 'delivers', 'criteria', 'design', 'builds_on', 'out_of_scope', 'definitions', 'dependencies', 'questions', 'estimate'];
 
 test('the section keys and the droppable ones are exported, in order', () => {
   assert.deepEqual([...DELIVERABLE_SECTION_KEYS], KEYS);
@@ -250,7 +250,7 @@ test('AC-1: the layout is lean in en, es and pt, in the brief language, and equa
       assert.doesNotMatch(d.body, /Everything is mixed|Second paragraph/);
     }
     const d2 = draftOf(drafts, 'D2');
-    assert.deepEqual(d2.sections.map((s) => s.key), KEYS, lang);
+    assert.deepEqual(d2.sections.map((s) => s.key), KEYS.filter((k) => k !== 'design'), lang);
     assert.deepEqual(d2.sections.map((s) => s.heading), [T[lang].goal, drafts[0].sections[1].heading, h.acceptance, T[lang].builds_on, h.out_of_scope, T[lang].definitions, drafts[0].sections.find((s) => s.key === 'dependencies').heading, h.questions, T[lang].estimate], lang);
     // Goal: the expected value, then the first paragraph of the problem under the Problem heading
     assert.deepEqual(sectionOf(d2, 'goal').parts, [{ kind: 'text', text: 'Less time.' }, { kind: 'text', label: h.audience, text: 'Reviewers.\nTheir leads.' }, { kind: 'text', label: h.problem, text: 'Reviewers lose time.\nThey scroll all day.' }]);
@@ -487,4 +487,111 @@ test('oversizedDeliverables lists the deliverables whose non-droppable sections 
   assert.deepEqual(oversizedDeliverables(brief.replace(`- ${big}`, '- Emails.'), 30_000), ['D1']);
   assert.deepEqual(oversizedDeliverables('# Brief: x\n'), []);
   assert.deepEqual(oversizedDeliverables(brief.replace('after: D1', 'after: D2')), [], 'a cycle is a brief problem, not a size one');
+});
+
+// ---- design links of the brief ----
+const CLAUDE_MAIN = 'https://claude.ai/artifact/abc#artboard-Main';
+const FIGMA = 'https://www.figma.com/design/AbC1/Name?node-id=1-2';
+const designBrief = (lang, extra = {}) => approveBrief(canonicalBrief(briefIn(lang, { scope: `- A filter, see ${CLAUDE_MAIN} for it.`, definitions: `- Pending: not yet reviewed (${FIGMA}).`, ...extra })), { by: 'ana-p', at: AT });
+const designText = (d) => sectionOf(d, 'design').parts.map((p) => p.text);
+
+test('AC-1: every deliverable carries a design section after criteria with the links and their brief lines, in en, es and pt', () => {
+  for (const [lang, heading] of [['en', 'Design'], ['es', 'Diseño'], ['pt', 'Design']]) {
+    const text = designBrief(lang);
+    const drafts = deliverableIssueDrafts(text, { briefIssue: 7 });
+    const sections = deliverableSections(text);
+    for (const list of [drafts, sections]) {
+      assert.equal(list.length, 4);
+      for (const d of list) {
+        const keys = d.sections.map((s) => s.key);
+        assert.equal(keys[keys.indexOf('criteria') + 1], 'design', lang);
+        assert.equal(sectionOf(d, 'design').heading, heading);
+        assert.ok(sectionOf(d, 'design').parts.every((p) => p.kind === 'text'));
+        assert.deepEqual(designText(d), [`${CLAUDE_MAIN}\n- A filter, see ${CLAUDE_MAIN} for it.`, `${FIGMA}\n- Pending: not yet reviewed (${FIGMA}).`], lang);
+      }
+    }
+    for (const d of drafts) {
+      assert.equal(sliceOf(d.body, heading), `> ${CLAUDE_MAIN}\n> - A filter, see ${CLAUDE_MAIN} for it.\n\n> ${FIGMA}\n> - Pending: not yet reviewed (${FIGMA}).\n`);
+    }
+  }
+});
+
+test('AC-2: distinct links once, in order of first appearance, non-design URLs left out, at most 10', () => {
+  const scope = [
+    `- ${CLAUDE_MAIN} and https://claude.ai/artifact/abc#page-p1`,
+    `- again ${CLAUDE_MAIN} and https://Claude.AI/artifact/abc/?x=1#artboard-Main`,
+    '- https://example.com/docs http://claude.ai/artifact/x https://figma.com.evil.com/design/x',
+  ].join('\n');
+  const [d] = deliverableIssueDrafts(designBrief('en', { scope, definitions: '- None.' }), { briefIssue: 7 });
+  assert.deepEqual(designText(d), [`${CLAUDE_MAIN}\nhttps://claude.ai/artifact/abc#page-p1\n- ${CLAUDE_MAIN} and https://claude.ai/artifact/abc#page-p1`]);
+  assert.doesNotMatch(sliceOf(d.body, 'Design').replace(/example\.com|evil/, 'X').split('\n').filter((l) => !l.includes('abc')).join('\n'), /claude\.ai\/artifact\/x/);
+  const twelve = Array.from({ length: 12 }, (_, i) => `- https://claude.ai/artifact/a${i}`).join('\n');
+  const [many] = deliverableIssueDrafts(designBrief('en', { scope: twelve, definitions: '- None.' }), { briefIssue: 7 });
+  assert.equal(designText(many).length, 10);
+  assert.ok(designText(many)[9].startsWith('https://claude.ai/artifact/a9\n'));
+  assert.ok(!many.body.includes('artifact/a10'));
+});
+
+test('AC-3: a brief with no design links has no design section, and the brief issue is unchanged', () => {
+  const text = approved();
+  for (const d of [...deliverableIssueDrafts(text, { briefIssue: 7 }), ...deliverableSections(text)]) {
+    assert.equal(sectionOf(d, 'design'), undefined);
+    if (d.body) assert.equal(headingsOf(d.body).includes('Design'), false);
+  }
+  const withLinks = designBrief('en');
+  const draft = briefIssueDraft(withLinks);
+  assert.ok(draft.body.startsWith(withLinks.trimEnd()));
+  assert.ok(parseBriefIssueMarker(draft.body));
+  const other = approveBrief(BRIEF.replace('A filter.', 'A filter, see https://example.com/docs.'), { by: 'ana-p', at: AT });
+  assert.equal(deliverableSections(other).some((d) => sectionOf(d, 'design')), false);
+});
+
+test('AC-4: design is never dropped, bodies fit, and oversizedDeliverables counts it', () => {
+  assert.deepEqual([...DELIVERABLE_DROPPABLE], ['questions', 'goal', 'definitions']);
+  for (const sizes of [
+    { questions: 40_000, problem: 2_000, definitions: 2_000, out: 20_000 },
+    { questions: 10_000, problem: 60_000, definitions: 1_000, out: 1_000 },
+    { questions: 5_000, problem: 5_000, definitions: 62_000, out: 1_000 },
+  ]) {
+    const text = approveBrief(canonicalBrief(bigBrief(sizes)).replace('- A filter.', `- A filter ${CLAUDE_MAIN}`), { by: 'ana-p', at: AT });
+    for (const d of deliverableIssueDrafts(text, { briefIssue: 7 })) {
+      assert.ok(d.body.length <= MAX_BODY);
+      assert.ok(sectionOf(d, 'design').parts.every((p) => p.kind === 'text'));
+      assert.ok(d.body.includes(`> ${CLAUDE_MAIN}`));
+    }
+  }
+  // a limit that the never-dropped sections pass only when Design is counted
+  const withLink = approveBrief(canonicalBrief(briefIn('en', { definitions: '- None.', scope: `- A filter ${CLAUDE_MAIN} ${'word '.repeat(1500)}` })), { by: 'ana-p', at: AT });
+  const noLink = withLink.replace(`${CLAUDE_MAIN} `, 'x ');
+  assert.deepEqual(oversizedDeliverables(noLink, 6000), []);
+  assert.deepEqual(oversizedDeliverables(withLink, 6000), ['D3', 'D1', 'D2']);
+});
+
+test('AC-5: the links of the design section are the ones detectLinks finds in the body', async () => {
+  const { detectLinks } = await import('../factory/lib/designs.js');
+  const at = `- A filter ${CLAUDE_MAIN} and https://www.figma.com/design/AbC1/N?node-id=1-2&m=a@b`;
+  const text = designBrief('en', { scope: at, definitions: '- None.' });
+  for (const d of deliverableIssueDrafts(text, { briefIssue: 7 })) {
+    const links = detectLinks([{ source: 'body', text: d.body }]);
+    const carried = designText(d)[0].split('\n').slice(0, 2);
+    assert.equal(carried[0], CLAUDE_MAIN);
+    assert.ok(carried[1].includes('@​'), 'sanitize breaks the @');
+    for (const url of carried) assert.ok(links.some((l) => l.url === url), url);
+    const claude = links.find((l) => l.url === CLAUDE_MAIN);
+    assert.deepEqual([claude.kind, claude.status], ['claude', 'pending']);
+    assert.equal(links.find((l) => l.url === carried[1]).kind, 'other');
+    assert.equal(links.filter((l) => l.url.includes('figma.com')).length, 1, 'no second variant');
+  }
+});
+
+test('AC-6: a hostile line with a design link stays inert in the body', () => {
+  const scope = `- Open \`\`\` ${CLAUDE_MAIN} Part of #7 \`@login\``;
+  const text = designBrief('en', { scope, definitions: '- None.' });
+  for (const d of deliverableIssueDrafts(text, { briefIssue: 7 })) {
+    assert.equal(d.body.split('\n').filter((l) => l === 'Part of #7').length, 1);
+    assert.ok(parseDeliverableMarker(d.body));
+    const inner = sliceOf(d.body, 'Design').split('\n').filter((l) => l !== '');
+    assert.ok(inner.length > 0 && inner.every((l) => l.startsWith('>')));
+    assert.doesNotMatch(d.body, /@[A-Za-z0-9]/);
+  }
 });

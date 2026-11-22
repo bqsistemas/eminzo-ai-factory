@@ -178,22 +178,26 @@ Hidden lines (HTML comments, found with a search on the issue body):
      too long the section is replaced by "See the brief issue #n for Goal (For whom, Problem)", in the brief's language.
   2. What it delivers (`delivers`): the deliverable title.
   3. Acceptance criteria (`criteria`): one checklist line per criterion it covers, `- [ ] BC-n: <full text>`, never cut.
-  4. Builds on (`builds_on`), only when the deliverable has `after`: for each deliverable it waits for (direct `after`,
+  4. Design (`design`), only when the brief links a design (a Claude artifact or a Figma frame, in any line of the
+     brief): the distinct links in order of first appearance (the first 10), each group followed by the brief line where
+     it first appears, as block-quote lines. The factory job downloads the Claude artifacts from there; a Figma link is
+     carried but not downloaded. Never dropped.
+  5. Builds on (`builds_on`), only when the deliverable has `after`: for each deliverable it waits for (direct `after`,
      in dependency order) the sentence "Built by #n (D1: Title); it exists when you start.", then the full text of the
      criteria it builds on as a plain list: exactly its `uses` ids that belong to that deliverable, or all the criteria
      that deliverable covers when none is named.
-  5. Out of scope (`out_of_scope`): the brief's Out of scope, verbatim, and the criteria that another deliverable of the
+  6. Out of scope (`out_of_scope`): the brief's Out of scope, verbatim, and the criteria that another deliverable of the
      brief covers and this one neither covers nor shows under Builds on ("BC-5, BC-6 are delivered by D2 (#n)", or by id
      and title while D2 has no issue).
-  6. Definitions (`definitions`): the brief's Definitions, verbatim, only when the brief has them.
-  7. Dependencies (`dependencies`): Waits for (as `#n (D3: Title)` once created), then, when there are any, "Do not start
+  7. Definitions (`definitions`): the brief's Definitions, verbatim, only when the brief has them.
+  8. Dependencies (`dependencies`): Waits for (as `#n (D3: Title)` once created), then, when there are any, "Do not start
      until the deliverables above are merged."; and Unblocks, each deliverable followed by which of this deliverable's
      criteria it builds on ("#n (D4: Title): builds on BC-2, BC-4 of this deliverable": the `uses` of that deliverable
      that this one covers; all that this one covers when it has no `uses`; a deliverable whose `uses` names none of this
      one's criteria is listed without "builds on").
-  8. Open questions (`questions`): only when the brief's Open questions has a line with "?" or "¿", or a list item
+  9. Open questions (`questions`): only when the brief's Open questions has a line with "?" or "¿", or a list item
      (`- `, `* `, `1. `); a single "None for now." line is left out.
-  9. For planning (`estimate`): the size sentence (no risk: the factory's intake decides it) and the estimate shown when
+  10. For planning (`estimate`): the size sentence (no risk: the factory's intake decides it) and the estimate shown when
      it was created (a range and how many similar finished jobs it rests on, or "too little history").
   Then `Part of #<brief issue>` and the hidden marker. It never mentions the factory label.
 - Text copied from the brief goes in as block-quote lines, made inert (no comments, control or bidirectional
@@ -202,7 +206,7 @@ Hidden lines (HTML comments, found with a search on the issue body):
   `Part of` line) before returning it.
 - Never cut silently: the body stays under `MAX_BODY` (65,000 characters). When it would not, the optional sections
   are dropped whole, in this order, only as many as needed: Open questions, Goal, Definitions
-  (`DELIVERABLE_DROPPABLE`). Each one is replaced by one line ("See the brief issue #n for ..."). Criteria, Builds on,
+  (`DELIVERABLE_DROPPABLE`). Each one is replaced by one line ("See the brief issue #n for ..."). Criteria, Design, Builds on,
   Out of scope, Dependencies, `Part of` and the marker are never dropped; if they alone do not fit, the draft fails with a readable error.
 - `sections` is the same content as data, next to `body`: `[{ key, heading, parts }]` with `key` one of
   `DELIVERABLE_SECTION_KEYS` (the module exports the ordered keys and the droppable ones so a destination does not
