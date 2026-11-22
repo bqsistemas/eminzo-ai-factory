@@ -243,6 +243,11 @@ test('AC-5: a large index is read in linear time', () => {
   assert.ok(Date.now() - start < 2000, 'a quadratic scan would take many seconds');
 });
 
+test('AC-7: the v3 shape is read and the old `boards: [{ path }]` array is not', () => {
+  assert.deepEqual(selectArtboards({ boards: { 'home.dc.html': {} }, order: [] }, null), ['project/home.dc.html']);
+  assert.deepEqual(selectArtboards({ boards: [{ path: 'home' }] }, null), []);
+});
+
 test('AC-7: image references are the blob uploads and relative image paths, each with a unique local name', () => {
   const html = [
     '<img src="/_blob/hero1"><img alt="x" SRC=\'/_blob/hero1\'>',
