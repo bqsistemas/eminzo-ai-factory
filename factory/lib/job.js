@@ -95,8 +95,8 @@ const ESCALATABLE = ['intake', 'spec', 'build', 'gate', 'review', 'approve', 'me
 
 /** Everything a command reads from the main checkout: the effective config and which keys came from config.local.json. */
 function contextAt(root) {
-  const { config, overrides } = effectiveConfig(root);
-  return { root, config, overrides, lang: configLanguage(config), gh: process.env.FACTORY_GH || 'gh' };
+  const { config, overrides, localOnly } = effectiveConfig(root);
+  return { root, config, overrides, localOnly, lang: configLanguage(config), gh: process.env.FACTORY_GH || 'gh' };
 }
 
 const context = () => contextAt(factoryRoot());
@@ -2129,8 +2129,12 @@ function workerPrompt(c, id) {
 
 /** `job config [<key>]`: "<key> <team|local> <compact JSON>" per top-level key, sorted; an unknown key is refused. */
 function configLines(c, key) {
-  const line = (k) => `${k} ${c.overrides.includes(k) ? 'local' : 'team'} ${JSON.stringify(c.config[k])}`;
+  const isLocal = (k) => c.overrides.includes(k) || (c.localOnly ?? []).includes(k);
+  const line = (k) => `${k} ${isLocal(k) ? 'local' : 'team'} ${JSON.stringify(c.config[k])}`;
   if (key === undefined) return Object.keys(c.config).sort().map(line).join('\n');
+  // The related keys are known even when absent: they print their empty value.
+  if (key === 'related_repos' && !Object.hasOwn(c.config, key)) return 'related_repos team []';
+  if (key === 'related_checkouts' && !Object.hasOwn(c.config, key)) return 'related_checkouts local {}';
   if (!Object.hasOwn(c.config, key)) throw new Refused(`no config key ${JSON.stringify(key)}`);
   return line(key);
 }

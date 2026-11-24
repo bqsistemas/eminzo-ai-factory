@@ -134,7 +134,8 @@ Portable factory engine:
   repo-specific routing, checks, ESM boundary and agent context.
 - `factory/config.local.json` (gitignored, optional): per-developer override of `concurrency`,
   `default_provider`, `language`, `max_rounds` (lower only), `auto_merge` (false only), `run_mode` (`own` only),
-  `spec_review` (either way; `specReviewFor()` in `util.js` resolves it) and `discovery`.
+  `spec_review` (either way; `specReviewFor()` in `util.js` resolves it) and `discovery`; also `related_checkouts`
+  (local only, not an override; `LOCAL_ONLY` in `util.js`).
 - `factory/bin/`: shell entrypoints for job, gate, route, nudge, selfcheck, protect-tests, guard-tests, approve, visual,
   base, profile, mcp, setup, setup-spec-review, init, ensure-output and dashboard; implementation lives in `factory/lib/`.
 - `factory/lib/`: `job.js` state/transitions/GitHub; `route.js`/`intake.js` classification;
@@ -151,6 +152,7 @@ Portable factory engine:
   affected-only for Nx and Turborepo) and the prepare command of each lockfile; `base.js` the base
   check and `red-base.js` its held-job wording/facts; `lessons.js`, `metrics.js`, `profile.js`,
   `record-facts.js` (the PR record's facts line), `section.js`, `ensure-output.js`, `init.js`;
+  `related-repos.js` pure validation of the team `related_repos` and the local `related_checkouts` (used by `util.js` and `eminzo doctor`);
   `dashboard.js` the static dashboard server. Engine modules remain dependency-free.
 - `factory/lib/labels.js`: the single list of GitHub labels (factory and Ask Eminzo); edit only it.
 - `factory/lib/notifications.js`, `factory/lib/connectors/`: optional best-effort lifecycle
