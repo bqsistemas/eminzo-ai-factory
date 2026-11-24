@@ -4,9 +4,16 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { checkEngineRange } from './engine.js';
 import { PARTIAL, hasCommittedEngine, readInstallManifest, repoRoot, tilde } from './paths.js';
+
+// The engine's pure validation of `related_repos`: this repo's source first, the packaged engine after.
+const engineLib = ['../../factory/lib/related-repos.js', '../dist/factory/lib/related-repos.js'].map((p) => new URL(p, import.meta.url));
+const relatedFound = engineLib.find((u) => existsSync(u));
+if (!relatedFound) throw new Error(`the engine's related-repos module is missing; looked for ${engineLib.map((u) => fileURLToPath(u)).join(' and ')}`);
+const { relatedReposProblems } = await import(relatedFound);
 
 const MIN_NODE = 20;
 const SETUP_COMPLETE_MARKER = '<!-- eminzo:setup-complete -->';
@@ -20,6 +27,23 @@ function onPath(name, env) {
     } catch { /* not here */ }
   }
   return null;
+}
+
+/** The `related_repos` check: only when the config parses as an object and has the key. A problem is a warning. */
+function addRelatedRepos(add, configFile) {
+  let config;
+  try { config = JSON.parse(readFileSync(configFile, 'utf8')); } catch { return; }
+  if (config === null || typeof config !== 'object' || Array.isArray(config) || !Object.hasOwn(config, 'related_repos')) return;
+  const problems = relatedReposProblems(config);
+  if (!problems.length) {
+    add('related_repos', 'ok', 'related repositories', `${config.related_repos.length} listed`);
+    return;
+  }
+  const detail = problems.map((p) => {
+    const where = p.index === null ? 'the list' : `entry ${p.index}${p.repo === null ? '' : ` ${JSON.stringify(p.repo)}`}`;
+    return `${where}: ${p.reason}`;
+  }).join('; ');
+  add('related_repos', 'warn', 'related repositories', detail);
 }
 
 /**
@@ -83,6 +107,7 @@ export function checks({ version, home, env = process.env, cwd = process.cwd() }
       add('engine', 'fail', 'engine range', err.message);
     }
   }
+  addRelatedRepos(add, configFile);
   let project = '';
   try { project = readFileSync(join(root, 'factory', 'project.md'), 'utf8'); } catch { /* missing */ }
   repository.setup = project.includes(SETUP_COMPLETE_MARKER);

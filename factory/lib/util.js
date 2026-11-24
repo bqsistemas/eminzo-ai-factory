@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFil
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { relatedCheckoutsProblem } from './related-repos.js';
 
 /** A job id: a 3-digit (or longer) number, then a lowercase slug. Never a path. */
 export const JOB_ID = /^\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -69,6 +70,8 @@ export function loadConfig(root, opts) {
 export const LOCAL_CONFIG = 'factory/config.local.json';
 /** The only keys config.local.json may set. Every other key (routing, models, protected tests, ...) is team policy. */
 export const OVERRIDABLE = Object.freeze(['concurrency', 'default_provider', 'language', 'max_rounds', 'auto_merge', 'spec_review', 'discovery', 'run_mode']);
+/** Keys only config.local.json may set, with their own rule: personal data, not an override of a team value. */
+export const LOCAL_ONLY = Object.freeze(['related_checkouts']);
 /** The discovery methods of the product stage (see discovery.js): Eminzo's basic one, and Google's Elephant-Goldfish. */
 export const DISCOVERY_METHODS = Object.freeze(['eminzo', 'elephant-goldfish']);
 
@@ -101,8 +104,11 @@ function localProblem(team, key, value) {
     case 'run_mode':
       // Narrowing only: a local "own" stops one developer from taking the queue; a local "queue" would claim teammates' issues.
       return value === 'own' ? null : 'can only be "own" (a local file may stop taking the queue, never start it)';
+    case 'related_checkouts':
+      // Where this person cloned each related repository; a slug the team list lacks is tolerated.
+      return relatedCheckoutsProblem(value);
     default:
-      return `not an overridable key (allowed: ${OVERRIDABLE.join(', ')})`;
+      return `not an overridable key (allowed: ${[...OVERRIDABLE, ...LOCAL_ONLY].join(', ')})`;
   }
 }
 
@@ -114,7 +120,7 @@ function localProblem(team, key, value) {
 export function validateLocal(team, local) {
   if (!isPlainObject(local)) throw new Refused('config.local.json: must be a JSON object');
   for (const key of Object.keys(local)) {
-    const problem = localProblem(isPlainObject(team) ? team : {}, OVERRIDABLE.includes(key) ? key : null, local[key]);
+    const problem = localProblem(isPlainObject(team) ? team : {}, OVERRIDABLE.includes(key) || LOCAL_ONLY.includes(key) ? key : null, local[key]);
     if (problem) throw new Refused(`config.local.json: ${key}: ${problem}`);
   }
 }
@@ -129,17 +135,18 @@ function localTracked(root) {
  * factory/config.json merged with factory/config.local.json. Without the local file the team
  * config is returned as is (git is not asked). A local file tracked by git is ignored with a
  * warning: a shared file is not a local override. Otherwise it is parsed and validated whole
- * before anything is merged; any failure is a Refused. `overrides` lists the applied keys, sorted.
+ * before anything is merged; any failure is a Refused. `overrides` lists the applied OVERRIDABLE keys, sorted;
+ * `localOnly` the LOCAL_ONLY keys present (they enter `config` but are not overrides).
  * @param {{ tracked?: (root: string) => boolean, warn?: (text: string) => void }} [opts]
- * @returns {{ config: object, team: object, local: object | null, overrides: string[] }}
+ * @returns {{ config: object, team: object, local: object | null, overrides: string[], localOnly: string[] }}
  */
 export function effectiveConfig(root, { tracked = localTracked, warn = (text) => process.stderr.write(`${text}\n`) } = {}) {
   const team = JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8'));
   const file = join(root, LOCAL_CONFIG);
-  if (!existsSync(file)) return { config: team, team, local: null, overrides: [] };
+  if (!existsSync(file)) return { config: team, team, local: null, overrides: [], localOnly: [] };
   if (tracked(root)) {
     warn(`warning: ${LOCAL_CONFIG} is tracked by git, so it is ignored; untrack it with git rm --cached ${LOCAL_CONFIG}`);
-    return { config: team, team, local: null, overrides: [] };
+    return { config: team, team, local: null, overrides: [], localOnly: [] };
   }
   let text;
   try {
@@ -154,10 +161,11 @@ export function effectiveConfig(root, { tracked = localTracked, warn = (text) =>
     throw new Refused(`config.local.json: not valid JSON (${err.message})`);
   }
   validateLocal(team, local);
-  const overrides = Object.keys(local).sort();
+  const overrides = Object.keys(local).filter((k) => OVERRIDABLE.includes(k)).sort();
+  const localOnly = Object.keys(local).filter((k) => LOCAL_ONLY.includes(k)).sort();
   const config = { ...team };
-  for (const key of overrides) config[key] = local[key];
-  return { config, team, local, overrides };
+  for (const key of [...overrides, ...localOnly]) config[key] = local[key];
+  return { config, team, local, overrides, localOnly };
 }
 
 /**
