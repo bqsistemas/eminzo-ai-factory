@@ -28,6 +28,13 @@ describe('setupStatus', () => {
     assert.deepEqual(setupStatus(text, team), { state: 'complete', related: { covered: ['acme/payments-api', 'acme/platform-infra'], not_covered: ['acme/design-tokens'] } });
   });
 
+  test('the coverage line also accepts slugs separated by commas, as an agent may write it', () => {
+    const text = `x\n<!-- eminzo:setup-related: acme/payments-api, acme/platform-infra,acme/design-tokens -->\n${SETUP_COMPLETE_MARKER}\n`;
+    assert.deepEqual(parseSetupRelated(text), ['acme/payments-api', 'acme/platform-infra', 'acme/design-tokens']);
+    assert.deepEqual(setupStatus(text, team), { state: 'complete', related: { covered: ALL, not_covered: [] } });
+    assert.deepEqual(parseSetupRelated('<!-- eminzo:setup-related: , acme/x ,, -->'), ['acme/x']);
+  });
+
   test('AC-5: parseSetupRelated drops invalid tokens and duplicates, takes the last line, and is empty without one', () => {
     assert.deepEqual(parseSetupRelated('nothing'), []);
     assert.deepEqual(parseSetupRelated('<!-- eminzo:setup-related: bad token a/b/c acme/x ACME/X -->'), ['acme/x']);

@@ -1,19 +1,22 @@
 // What the last setup covered: the marker that says setup finished and the coverage line that says which related
 // repositories it described. Pure: no I/O, like `product-map.js`.
 //
-//   <!-- eminzo:setup-related: <slug> <slug> -->     (right before the setup-complete marker)
+//   <!-- eminzo:setup-related: <slug> <slug> -->     (right before the setup-complete marker; commas are read as spaces)
 //   <!-- eminzo:setup-complete -->
 import { isRepoSlug, validRelatedRepos } from './related-repos.js';
 
 export const SETUP_COMPLETE_MARKER = '<!-- eminzo:setup-complete -->';
 const COVERAGE = /<!--\s*eminzo:setup-related:([^\n]*?)-->/g;
 
-/** The lowercase slugs of the last coverage line of the text, without duplicates; invalid tokens are dropped; `[]` without a line. */
+/**
+ * The lowercase slugs of the last coverage line of the text, without duplicates; invalid tokens are dropped; `[]` without a line.
+ * Slugs are separated by spaces; commas are accepted too, since an agent may write a list that way.
+ */
 export function parseSetupRelated(text) {
   if (typeof text !== 'string') return [];
   const last = [...text.matchAll(COVERAGE)].at(-1);
   if (!last) return [];
-  const slugs = last[1].split(/\s+/).filter(isRepoSlug).map((s) => s.toLowerCase());
+  const slugs = last[1].split(/[\s,]+/).filter(isRepoSlug).map((s) => s.toLowerCase());
   return [...new Set(slugs)];
 }
 
