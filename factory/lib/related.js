@@ -6,6 +6,8 @@ import { statSync } from 'node:fs';
 import { relatedNames, remoteSlug, validRelatedRepos } from './related-repos.js';
 import { Usage, effectiveConfig, factoryRoot, isMain, run, runCli } from './util.js';
 
+// The checkout's own origin is what identifies it; it is not the base remote of the factory.
+const ORIGIN = `origin`;
 const GIT_VARS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'];
 
 function gitEnv() {
@@ -34,7 +36,7 @@ export function checkoutState(repo, checkouts) {
   }
   const inside = git(path, ['rev-parse', '--is-inside-work-tree']);
   if (inside.error || inside.status !== 0 || inside.stdout.trim() !== 'true') return missing;
-  const origin = git(path, ['remote', 'get-url', 'origin']);
+  const origin = git(path, ['remote', 'get-url', ORIGIN]);
   const slug = origin.error || origin.status !== 0 ? null : remoteSlug(origin.stdout.trim());
   if (slug === null || slug.toLowerCase() !== wanted) return { state: 'mismatch', path: null };
   return { state: 'ok', path };
