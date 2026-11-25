@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RELATED_REPOS_MAX, isRepoSlug, mainRepoSlug, relatedReposProblems } from '../factory/lib/related-repos.js';
-import { checks } from '../cli/src/doctor.js';
+import { RELATED_REPOS_MAX, isRepoSlug, mainRepoSlug, relatedNames, relatedReposProblems, remoteSlug, validRelatedRepos } from '../factory/lib/related-repos.js';
+import { checks, doctor } from '../cli/src/doctor.js';
 
 const entry = (repo, description = 'A related service.') => ({ repo, description });
 const base = (list) => ({ repo: 'https://github.com/Acme/Main.git', related_repos: list });
@@ -96,5 +96,65 @@ describe('doctor related_repos check', () => {
     assert.deepEqual(ids, ['node', 'git', 'gh', 'path', 'adapters', 'engine', 'setup']);
     const unparsable = repoWith('{ nope')().results.map((c) => c.id);
     assert.ok(!unparsable.includes('related_repos'));
+  });
+});
+
+describe('remoteSlug and the valid entries', () => {
+  test('AC-2: every common remote form gives owner/name and never leaks a credential', () => {
+    const forms = [
+      'https://github.com/acme/payments-api', 'https://github.com/Acme/Payments-API.git', 'https://github.com/acme/payments-api.git/',
+      'https://x-access-token:s3cret@github.com/acme/payments-api.git', 'git@github.com:acme/payments-api.git', 'git@github.com:acme/payments-api',
+      'ssh://git@github.com/acme/payments-api.git', 'git@github-work:acme/payments-api.git',
+    ];
+    for (const url of forms) {
+      const slug = remoteSlug(url);
+      assert.equal(slug?.toLowerCase(), 'acme/payments-api', url);
+      assert.ok(!slug.includes('s3cret'));
+    }
+    for (const url of ['', 'not a remote', 'https://github.com/acme', 'https://github.com/acme/x/y', 42, null]) assert.equal(remoteSlug(url), null, String(url));
+  });
+
+  test('AC-3: validRelatedRepos keeps the valid entries in file order and relatedNames shortens unique names', () => {
+    const team = { repo: 'acme/main', related_repos: [entry('acme/api'), entry('ACME/API'), entry('acme/main'), entry('other/Api'), entry('acme/web')] };
+    assert.deepEqual(validRelatedRepos(team).map((e) => e.repo), ['acme/api', 'other/Api', 'acme/web']);
+    assert.deepEqual(validRelatedRepos({}), []);
+    assert.deepEqual(validRelatedRepos({ related_repos: 'x' }), []);
+    assert.deepEqual(relatedNames(['acme/api', 'other/API', 'acme/web']), ['acme/api', 'other/API', 'web']);
+  });
+});
+
+describe('doctor related_setup check', () => {
+  const MARK = '<!-- eminzo:setup-complete -->';
+  function repoSetup(config, project) {
+    const root = mkdtempSync(join(tmpdir(), 'related-setup-'));
+    mkdirSync(join(root, 'factory'), { recursive: true });
+    writeFileSync(join(root, 'factory/config.json'), JSON.stringify(config));
+    if (project !== undefined) writeFileSync(join(root, 'factory/project.md'), project);
+    const home = mkdtempSync(join(tmpdir(), 'related-home-'));
+    const env = { ...process.env, FACTORY_ROOT: root };
+    return { root, home, env, run: () => checks({ version: '0.2.9', home, env, cwd: root }) };
+  }
+  const cfg = { engine: '0.2.x', repo: 'acme/main', related_repos: [entry('acme/a'), entry('acme/b')] };
+
+  test('AC-7: a partial coverage warns naming each missing slug and the setup command, and doctor still exits 0', () => {
+    const { run, home, env, root } = repoSetup(cfg, `# P\n<!-- eminzo:setup-related: acme/a -->\n${MARK}\n`);
+    const check = run().results.find((c) => c.id === 'related_setup');
+    assert.equal(check.level, 'warn');
+    assert.ok(check.detail.includes('acme/b') && !check.detail.includes('acme/a'), check.detail);
+    assert.ok(check.detail.includes('/eminzo-factory setup'));
+    assert.ok(!check.detail.includes('\n') && !check.detail.includes('A related service'));
+    const out = { write() {} };
+    const status = doctor({ version: '0.2.9', home, env, cwd: root, out });
+    assert.equal(status, run().results.some((c) => c.level === 'fail') ? 1 : 0);
+    assert.equal(run().results.find((c) => c.id === 'related_setup').level, 'warn');
+  });
+
+  test('AC-7: full coverage is ok; no list, an empty list or no marker adds no check', () => {
+    const covered = repoSetup(cfg, `<!-- eminzo:setup-related: ACME/a acme/b -->\n${MARK}\n`).run().results.find((c) => c.id === 'related_setup');
+    assert.equal(covered.level, 'ok');
+    for (const [config, project] of [[{ engine: '0.2.x' }, `${MARK}\n`], [{ engine: '0.2.x', related_repos: [] }, `${MARK}\n`], [cfg, '# not finished\n']]) {
+      assert.ok(!repoSetup(config, project).run().results.some((c) => c.id === 'related_setup'));
+    }
+    assert.deepEqual(repoSetup({ engine: '0.2.x' }, `${MARK}\n`).run().results.map((c) => c.id), ['node', 'git', 'gh', 'path', 'adapters', 'engine', 'setup']);
   });
 });

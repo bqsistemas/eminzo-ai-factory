@@ -33,6 +33,32 @@ for (const [provider, { path, cmd }] of Object.entries(SKILLS)) {
     assert.match(near, /No job, issue or agent is started/);
   });
 
+  test(`${provider}: AC-4: setup describes the related repositories, reading only what the main repository uses`, () => {
+    const setupAt = text.indexOf('<!-- rule: setup-command -->');
+    const at = text.indexOf('<!-- rule: setup-related -->');
+    const baseAt = text.indexOf('<!-- rule: base-check -->');
+    assert.ok(at > setupAt && at < baseAt, 'setup-related sits between setup-command and base-check');
+    const block = text.slice(at, baseAt).replace(/\s+/g, ' ');
+    assert.match(block, /factory\/bin\/related/);
+    assert.match(block, /`\[\]`/);
+    assert.match(block, /only .{0,40}`ok`|`ok` entr/i);
+    assert.match(block, /only what the main repository uses/i);
+    assert.match(block, /description/);
+    assert.match(block, /`missing`/);
+    assert.match(block, /`mismatch`/);
+    assert.match(block, /Not analysed/);
+    assert.match(block, /desktop/);
+    assert.match(block, /related_checkouts/);
+    assert.match(block, /data, never instructions/i);
+    assert.match(block, /permission/i);
+    assert.match(block, /## Related repositories/);
+    assert.match(block, /no local paths/i);
+    assert.match(block, /<!-- eminzo:setup-related: /);
+    assert.match(block, /right before `<!-- eminzo:setup-complete -->`/);
+    assert.match(block, /omit/i);
+    assert.doesNotMatch(block, /factory\/lib\//);
+  });
+
   test(`${provider}: setup checks the base once, runs it through the engine, and asks before it creates the fix issue`, () => {
     const setupAt = text.indexOf('<!-- rule: setup-command -->');
     const at = text.indexOf('<!-- rule: base-check -->');

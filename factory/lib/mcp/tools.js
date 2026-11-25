@@ -11,6 +11,7 @@ import { LOGIN_PATTERN, fromEgmConcepts, parseBrief, renderBrief, renderBriefTem
 import { discoveryMethods } from '../discovery.js';
 import { briefIssueDraft, deliverableIssueDrafts, deliverableSections, oversizedDeliverables } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
+import { setupStatus } from '../setup-status.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { deliveryMetrics } from '../state/delivery.js';
 import { diagnosis } from '../state/diagnosis.js';
@@ -376,6 +377,23 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
           state: status.state, age_days: status.age_days, path: MAP_PATH, reason: unusable,
           title: parsed?.title ?? null, reviewed: parsed?.reviewed ?? null, areas: parsed?.areas ?? [], problems: [...(parsed?.problems ?? []), ...status.problems],
         };
+      },
+    }, ctx),
+    tool({
+      name: 'setup_status',
+      title: 'Setup status',
+      description: 'Whether `/eminzo-factory setup` finished (`state`: missing or complete, from the setup marker of factory/project.md) and which of the related repositories of factory/config.json (`related_repos`) the last setup described (`related.covered`) and which it did not (`related.not_covered`, written as in the config; all of them while setup is missing). Reads factory/project.md and factory/config.json; never changes anything and never reads the related repositories.',
+      answer: (_, c) => {
+        const { text } = repoMarkdownResult(c.root, 'factory/project.md');
+        let team = {};
+        try {
+          team = effectiveConfig(c.root, { warn: () => {} }).team;
+        } catch { /* an unreadable config lists no related repositories */ }
+        const status = setupStatus(text ?? null, team);
+        const missing = status.related.not_covered;
+        const base = status.state === 'complete' ? 'Setup is complete.' : 'Setup has not finished.';
+        const rest = missing.length ? ` The last setup did not describe ${missing.join(', ')}: run /eminzo-factory setup after configuring ${missing.length === 1 ? 'its checkout' : 'their checkouts'}.` : '';
+        return { summary: `${base}${rest}`, state: status.state, related: status.related };
       },
     }, ctx),
     tool({
