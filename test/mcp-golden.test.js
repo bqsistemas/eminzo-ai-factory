@@ -277,7 +277,8 @@ const QUESTIONS = [
       assert.equal(d.state, 'reviewed');
       assert.deepEqual(d.reviewed, { date: today, by: 'ana-p' });
       assert.deepEqual(d.areas.map((a) => a.name), ['Comprar un producto', 'Seguir un pedido']);
-      assert.deepEqual(d.areas[0].items[1], { text: 'Se puede pagar con tarjeta de regalo.', basis: 'assumed', source: 'pantalla de pago' });
+      assert.deepEqual(d.areas[0].items[1], { text: 'Se puede pagar con tarjeta de regalo.', basis: 'assumed', source: 'pantalla de pago', repo: null });
+      assert.deepEqual(d.repositories, { mapped: [], not_mapped: [] });
       assert.deepEqual(d.problems, []);
     },
   },

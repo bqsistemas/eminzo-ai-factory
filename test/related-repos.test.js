@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RELATED_REPOS_MAX, isRepoSlug, mainRepoSlug, relatedNames, relatedReposProblems, remoteSlug, validRelatedRepos } from '../factory/lib/related-repos.js';
+import { RELATED_REPOS_MAX, isRepoSlug, knownRepoNames, mainRepoSlug, relatedNames, relatedReposProblems, remoteSlug, validRelatedRepos } from '../factory/lib/related-repos.js';
 import { checks, doctor } from '../cli/src/doctor.js';
 
 const entry = (repo, description = 'A related service.') => ({ repo, description });
@@ -156,5 +156,21 @@ describe('doctor related_setup check', () => {
       assert.ok(!repoSetup(config, project).run().results.some((c) => c.id === 'related_setup'));
     }
     assert.deepEqual(repoSetup({ engine: '0.2.x' }, `${MARK}\n`).run().results.map((c) => c.id), ['node', 'git', 'gh', 'path', 'adapters', 'engine', 'setup']);
+  });
+});
+
+describe('job 067: known repository names', () => {
+  test('AC-1: knownRepoNames gives the related names in file order and the main repository last', () => {
+    const team = { repo: 'https://github.com/acme/storefront-web', related_repos: [entry('acme/payments-api'), entry('acme/web'), entry('other/Web'), { repo: 'bad' }] };
+    const before = JSON.stringify(team);
+    assert.deepEqual(knownRepoNames(team), [
+      { name: 'payments-api', repo: 'acme/payments-api' },
+      { name: 'acme/web', repo: 'acme/web' },
+      { name: 'other/Web', repo: 'other/Web' },
+      { name: 'storefront-web', repo: null },
+    ]);
+    assert.equal(JSON.stringify(team), before);
+    for (const empty of [{}, null, { related_repos: 'x' }]) assert.deepEqual(knownRepoNames(empty), []);
+    assert.deepEqual(knownRepoNames({ repo: 'acme/Solo' }), [{ name: 'solo', repo: null }]);
   });
 });

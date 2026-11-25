@@ -152,12 +152,12 @@ Portable factory engine:
   affected-only for Nx and Turborepo) and the prepare command of each lockfile; `base.js` the base
   check and `red-base.js` its held-job wording/facts; `lessons.js`, `metrics.js`, `profile.js`,
   `record-facts.js` (the PR record's facts line), `section.js`, `ensure-output.js`, `init.js`;
-  `related-repos.js` pure validation of the team `related_repos` and the local `related_checkouts`, the valid entries, `remoteSlug` and names (used by `util.js`, `related.js` and `eminzo doctor`); `related.js` (`factory/bin/related`, `eminzo related`) the read-only state of each related checkout (`ok`/`mismatch`/`missing`); `setup-status.js` pure setup marker and related coverage line (used by `eminzo doctor` and the `setup_status` tool);
+  `related-repos.js` pure validation of the team `related_repos` and the local `related_checkouts`, the valid entries, `remoteSlug`, names and `knownRepoNames` (used by `util.js`, `related.js` and `eminzo doctor`); `related.js` (`factory/bin/related`, `eminzo related`) the read-only state of each related checkout (`ok`/`mismatch`/`missing`); `setup-status.js` pure setup marker and related coverage line (used by `eminzo doctor` and the `setup_status` and `product_map` tools);
   `dashboard.js` the static dashboard server. Engine modules remain dependency-free.
 - `factory/lib/labels.js`: the single list of GitHub labels (factory and Ask Eminzo); edit only it.
 - `factory/lib/notifications.js`, `factory/lib/connectors/`: optional best-effort lifecycle
   dispatcher and secret-safe Discord webhook adapter.
-- `factory/lib/brief.js`, `brief-approval.js`, `brief-review.js`, `handoff.js`, `product-map.js`,
+- `factory/lib/brief.js`, `brief-approval.js`, `brief-review.js`, `handoff.js`, `product-map.js` (source prefix by repository, `Repositories` line),
   `discovery.js`, `client-report.js`: Ask Eminzo's pure product-stage logic (brief contract, hash
   approval and gate, goldfish reader prompts, issue-draft hand-off, functional map, discovery
   method detection, weekly client report); none talks to GitHub.
