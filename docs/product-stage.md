@@ -368,7 +368,7 @@ Reviewed: 2026-11-12 by ana-p
   in Spanish, `Repositórios` in Portuguese). The main repository is covered even when it is not listed. Without the
   line the map covers only the main repository. A name that is not a known repository is a problem but does not change
   `state`; a second line is a problem and makes the map a `draft`.
-- `product_map` returns `repositories: { mapped, not_mapped }`: the related repositories the line names and the ones
+- `product_map` returns `repositories`, with `mapped` and `not_mapped`: the related repositories the line names and the ones
   it does not (all of them when the map is missing). It also reads `factory/config.json`, never the related repositories.
 - Nothing in the engine writes the file. The `eminzo-product` skill, in a person's own terminal session, drafts it
   with `/eminzo-product map`, shows it in full, and writes it only after the person agrees.
