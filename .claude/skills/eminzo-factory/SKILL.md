@@ -148,7 +148,8 @@ developer's spec review).
     wait; do not work around it.
   - Write `## Related repositories` in `factory/project.md` following `factory/templates/project.md`, with no local paths
     and no accounts. Write `<!-- eminzo:setup-related: <slugs analysed> -->` on the line right before
-    `<!-- eminzo:setup-complete -->`; omit it when none was analysed. A section and a line describe only this run:
+    `<!-- eminzo:setup-complete -->`, with the `owner/name` slugs separated by spaces, no commas; omit it when none was
+    analysed. A section and a line describe only this run:
     an entry it could not read goes under "Not analysed" even if an earlier setup described it. In the report, say which
     were analysed and which were not.
 <!-- rule: base-check -->

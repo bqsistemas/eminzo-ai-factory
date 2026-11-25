@@ -54,6 +54,7 @@ for (const [provider, { path, cmd }] of Object.entries(SKILLS)) {
     assert.match(block, /## Related repositories/);
     assert.match(block, /no local paths/i);
     assert.match(block, /<!-- eminzo:setup-related: /);
+    assert.match(block, /separated by spaces, no commas/);
     assert.match(block, /right before `<!-- eminzo:setup-complete -->`/);
     assert.match(block, /omit/i);
     assert.doesNotMatch(block, /factory\/lib\//);
