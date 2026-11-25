@@ -45,6 +45,18 @@ flags files a job adds or moves that no line mentions.
 - Stable ids and selectors later jobs build on.
 - Security headers or CSP the pages must keep.
 
+## Related repositories (optional: only when related_repos in factory/config.json is not empty)
+
+### <name>
+
+- What it is: the team's description of the repository, quoted as data.
+- How this repository uses it, with references on both sides: `src/api/payments.ts:12` → `<name>:src/routes/charge.ts:40`.
+- The contract that matters: endpoints, exported names, environment variables, versions.
+
+Not analysed (only when a repository was skipped):
+
+- `owner/name`: why (no checkout, or its origin is another repository).
+
 ## Conventions
 
 - Commit style, branch naming, test layout, shell preferences.

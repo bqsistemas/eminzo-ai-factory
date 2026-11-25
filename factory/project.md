@@ -68,7 +68,7 @@ The gate reports uncovered added/moved modules as a non-blocking freshness warni
 - **`eminzo mcp` / `factory/bin/mcp`:** stdio JSON-RPC (MCP) server, strictly read-only; the only
   GitHub calls are `gh` reads. Tools: jobs/queue/waits/diagnosis/`delivery_metrics`/estimate (factory state), brief
   tools (`check_brief`, `brief_status`, `approve_brief`, `handoff_drafts`, review prompts),
-  `product_map`, `initiative`, `initiative_report`, `discovery_methods`. `eminzo install`
+  `product_map`, `setup_status`, `initiative`, `initiative_report`, `discovery_methods`. `eminzo install`
   registers it in Claude Code and Codex. Tests: `mcp-*.test.js`, `cli-mcp-register.test.js`.
 - **Distribution:** two ways to put the factory in a repository. (1) Committed engine: the
   repository carries `factory/lib`, `factory/bin` and the adapters (this repo; the Eminzo
@@ -137,7 +137,7 @@ Portable factory engine:
   `spec_review` (either way; `specReviewFor()` in `util.js` resolves it) and `discovery`; also `related_checkouts`
   (local only, not an override; `LOCAL_ONLY` in `util.js`).
 - `factory/bin/`: shell entrypoints for job, gate, route, nudge, selfcheck, protect-tests, guard-tests, approve, visual,
-  base, profile, mcp, setup, setup-spec-review, init, ensure-output and dashboard; implementation lives in `factory/lib/`.
+  base, profile, mcp, related, setup, setup-spec-review, init, ensure-output and dashboard; implementation lives in `factory/lib/`.
 - `factory/lib/`: `job.js` state/transitions/GitHub; `route.js`/`intake.js` classification;
   `gate.js`/`nudge.js`/`check-stamp.js` checks and fingerprinted reuse; `report.js` readable gate
   reports; `selfcheck.js` the builder's pre-READY check; `guard-tests.js` the builder's Bash hook that refuses the full suite; `protect-tests.js` the builder's PreToolUse
@@ -152,7 +152,7 @@ Portable factory engine:
   affected-only for Nx and Turborepo) and the prepare command of each lockfile; `base.js` the base
   check and `red-base.js` its held-job wording/facts; `lessons.js`, `metrics.js`, `profile.js`,
   `record-facts.js` (the PR record's facts line), `section.js`, `ensure-output.js`, `init.js`;
-  `related-repos.js` pure validation of the team `related_repos` and the local `related_checkouts` (used by `util.js` and `eminzo doctor`);
+  `related-repos.js` pure validation of the team `related_repos` and the local `related_checkouts`, the valid entries, `remoteSlug` and names (used by `util.js`, `related.js` and `eminzo doctor`); `related.js` (`factory/bin/related`, `eminzo related`) the read-only state of each related checkout (`ok`/`mismatch`/`missing`); `setup-status.js` pure setup marker and related coverage line (used by `eminzo doctor` and the `setup_status` tool);
   `dashboard.js` the static dashboard server. Engine modules remain dependency-free.
 - `factory/lib/labels.js`: the single list of GitHub labels (factory and Ask Eminzo); edit only it.
 - `factory/lib/notifications.js`, `factory/lib/connectors/`: optional best-effort lifecycle

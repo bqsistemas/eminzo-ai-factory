@@ -84,3 +84,48 @@ export function relatedCheckoutsProblem(value) {
   }
   return null;
 }
+
+/**
+ * The entries of `related_repos` every consumer uses: those `relatedReposProblems` does not flag, in file order.
+ * A problem of the whole list (`index: null`) leaves none. `[]` without the key. Never mutates `team`.
+ * @returns {{ repo: string, description: string }[]}
+ */
+export function validRelatedRepos(team) {
+  if (!isPlainObject(team) || !own(team, 'related_repos')) return [];
+  const problems = relatedReposProblems(team);
+  if (problems.some((p) => p.index === null)) return [];
+  const bad = new Set(problems.map((p) => p.index));
+  return team.related_repos.flatMap((item, index) => (bad.has(index) ? [] : [{ repo: item.repo, description: item.description }]));
+}
+
+/**
+ * The `owner/name` a git remote URL points to, in the remote's own writing, or null. The host is not looked at:
+ * https/http, `ssh://` and the scp form `user@host:owner/name` (also ssh aliases) are read. Credentials are dropped.
+ */
+export function remoteSlug(url) {
+  if (typeof url !== 'string') return null;
+  const text = url.trim();
+  let path;
+  const scheme = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/\s]*\/(.*)$/.exec(text);
+  if (scheme) path = scheme[1];
+  else {
+    const scp = /^(?:[^@/\s:]+@)?[^@/\s:]+:(?!\/)(\S+)$/.exec(text);
+    if (!scp) return null;
+    path = scp[1];
+  }
+  path = path.replace(/\/+$/, '').replace(/\.git$/, '').replace(/\/+$/, '').replace(/^\/+/, '');
+  return isRepoSlug(path) ? path : null;
+}
+
+/** The name of each repository: the part after `/`, or the whole slug for entries whose name repeats (any case). */
+export function relatedNames(repos) {
+  const count = new Map();
+  for (const repo of repos) {
+    const name = repo.slice(repo.indexOf('/') + 1).toLowerCase();
+    count.set(name, (count.get(name) ?? 0) + 1);
+  }
+  return repos.map((repo) => {
+    const name = repo.slice(repo.indexOf('/') + 1);
+    return count.get(name.toLowerCase()) > 1 ? repo : name;
+  });
+}

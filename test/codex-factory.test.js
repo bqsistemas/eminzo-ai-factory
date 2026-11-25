@@ -53,3 +53,12 @@ test('Claude adapter remains present while Codex files are additive', () => {
   assert.equal(existsSync(join(repo, 'factory/bin/gate')), true);
   assert.equal(existsSync(join(repo, 'factory/bin/route')), true);
 });
+
+test('AC-4: the installed skills call eminzo related, never factory/bin/related', async () => {
+  const { claudeSkill, codexSkill } = await import('../cli/src/adapters.js');
+  for (const [name, build] of [['claude', claudeSkill], ['codex', codexSkill]]) {
+    const out = build(readFileSync(name === 'claude' ? join(repo, '.claude/skills/eminzo-factory/SKILL.md') : skillPath, 'utf8'), { version: '0.0.0' });
+    assert.match(out, /eminzo related/, name);
+    assert.doesNotMatch(out, /factory\/bin\/related/, name);
+  }
+});
