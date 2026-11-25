@@ -11,6 +11,7 @@ import { LOGIN_PATTERN, fromEgmConcepts, parseBrief, renderBrief, renderBriefTem
 import { discoveryMethods } from '../discovery.js';
 import { briefIssueDraft, deliverableIssueDrafts, deliverableSections, oversizedDeliverables } from '../handoff.js';
 import { MAP_PATH, mapStatus, parseProductMap } from '../product-map.js';
+import { knownRepoNames } from '../related-repos.js';
 import { setupStatus } from '../setup-status.js';
 import { configLanguage, effectiveConfig } from '../util.js';
 import { deliveryMetrics } from '../state/delivery.js';
@@ -366,15 +367,20 @@ export function factoryTools({ root, now = Date.now, gh, runner, home, env = pro
     tool({
       name: 'product_map',
       title: 'Product map',
-      description: 'How the product works today, in functional language, from the reviewed map the team keeps in factory/product-map.md: areas (things a person can do or see) with statements, each labelled confirmed or assumed, who reviewed the map and when. `state` is missing, draft, reviewed or stale (not reviewed for 90 days). Use it first when asked how something works today; call confirmed what the map confirms and assumed everything else. When the map is missing, say how to create it. Reads one file; never changes anything.',
+      description: 'How the product works today, in functional language, from the reviewed map the team keeps in factory/product-map.md: areas (things a person can do or see) with statements, each labelled confirmed or assumed, who reviewed the map and when. `state` is missing, draft, reviewed or stale (not reviewed for 90 days). Each statement names its `repo` (null for the main repository) and `repositories` says which related repositories the map covers (`mapped`) and which it does not (`not_mapped`). Use it first when asked how something works today; call confirmed what the map confirms and assumed everything else. When the map is missing, say how to create it. Reads the map and the team config; never changes anything and never reads the related repositories.',
       answer: (_, c) => {
         const { text, reason } = repoMarkdownResult(c.root, MAP_PATH);
-        const parsed = text === undefined ? null : parseProductMap(text);
-        const status = mapStatus(parsed, { now: c.now });
+        let team = {};
+        try {
+          team = effectiveConfig(c.root, { warn: () => {} }).team;
+        } catch { /* an unreadable config names no repositories */ }
+        const repos = knownRepoNames(team);
+        const parsed = text === undefined ? null : parseProductMap(text, { repos });
+        const status = mapStatus(parsed, { now: c.now, repos });
         const unusable = reason && reason !== 'not found' ? reason : null;
         return {
           summary: unusable ? `The product map cannot be used: ${MAP_PATH} is ${unusable.replace(/^could not be read/, 'unreadable')}. ${status.summary}` : status.summary,
-          state: status.state, age_days: status.age_days, path: MAP_PATH, reason: unusable,
+          state: status.state, age_days: status.age_days, path: MAP_PATH, reason: unusable, repositories: status.repositories,
           title: parsed?.title ?? null, reviewed: parsed?.reviewed ?? null, areas: parsed?.areas ?? [], problems: [...(parsed?.problems ?? []), ...status.problems],
         };
       },

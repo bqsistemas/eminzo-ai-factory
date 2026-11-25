@@ -32,8 +32,8 @@ test('parseProductMap reads title, review line, areas, items, basis and source',
   assert.deepEqual(m.problems, []);
   assert.deepEqual(m.areas.map((a) => a.name), ['Buy a product', 'Track an order']);
   assert.deepEqual(m.areas[0].items, [
-    { text: 'A visitor can add a product to the cart without an account.', basis: 'confirmed', source: null },
-    { text: 'Paying with a gift card is possible.', basis: 'assumed', source: 'checkout screen' },
+    { text: 'A visitor can add a product to the cart without an account.', basis: 'confirmed', source: null, repo: null },
+    { text: 'Paying with a gift card is possible.', basis: 'assumed', source: 'checkout screen', repo: null },
   ]);
   assert.equal(m.areas[1].items[0].source, 'src/orders/status.js');
 });
@@ -148,4 +148,115 @@ test('product_map reports an unreadable file instead of crashing', { skip: proce
   } finally {
     chmodSync(file, 0o600);
   }
+});
+
+const REPOS = [
+  { name: 'payments-api', repo: 'acme/payments-api' },
+  { name: 'acme/web', repo: 'acme/web' },
+  { name: 'other/Web', repo: 'other/Web' },
+  { name: 'storefront-web', repo: null },
+];
+const REVIEWED = '# Product map: Shop\nReviewed: 2026-11-01 by ana\n';
+const item = (src) => `- s [assumed] (source: ${src})`;
+
+test('AC-2: a source prefix naming a known repository sets repo and leaves source as written', () => {
+  const sources = ['payments-api:src/config/retry.ts', 'PAYMENTS-API:src/x.ts', 'acme/web:src/a.ts', 'storefront-web:src/checkout/PaymentError.tsx', 'web:src/a.ts', 'billing:src/a.ts', 'Checkout screen: payment step', 'payments-api :src/x.ts', '__proto__:x'];
+  const text = `${REVIEWED}## a\n${sources.map(item).join('\n')}\n- no source [confirmed]\n`;
+  const m = parseProductMap(text, { repos: REPOS });
+  const items = m.areas[0].items;
+  assert.deepEqual(items.map((i) => i.repo), ['acme/payments-api', 'acme/payments-api', 'acme/web', null, null, null, null, null, null, null]);
+  assert.deepEqual(items.slice(0, 9).map((i) => i.source), sources);
+  assert.deepEqual(m.problems, []);
+  assert.ok(parseProductMap(text).areas[0].items.every((i) => i.repo === null));
+  assert.equal(parseProductMap(`${REVIEWED}## a\n${item('constructor:x')}\n`, { repos: [{ name: 5 }, null, { name: 'constructor', repo: 'a/b' }] }).areas[0].items[0].repo, 'a/b');
+});
+
+test('AC-3: a map without prefixes or a Repositories line is read as before', () => {
+  const now = at('2026-11-12T00:00:00Z');
+  const old = mapStatus(parseProductMap(MAP), { now });
+  for (const parsed of [parseProductMap(MAP), parseProductMap(MAP, { repos: REPOS })]) {
+    assert.equal(parsed.title, 'Acme Shop');
+    assert.deepEqual(parsed.reviewed, { date: '2026-11-01', by: 'ana-p' });
+    assert.deepEqual(parsed.areas.map((a) => a.name), ['Buy a product', 'Track an order']);
+    assert.deepEqual(parsed.problems, []);
+    assert.deepEqual(parsed.mapped, []);
+    assert.deepEqual(parsed.unknown_repos, []);
+    assert.ok(parsed.areas.flatMap((a) => a.items).every((i) => i.repo === null));
+    for (const repos of [undefined, REPOS]) {
+      const s = mapStatus(parsed, { now, repos });
+      assert.deepEqual([s.state, s.age_days, s.problems, s.summary], [old.state, old.age_days, old.problems, old.summary]);
+    }
+  }
+});
+
+test('AC-4: the Repositories line names the repositories the map covers', () => {
+  const read = (line, extra = '') => parseProductMap(`# Product map: Shop\nReviewed: 2026-11-01 by ana\n${line}\n${extra}## a\n- s [confirmed]\n`, { repos: REPOS });
+  for (const line of ['Repositories: storefront-web, payments-api', 'Repositorios: Storefront-Web, PAYMENTS-API', 'Repositórios: payments-api, payments-api', 'repositories:payments-api,,  ']) {
+    const m = read(line);
+    assert.deepEqual(m.mapped, ['acme/payments-api'], line);
+    assert.deepEqual(m.problems, [], line);
+  }
+  assert.deepEqual(parseProductMap(`${REVIEWED}## a\n- s [confirmed]\n`, { repos: REPOS }).mapped, []);
+  const ghost = read('Repositories: payments-api, ghost');
+  assert.deepEqual(ghost.unknown_repos, ['ghost']);
+  assert.equal(ghost.problems.length, 1);
+  assert.match(ghost.problems[0], /ghost/);
+  const two = read('Repositories: payments-api', 'Repositories: acme/web\n');
+  assert.deepEqual(two.mapped, ['acme/payments-api']);
+  assert.equal(two.problems.length, 1);
+  assert.match(two.problems[0], /Repositories/);
+  assert.deepEqual(read('Repositories:').mapped, []);
+});
+
+test('AC-5: mapStatus reports which related repositories the map covers without changing the state', () => {
+  const repos = [{ name: 'payments-api', repo: 'acme/payments-api' }, { name: 'design-tokens', repo: 'acme/design-tokens' }, { name: 'storefront-web', repo: null }];
+  const now = at('2026-11-12T00:00:00Z');
+  const read = (line) => parseProductMap(`${REVIEWED}${line ? `${line}\n` : ''}## a\n- s [confirmed]\n`, { repos });
+  const status = (line, opts = {}) => mapStatus(read(line), { now, repos, ...opts });
+  assert.deepEqual(status('Repositories: storefront-web, payments-api, design-tokens').repositories, { mapped: ['acme/payments-api', 'acme/design-tokens'], not_mapped: [] });
+  assert.deepEqual(status('Repositories: payments-api').repositories, { mapped: ['acme/payments-api'], not_mapped: ['acme/design-tokens'] });
+  assert.deepEqual(status('').repositories, { mapped: [], not_mapped: ['acme/payments-api', 'acme/design-tokens'] });
+  assert.deepEqual(mapStatus(null, { repos }).repositories, { mapped: [], not_mapped: ['acme/payments-api', 'acme/design-tokens'] });
+  assert.deepEqual(status('', { repos: [repos[2]] }).repositories, { mapped: [], not_mapped: [] });
+  assert.deepEqual(status('', { repos: [] }).repositories, { mapped: [], not_mapped: [] });
+  const plain = mapStatus(parseProductMap(`${REVIEWED}## a\n- s [confirmed]\n`), { now });
+  assert.equal(plain.state, 'reviewed');
+  const same = status('Repositories: payments-api');
+  assert.deepEqual([same.state, same.age_days, same.problems, same.summary], [plain.state, plain.age_days, plain.problems, plain.summary]);
+  const unknown = status('Repositories: ghost');
+  assert.equal(unknown.state, 'reviewed');
+  assert.deepEqual(unknown.problems, []);
+  assert.equal(unknown.summary, plain.summary);
+  assert.equal(mapStatus(read('Repositories: payments-api\nRepositories: design-tokens'), { now, repos }).state, 'draft');
+  assert.equal(status('Repositories: payments-api', { now: at('2027-06-01T00:00:00Z') }).state, 'stale');
+});
+
+test('AC-6: product_map names the repository of each source and the related repositories it covers', async () => {
+  const { mkdirSync, mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { factoryTools } = await import('../factory/lib/mcp/tools.js');
+  const day = new Date().toISOString().slice(0, 10);
+  const map = `# Product map: Shop\nReviewed: ${day} by ana\nRepositories: storefront-web, payments-api, ghost\n\n## Pay\n- Retries a payment. [assumed] (source: payments-api:src/config/retry.ts)\n- Shows the cart. [confirmed]\n`;
+  const run = (config, withMap = true) => {
+    const root = mkdtempSync(join(tmpdir(), 'eminzo-map-repos-'));
+    mkdirSync(join(root, 'factory'));
+    if (withMap) writeFileSync(join(root, 'factory/product-map.md'), map);
+    if (config !== undefined) writeFileSync(join(root, 'factory/config.json'), typeof config === 'string' ? config : JSON.stringify(config));
+    return factoryTools({ root }).find((t) => t.name === 'product_map').run({});
+  };
+  const team = { repo: 'acme/storefront-web', related_repos: [{ repo: 'acme/payments-api', description: 'Payments.' }, { repo: 'acme/design-tokens', description: 'Tokens.' }] };
+  const r = run(team);
+  assert.equal(r.state, 'reviewed');
+  assert.deepEqual(r.repositories, { mapped: ['acme/payments-api'], not_mapped: ['acme/design-tokens'] });
+  assert.deepEqual(r.areas[0].items.map((i) => i.repo), ['acme/payments-api', null]);
+  assert.ok(r.problems.some((p) => /ghost/.test(p)));
+  assert.equal('mapped' in r, false);
+  assert.equal('unknown_repos' in r, false);
+  for (const config of [{ repo: 'acme/storefront-web' }, undefined, '{not json']) {
+    const bare = run(config);
+    assert.deepEqual(bare.repositories, { mapped: [], not_mapped: [] });
+    assert.equal(bare.areas[0].items[0].repo, null);
+  }
+  assert.deepEqual(run(team, false).repositories, { mapped: [], not_mapped: ['acme/payments-api', 'acme/design-tokens'] });
 });

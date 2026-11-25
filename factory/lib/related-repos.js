@@ -129,3 +129,18 @@ export function relatedNames(repos) {
     return count.get(name.toLowerCase()) > 1 ? repo : name;
   });
 }
+
+/**
+ * The repository names a product map may use as a source prefix: each valid related repository (its `relatedNames`
+ * name and its slug as written, in file order), then the main repository (`repo: null`) when `repo` is valid.
+ * Never throws and never mutates `team`.
+ * @returns {{ name: string, repo: string | null }[]}
+ */
+export function knownRepoNames(team) {
+  const valid = validRelatedRepos(team);
+  const names = relatedNames(valid.map((v) => v.repo));
+  const known = valid.map((v, i) => ({ name: names[i], repo: v.repo }));
+  const main = mainRepoSlug(team);
+  if (main) known.push({ name: main.slice(main.indexOf('/') + 1), repo: null });
+  return known;
+}

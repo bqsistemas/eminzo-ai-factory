@@ -6,6 +6,8 @@
 //   ## <area>                      (something a person can do or see)
 //   - <statement> [confirmed]      (confirmed: a person checked it in the product)
 //   - <statement> [assumed] (source: <path or screen>)
+//   - <statement> [assumed] (source: <name>:<path>)   (a source in a related repository, named as `eminzo related` does)
+//   Repositories: <name>, <name>   (the repositories the map covers; the main one needs no listing)
 //
 // The labels `confirmed` and `assumed` and the word `source` stay in English in every language; the title prefix,
 // the review word and the area headings follow the repository's language. Pure: no I/O, no clock (the caller passes
@@ -28,11 +30,22 @@ const WORDS = Object.freeze({
 
 const TITLE_PREFIX = /^(?:product map|mapa del producto|mapa do produto):\s*/i;
 const REVIEW_LINE = /^(?:reviewed|revisado)\s*:/i;
+const REPOS_LINE = /^(?:repositories|repositorios|repositórios)\s*:/i;
 const REVIEW = new RegExp(String.raw`^(?:reviewed|revisado)\s*:\s*(\d{4}-\d{2}-\d{2})\s+(?:by|por)\s+((?=\S{1,39}\s*$)${LOGIN_BODY})\s*$`, 'i');
 const validDate = (s) => Number.isFinite(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
 
-/** `- text [confirmed|assumed] (source: x)` as `{ text, basis, source }`, or null. Linear: no backtracking. */
-function parseItem(line) {
+/** `names` is a Map of lowercase name to repo; a source prefix up to the first `:` that is a key sets `repo`. */
+function repoOf(source, names) {
+  if (source === null || !names.size) return null;
+  const colon = source.indexOf(':');
+  return colon < 0 ? null : (names.get(source.slice(0, colon).toLowerCase()) ?? null);
+}
+
+const unknownRepoProblem = (name) => `the Repositories line names "${name.slice(0, 80)}", which is not a repository of this project`;
+const UNKNOWN_PROBLEM = /^the Repositories line names ".*", which is not a repository of this project$/;
+
+/** `- text [confirmed|assumed] (source: x)` as `{ text, basis, source, repo }`, or null. Linear: no backtracking. */
+function parseItem(line, names) {
   let body = line.slice(1).trim();
   let source = null;
   if (body.endsWith(')')) {
@@ -46,17 +59,24 @@ function parseItem(line) {
   const basis = body.endsWith('[confirmed]') ? 'confirmed' : body.endsWith('[assumed]') ? 'assumed' : null;
   if (!basis) return null;
   const text = body.slice(0, body.lastIndexOf('[')).trimEnd();
-  return text ? { text, basis, source } : null;
+  return text ? { text, basis, source, repo: repoOf(source, names) } : null;
 }
 
 /**
- * A product map from its markdown: `{ title, reviewed: { date, by } | null, areas: [{ name, items: [{ text, basis,
- * source }] }], problems }`. Never throws; `problems` says what is wrong. Lines over MAX_LINE are reported, not read.
+ * A product map from its markdown: `{ title, reviewed: { date, by } | null, mapped, unknown_repos, areas: [{ name,
+ * items: [{ text, basis, source, repo }] }], problems }`. `repos` (`{ name, repo }[]`, see `knownRepoNames`) tells which
+ * source prefix names a repository (`repo`, else null) and `mapped` is the `repo` of each one the first Repositories line
+ * names. Never throws; `problems` says what is wrong. Lines over MAX_LINE are reported, not read.
  */
-export function parseProductMap(text) {
-  const out = { title: null, reviewed: null, areas: [], problems: [] };
+export function parseProductMap(text, { repos = [] } = {}) {
+  const out = { title: null, reviewed: null, mapped: [], unknown_repos: [], areas: [], problems: [] };
+  const names = new Map();
+  for (const r of Array.isArray(repos) ? repos : []) {
+    if (r && typeof r.name === 'string' && !names.has(r.name.toLowerCase())) names.set(r.name.toLowerCase(), r.repo ?? null);
+  }
   let area = null;
   let reviews = 0;
+  let repoLines = 0;
   String(text ?? '').replace(/^﻿/, '').split('\n').forEach((raw, i) => {
     if (raw.length > MAX_LINE) { out.problems.push(`line ${i + 1} is longer than ${MAX_LINE} characters`); return; }
     const line = raw.trim();
@@ -72,8 +92,21 @@ export function parseProductMap(text) {
       const m = line.match(REVIEW);
       if (reviews > 1) { if (reviews === 2) out.problems.push('there is more than one Reviewed line'); } else if (m && validDate(m[1])) out.reviewed = { date: m[1], by: m[2] };
       else out.problems.push(`the Reviewed line is not "Reviewed: YYYY-MM-DD by <login>": "${line}"`);
+    } else if (REPOS_LINE.test(line)) {
+      repoLines += 1;
+      if (repoLines > 1) { if (repoLines === 2) out.problems.push('there is more than one Repositories line'); return; }
+      const listed = new Set();
+      for (const part of line.slice(line.indexOf(':') + 1).split(',')) {
+        const name = part.trim();
+        if (!name || listed.has(name.toLowerCase())) continue;
+        listed.add(name.toLowerCase());
+        if (!names.has(name.toLowerCase())) { out.unknown_repos.push(name); out.problems.push(unknownRepoProblem(name)); }
+      }
+      for (const r of Array.isArray(repos) ? repos : []) {
+        if (r && typeof r.name === 'string' && typeof r.repo === 'string' && listed.has(r.name.toLowerCase()) && names.get(r.name.toLowerCase()) === r.repo && !out.mapped.includes(r.repo)) out.mapped.push(r.repo);
+      }
     } else if (/^[-*]\s/.test(line)) {
-      const item = parseItem(line);
+      const item = parseItem(line, names);
       if (!area) out.problems.push(`a statement comes before any area: "${line}"`);
       else if (!item) out.problems.push(`statement is not "- text [confirmed]" or "- text [assumed]": "${line}"`);
       else area.items.push(item);
@@ -94,20 +127,24 @@ export function productMapTemplate({ title = '', language = 'en' } = {}) {
  * Where the map stands: `{ state, age_days, problems, summary }` (problems only the clock reveals). missing (no file), draft (never reviewed, empty or with
  * problems), reviewed, stale (reviewed more than STALE_AFTER_DAYS days ago). `parsed` is null when there is no file.
  */
-export function mapStatus(parsed, { now = Date.now() } = {}) {
-  if (!parsed) return { state: 'missing', age_days: null, problems: [], summary: `There is no product map yet. Create it in a terminal with /eminzo-product map; it is saved as ${MAP_PATH} only after a person agrees.` };
+export function mapStatus(parsed, { now = Date.now(), repos = [] } = {}) {
+  const related = [...new Set((Array.isArray(repos) ? repos : []).flatMap((r) => (r && typeof r.repo === 'string' ? [r.repo] : [])))];
+  const mapped = parsed ? related.filter((r) => parsed.mapped?.includes(r)) : [];
+  const repositories = { mapped, not_mapped: related.filter((r) => !mapped.includes(r)) };
+  const res = (status) => ({ ...status, repositories });
+  if (!parsed) return res({ state: 'missing', age_days: null, problems: [], summary: `There is no product map yet. Create it in a terminal with /eminzo-product map; it is saved as ${MAP_PATH} only after a person agrees.` });
   const items = parsed.areas.flatMap((a) => a.items);
   const confirmed = items.filter((i) => i.basis === 'confirmed').length;
   const counts = `${parsed.areas.length} area${parsed.areas.length === 1 ? '' : 's'}, ${items.length} statement${items.length === 1 ? '' : 's'} (${confirmed} confirmed, ${items.length - confirmed} assumed)`;
   const future = parsed.reviewed && Date.parse(`${parsed.reviewed.date}T00:00:00Z`) > now + DAY;
   const extra = future ? ['the Reviewed date is in the future'] : [];
-  const all = [...parsed.problems, ...extra];
+  const all = [...parsed.problems.filter((p) => !UNKNOWN_PROBLEM.test(p)), ...extra];
   if (!parsed.reviewed || !items.length || all.length) {
     const why = all.length ? `it has ${all.length} problem${all.length === 1 ? '' : 's'}: ${all[0]}` : !parsed.reviewed ? 'no person has reviewed it yet' : 'it has no statements yet';
-    return { state: 'draft', age_days: null, problems: extra, summary: `The product map is a draft: ${why}. ${counts}.` };
+    return res({ state: 'draft', age_days: null, problems: extra, summary: `The product map is a draft: ${why}. ${counts}.` });
   }
   const age = Math.max(0, Math.floor((now - Date.parse(`${parsed.reviewed.date}T00:00:00Z`)) / DAY));
   const when = `Reviewed on ${parsed.reviewed.date} by ${parsed.reviewed.by}, ${age} day${age === 1 ? '' : 's'} ago`;
-  if (age > STALE_AFTER_DAYS) return { state: 'stale', age_days: age, problems: [], summary: `${when}: older than ${STALE_AFTER_DAYS} days, so review it again before relying on it. ${counts}.` };
-  return { state: 'reviewed', age_days: age, problems: [], summary: `${when}. ${counts}.` };
+  if (age > STALE_AFTER_DAYS) return res({ state: 'stale', age_days: age, problems: [], summary: `${when}: older than ${STALE_AFTER_DAYS} days, so review it again before relying on it. ${counts}.` });
+  return res({ state: 'reviewed', age_days: age, problems: [], summary: `${when}. ${counts}.` });
 }

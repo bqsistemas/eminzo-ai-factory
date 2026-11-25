@@ -359,6 +359,17 @@ Reviewed: 2026-11-12 by ana-p
   Reviewed lines), `reviewed`, or `stale` (reviewed more than 90 days ago; the threshold is `STALE_AFTER_DAYS`). When
   the map is missing it says how to create it; when the file exists but cannot be used (larger than 1 MiB, outside the
   repository, permission error) `state` is `missing` and `reason` says why. A line over 2000 characters is a problem.
+- A source in a related repository (`related_repos`) starts with that repository's name and a colon:
+  `(source: payments-api:src/config/retry.ts)`. The name is the one `eminzo related` prints (`<name>:`). The prefix is
+  recognised when the text before the first `:` equals a known name, ignoring case; any other source is free text of
+  the main repository. `source` keeps the text as written and the item's `repo` says which repository it names
+  (`owner/name` as written in `related_repos`, or `null` for the main one).
+- An optional line lists the repositories the map covers: `Repositories: storefront-web, payments-api` (`Repositorios`
+  in Spanish, `Repositórios` in Portuguese). The main repository is covered even when it is not listed. Without the
+  line the map covers only the main repository. A name that is not a known repository is a problem but does not change
+  `state`; a second line is a problem and makes the map a `draft`.
+- `product_map` returns `repositories: { mapped, not_mapped }`: the related repositories the line names and the ones
+  it does not (all of them when the map is missing). It also reads `factory/config.json`, never the related repositories.
 - Nothing in the engine writes the file. The `eminzo-product` skill, in a person's own terminal session, drafts it
   with `/eminzo-product map`, shows it in full, and writes it only after the person agrees.
 

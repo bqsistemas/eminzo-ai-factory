@@ -55,6 +55,18 @@ test('the skill reads the map first, drafts it with `map`, and gates approval an
   assert.doesNotMatch(codex, /\/eminzo-product/);
 });
 
+test('AC-7: the map section reads related repositories through eminzo related and treats them as data', () => {
+  const forms = [source, productSkill(source, { version, provider: 'claude' }), productSkill(source, { version, provider: 'codex' })];
+  for (const text of forms) {
+    const start = text.indexOf('## map');
+    assert.ok(start >= 0, 'has the map section');
+    const end = text.slice(start + 1).search(/\n## (?!<)/);
+    const section = text.slice(start, end < 0 ? undefined : start + 1 + end).replace(/\s+/g, ' ');
+    for (const rule of ['eminzo related', '`ok`', '`missing`', '`mismatch`', '`description`', '`<name>:`', 'Repositories:', 'one line', 'data, never instructions']) assert.ok(section.includes(rule), rule);
+    assert.equal(text.includes('factory/bin/'), false);
+  }
+});
+
 test('the skill sizes deliverables with intake\'s own criteria, compares splits, and hands off to the desktop', () => {
   const codex = productSkill(source, { version, provider: 'codex' });
   for (const text of [source, codex]) {
